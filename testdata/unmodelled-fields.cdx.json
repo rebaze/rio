@@ -1,0 +1,49 @@
+{
+  "bomFormat" : "CycloneDX",
+  "specVersion" : "1.6",
+  "serialNumber" : "urn:uuid:5b3a9e41-6c07-4d28-8f19-a0e2c7b45d63",
+  "version" : 1,
+  "metadata" : {
+    "timestamp" : "2024-11-05T13:37:00Z",
+    "component" : {
+      "group" : "com.tkse.product",
+      "name" : "round-trip",
+      "version" : "1.2.3",
+      "purl" : "pkg:maven/com.tkse.product/round-trip@1.2.3?type=jar",
+      "type" : "application",
+      "bom-ref" : "root"
+    }
+  },
+  "components" : [ {
+    "group" : "org.apache.commons",
+    "name" : "commons-lang3",
+    "version" : "3.14.0",
+    "purl" : "pkg:maven/org.apache.commons/commons-lang3@3.14.0?type=jar",
+    "type" : "library",
+    "bom-ref" : "lang3",
+    "pedigree" : {
+      "patches" : [ {
+        "type" : "unofficial",
+        "diff" : {
+          "text" : {
+            "content" : "--- a\n+++ b\n"
+          }
+        },
+        "resolves" : [ {
+          "type" : "defect",
+          "id" : "TKSE-4711"
+        } ]
+      } ]
+    }
+  } ],
+  "services" : [ {
+    "bom-ref" : "svc-1",
+    "name" : "audit-log",
+    "data" : [ {
+      "name" : "audit events",
+      "description" : "events written to the audit sink",
+      "flow" : "outbound",
+      "classification" : "internal"
+    } ]
+  } ]
+}

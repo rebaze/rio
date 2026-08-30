@@ -1,0 +1,33 @@
+{
+  "bomFormat" : "CycloneDX",
+  "specVersion" : "1.9",
+  "serialNumber" : "urn:uuid:0d5e1f77-8a24-4c93-bb01-6e2f9c4a7d55",
+  "version" : 1,
+  "metadata" : {
+    "timestamp" : "2027-02-14T16:00:00Z",
+    "component" : {
+      "group" : "com.tkse.product",
+      "name" : "future-client",
+      "version" : "5.0.0",
+      "purl" : "pkg:maven/com.tkse.product/future-client@5.0.0?type=jar",
+      "type" : "application",
+      "bom-ref" : "root"
+    }
+  },
+  "components" : [ {
+    "group" : "org.apache.commons",
+    "name" : "commons-lang3",
+    "version" : "3.14.0",
+    "purl" : "pkg:maven/org.apache.commons/commons-lang3@3.14.0?type=jar",
+    "type" : "library",
+    "bom-ref" : "lang3",
+    "provenanceAttestations" : [ {
+      "kind" : "a-field-invented-after-1.6",
+      "value" : "must survive the round trip untouched"
+    } ]
+  } ],
+  "postQuantumReadiness" : {
+    "assessed" : true,
+    "note" : "a top-level key no library pinned at 1.6 can model"
+  }
+}

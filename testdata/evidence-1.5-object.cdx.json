@@ -1,0 +1,37 @@
+{
+  "$schema" : "http://cyclonedx.org/schema/bom-1.5.schema.json",
+  "bomFormat" : "CycloneDX",
+  "specVersion" : "1.5",
+  "serialNumber" : "urn:uuid:73aa4d19-0b62-4e35-91cc-5f6d8a2b0c37",
+  "version" : 1,
+  "metadata" : {
+    "timestamp" : "2024-01-08T11:22:33Z",
+    "component" : {
+      "group" : "com.tkse.product",
+      "name" : "scanner-output",
+      "version" : "0.9.0",
+      "purl" : "pkg:maven/com.tkse.product/scanner-output@0.9.0?type=jar",
+      "type" : "application",
+      "bom-ref" : "root"
+    }
+  },
+  "components" : [ {
+    "group" : "org.slf4j",
+    "name" : "slf4j-api",
+    "version" : "2.0.9",
+    "purl" : "pkg:maven/org.slf4j/slf4j-api@2.0.9?type=jar",
+    "type" : "library",
+    "bom-ref" : "slf4j",
+    "evidence" : {
+      "identity" : {
+        "field" : "purl",
+        "confidence" : 0.8,
+        "methods" : [ {
+          "technique" : "filename",
+          "confidence" : 0.8,
+          "value" : "slf4j-api-2.0.9.jar"
+        } ]
+      }
+    }
+  } ]
+}

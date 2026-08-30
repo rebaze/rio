@@ -1,16 +1,16 @@
 VERSION   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT    ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 DATE      ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-LDFLAGS   := -X github.com/rebaze/rio/cmd.version=$(VERSION) \
-             -X github.com/rebaze/rio/cmd.commit=$(COMMIT) \
-             -X github.com/rebaze/rio/cmd.date=$(DATE)
+LDFLAGS   := -X github.com/rebaze/rio/internal/cli.version=$(VERSION) \
+             -X github.com/rebaze/rio/internal/cli.commit=$(COMMIT) \
+             -X github.com/rebaze/rio/internal/cli.date=$(DATE)
 BIN       := rio
 
 .PHONY: build run test vet tidy clean
 
 ## build: compile the rio binary
 build:
-	go build -ldflags "$(LDFLAGS)" -o $(BIN) .
+	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/rio
 
 ## run: build then run (pass arguments via ARGS)
 ##   example: make run ARGS="--version"
