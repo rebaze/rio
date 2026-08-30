@@ -1,0 +1,45 @@
+name: Verify Release App
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint App token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: rebaze
+          repositories: homebrew-tap
+
+      - name: Smoke test — read homebrew-tap
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          echo "Token minted. Reading rebaze/homebrew-tap..."
+          gh api repos/rebaze/homebrew-tap --jq '{full_name, default_branch, permissions}'
+
+      - name: Verify Contents:write by writing + reverting a test branch
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          REPO=rebaze/homebrew-tap
+          BRANCH=app-token-verify-${{ github.run_id }}
+          DEFAULT=$(gh api repos/$REPO --jq .default_branch)
+          SHA=$(gh api repos/$REPO/git/refs/heads/$DEFAULT --jq .object.sha)
+          echo "Creating ref $BRANCH at $SHA on $REPO..."
+          gh api -X POST repos/$REPO/git/refs \
+            -f ref="refs/heads/$BRANCH" \
+            -f sha="$SHA" > /dev/null
+          echo "✅ Created. Deleting..."
+          gh api -X DELETE repos/$REPO/git/refs/heads/$BRANCH
+          echo "✅ Deleted. Contents:write verified end-to-end."
