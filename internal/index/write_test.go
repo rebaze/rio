@@ -1,6 +1,7 @@
 package index_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -150,8 +151,62 @@ func TestSHA256File(t *testing.T) {
 	if got != sha256OfABC {
 		t.Errorf("SHA256File = %q, want %q", got, sha256OfABC)
 	}
-	if got != strings.ToLower(got) {
-		t.Errorf("digest must be lowercase hex, got %q", got)
+	// The equality above is the case check too, but only because this vector's
+	// digest contains a-f: an all digit digest would make it vacuous, and an
+	// uppercased implementation would then slip through (§4.2).
+	if strings.ToUpper(got) == got {
+		t.Errorf("digest must be lowercase hex containing a-f, got %q", got)
+	}
+}
+
+// TestSHA256Bytes: every input.sha256 in every index rio writes comes from
+// here, hashed before anything is written (§4.2), so it must agree with the
+// after-writing digest byte for byte.
+func TestSHA256Bytes(t *testing.T) {
+	got := index.SHA256Bytes([]byte("abc"))
+	if got != sha256OfABC {
+		t.Errorf("SHA256Bytes = %q, want %q", got, sha256OfABC)
+	}
+	if strings.ToUpper(got) == got {
+		t.Errorf("digest must be lowercase hex containing a-f, got %q", got)
+	}
+
+	path := filepath.Join(t.TempDir(), "abc.txt")
+	if err := os.WriteFile(path, []byte("abc"), 0o644); err != nil {
+		t.Fatalf("seeding: %v", err)
+	}
+	onDisk, err := index.SHA256File(path)
+	if err != nil {
+		t.Fatalf("SHA256File: %v", err)
+	}
+	if got != onDisk {
+		t.Errorf("SHA256Bytes = %q, SHA256File over the same bytes = %q", got, onDisk)
+	}
+
+	if empty := index.SHA256Bytes(nil); empty != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" {
+		t.Errorf("SHA256Bytes(nil) = %q, want the empty digest", empty)
+	}
+}
+
+// TestWriteNilIndexWritesNothing: Write runs at the end of a run that may
+// already have failed, so a nil index must come back as an error rather than a
+// panic on top of it.
+func TestWriteNilIndexWritesNothing(t *testing.T) {
+	dir := t.TempDir()
+
+	data, err := index.Write(dir, nil)
+	if !errors.Is(err, index.ErrNilIndex) {
+		t.Fatalf("Write(dir, nil) = %v, want ErrNilIndex", err)
+	}
+	if data != nil {
+		t.Errorf("Write returned %d bytes for a nil index, want none", len(data))
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("reading dir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("directory holds %d entries, want 0", len(entries))
 	}
 }
 

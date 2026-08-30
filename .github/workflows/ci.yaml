@@ -73,6 +73,14 @@ jobs:
             exit 1
           fi
 
+      # go.mod carried six direct dependencies marked // indirect, which nothing
+      # caught because CI never ran tidy. The dependency list is a review
+      # surface here: §8 fixes the shipped set at six and says a seventh needs
+      # justification in the PR, so it has to stay honest.
+      - name: Check go.mod is tidy
+        if: steps.changes.outputs.go == 'true'
+        run: go mod tidy -diff
+
       - name: Build
         if: steps.changes.outputs.go == 'true'
         run: go build ./...

@@ -2,6 +2,7 @@ package index_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -368,6 +369,82 @@ func TestContractKeys(t *testing.T) {
 		if _, ok := integrity[key]; !ok {
 			t.Errorf("integrityFindings[0].%s missing", key)
 		}
+	}
+}
+
+// TestIntegrityFindingsKeyIsConditional pins the one deviation from "every
+// array is an array": integrityFindings is present exactly when there is
+// something to report, which is what the package doc promises consumers.
+func TestIntegrityFindingsKeyIsConditional(t *testing.T) {
+	idx := fullIndex()
+
+	data, err := index.Marshal(idx)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+	artifacts := doc["artifacts"].([]any)
+
+	clean := artifacts[0].(map[string]any)
+	if v, ok := clean["integrityFindings"]; ok {
+		t.Errorf("a clean artifact must carry no integrityFindings key, got %#v", v)
+	}
+	dirty := artifacts[1].(map[string]any)
+	list, ok := dirty["integrityFindings"].([]any)
+	if !ok || len(list) != 1 {
+		t.Errorf("integrityFindings = %#v, want a one element array", dirty["integrityFindings"])
+	}
+}
+
+// TestValidateNamesThePosition: an artifact with no id has nothing else to be
+// named by, so the error has to say which row it is.
+func TestValidateNamesThePosition(t *testing.T) {
+	idx := fullIndex()
+	idx.Artifacts[1].ID = ""
+
+	_, err := index.Marshal(idx)
+	if err == nil {
+		t.Fatal("Marshal accepted an artifact with no id")
+	}
+	if !strings.Contains(err.Error(), "artifacts[1]") {
+		t.Errorf("error must name the position, got %v", err)
+	}
+}
+
+// TestValidateRejectsDuplicateIDs: artifacts[].id is the handoff object's
+// stable key (§4.2); two rows sharing one makes a lookup through it ambiguous.
+func TestValidateRejectsDuplicateIDs(t *testing.T) {
+	idx := fullIndex()
+	idx.Artifacts[1].ID = idx.Artifacts[0].ID
+
+	_, err := index.Marshal(idx)
+	if err == nil {
+		t.Fatal("Marshal accepted two artifacts with the same id")
+	}
+	for _, want := range []string{"artifacts[0]", "artifacts[1]", `"rcp-client"`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error must mention %s, got %v", want, err)
+		}
+	}
+}
+
+// TestNilIndexIsAnError: a nil index is a caller bug at the end of a run that
+// may already have failed. Report it; do not add a panic to the pile.
+func TestNilIndexIsAnError(t *testing.T) {
+	var idx *index.Index
+
+	if err := idx.Validate(); !errors.Is(err, index.ErrNilIndex) {
+		t.Errorf("Validate(nil) = %v, want ErrNilIndex", err)
+	}
+	data, err := index.Marshal(nil)
+	if !errors.Is(err, index.ErrNilIndex) {
+		t.Errorf("Marshal(nil) = %v, want ErrNilIndex", err)
+	}
+	if data != nil {
+		t.Errorf("Marshal(nil) returned %d bytes, want none", len(data))
 	}
 }
 

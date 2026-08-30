@@ -5,9 +5,13 @@
 // names and types here are load bearing (§9c). Two rules follow from that and
 // are enforced rather than hoped for:
 //
-//   - every array is an array. A nil Go slice serializes as null, and a
-//     consumer iterating it breaks on a run that happened to have nothing to
-//     report.
+//   - every array the format promises is an array. A nil Go slice serializes
+//     as null, and a consumer iterating it breaks on a run that happened to
+//     have nothing to report. The single exception is
+//     artifacts[].integrityFindings, which carries omitempty on purpose: a
+//     clean run then writes exactly the document §4.2 shows, which has no
+//     such key, and the key's presence is itself the signal that something
+//     needs looking at. Consumers must test for it before iterating it.
 //   - no timestamps, anywhere. The index digest is referenced elsewhere and a
 //     digest that changes between identical runs is worthless (§7).
 package index
@@ -15,6 +19,7 @@ package index
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/rebaze/rio/internal/sbom"
@@ -29,6 +34,12 @@ const ToolName = "rio"
 
 // FileName is the index's fixed name inside the output directory (§4.1).
 const FileName = "index.json"
+
+// ErrNilIndex is what Marshal and Write report when handed no index at all.
+// Write runs at the end of a run that may have gone wrong earlier (§5 step 5),
+// so a nil arriving here is a caller bug that deserves a message on stderr,
+// not a stack trace on top of whatever already failed.
+var ErrNilIndex = errors.New("no index to write")
 
 // Index is the whole of index.json.
 type Index struct {
@@ -156,10 +167,6 @@ func New(toolVersion string, manifest FileRef) *Index {
 	}
 }
 
-// Add appends an artifact row, in the order the artifacts were processed. The
-// manifest's order is the index's order; nothing is sorted.
-func (idx *Index) Add(a Artifact) { idx.Artifacts = append(idx.Artifacts, a) }
-
 // Marshal serializes the index. The result is byte identical across runs and
 // platforms for the same input, and ends in a single newline.
 //
@@ -169,7 +176,8 @@ func (idx *Index) Add(a Artifact) { idx.Artifacts = append(idx.Artifacts, a) }
 func Marshal(idx *Index) ([]byte, error) {
 	// Checked up front so the error can name the offending artifact; a
 	// MarshalJSON error raised mid-encode cannot, and "gate is \"\"" with no
-	// id is not a message anyone can act on.
+	// id is not a message anyone can act on. It also catches a nil index
+	// before normalize dereferences it.
 	if err := idx.Validate(); err != nil {
 		return nil, err
 	}
@@ -225,13 +233,27 @@ func normalize(idx *Index) *Index {
 // Validate reports the first structural problem that would make the index
 // unusable to a consumer. Marshal enforces the gate values on its own; this
 // exists so a caller can fail before writing any file.
+//
+// Every message names the artifact's position in the slice: an artifact with
+// no id has nothing else to be named by, and a duplicate id has two rows to
+// point at. Duplicates are refused because artifacts[].id is the handoff
+// object's stable key (§4.2), so two rows sharing one makes every lookup
+// through it ambiguous.
 func (idx *Index) Validate() error {
-	for _, a := range idx.Artifacts {
+	if idx == nil {
+		return ErrNilIndex
+	}
+	seen := make(map[string]int, len(idx.Artifacts))
+	for i, a := range idx.Artifacts {
 		if a.ID == "" {
-			return fmt.Errorf("artifact with no id")
+			return fmt.Errorf("artifacts[%d]: artifact has no id", i)
 		}
+		if first, dup := seen[a.ID]; dup {
+			return fmt.Errorf("artifacts[%d]: duplicate id %q, already used by artifacts[%d]", i, a.ID, first)
+		}
+		seen[a.ID] = i
 		if !a.Gate.Valid() {
-			return fmt.Errorf("artifact %q: gate is %q, want %q or %q", a.ID, string(a.Gate), GateOK, GateFail)
+			return fmt.Errorf("artifacts[%d] %q: gate is %q, want %q or %q", i, a.ID, string(a.Gate), GateOK, GateFail)
 		}
 	}
 	return nil

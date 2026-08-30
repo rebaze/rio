@@ -31,8 +31,11 @@ func (l loader) transform(field string, node *yaml.Node) (TransformSpec, error) 
 	}
 
 	key, value := node.Content[0], node.Content[1]
-	if key.Kind != yaml.ScalarNode || key.Value == "" {
-		return TransformSpec{}, l.errf(field, "the transform name must be a plain string")
+	// The tag, not the kind: yaml resolves 5 and true to scalars too, and a
+	// transform named "5" would be looked up in the registry and reported as
+	// unknown, hiding the real mistake (§9b).
+	if key.Tag != strTag || key.Value == "" {
+		return TransformSpec{}, l.errf(field, "the transform name must be a plain string, got %s", describe(key))
 	}
 
 	cfg, err := l.transformConfig(field, key.Value, value)
@@ -50,28 +53,66 @@ func (l loader) transform(field string, node *yaml.Node) (TransformSpec, error) 
 // itself, because yaml.v3 reuses the outer map's named type for every nested
 // mapping: decoding straight into a Config would hand transform code nested
 // values typed transform.Config, and a v, ok := x.(map[string]any) would fail
-// on them. Below the top level no conversion is needed, as yaml.v3 yields
-// map[string]any for mappings at every depth and rejects a non-string key
-// rather than falling back to the map[any]any that v2 produced.
+// on them. Below the top level no conversion is needed, because stringKeys has
+// already rejected every non-string key: with string keys only, yaml.v3 yields
+// map[string]any for mappings at every depth.
 func (l loader) transformConfig(field, name string, value *yaml.Node) (transform.Config, error) {
 	// An omitted config ("- repair-purl:") is an empty one, not an error: a
 	// transform with no required options is configured by naming it.
-	if value.Kind == 0 || value.Tag == "!!null" {
+	if value.Kind == 0 || value.Tag == nullTag {
 		return transform.Config{}, nil
 	}
 	if value.Kind != yaml.MappingNode {
 		return nil, l.errf(field, "%s: config must be a mapping or empty, got %s", name, describe(value))
 	}
+	if err := l.stringKeys(field, name, value); err != nil {
+		return nil, err
+	}
 
 	var raw map[string]any
 	if err := value.Decode(&raw); err != nil {
-		return nil, l.errf(field, "%s: %s", name, strings.TrimPrefix(err.Error(), "yaml: "))
+		// A duplicate config key is the one failure left once the keys are
+		// known to be strings, and go-yaml says it plainly enough.
+		return nil, l.errf(field, "%s: %s", name, yamlDetail(err))
 	}
 	cfg := make(transform.Config, len(raw))
 	for k, v := range raw {
 		cfg[k] = v
 	}
 	return cfg, nil
+}
+
+// stringKeys rejects a config key that is not a plain string, at any depth.
+//
+// yaml.v3 stringifies a non-string key only where the decode target is a
+// map[string]any, which is the top level here; a nested mapping decodes into
+// an interface and a float, int, bool or null key makes it a map[any]any.
+// Transform code reading a nested config with v.(map[string]any) would fail on
+// that, so the invariant is held here rather than left to each transform, and
+// the author gets a message naming the key instead (§10).
+func (l loader) stringKeys(field, name string, n *yaml.Node) error {
+	switch n.Kind {
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			// A merge key (<<) is yaml's own and merges an anchored
+			// mapping; every mapping in the manifest is checked where it is
+			// written, so the keys it merges in are strings too.
+			if key := n.Content[i]; key.Tag != strTag && key.Tag != mergeTag {
+				return l.errf(field, "%s: config keys must be plain strings, got %s on line %d",
+					name, describe(key), key.Line)
+			}
+			if err := l.stringKeys(field, name, n.Content[i+1]); err != nil {
+				return err
+			}
+		}
+	case yaml.SequenceNode:
+		for _, c := range n.Content {
+			if err := l.stringKeys(field, name, c); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func mappingKeys(node *yaml.Node) []string {

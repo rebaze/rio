@@ -199,9 +199,13 @@ func TestResolveSeveralMatches(t *testing.T) {
 
 func TestResolveSeveralMatchesAreSorted(t *testing.T) {
 	base := t.TempDir()
-	// Created out of order on purpose: readdir order is not lexical on every
-	// filesystem and the message has to be byte identical across runs (§7).
-	for _, rel := range []string{"target/z/bom.json", "target/a/bom.json", "target/m/bom.json"} {
+	// These four names are chosen so that sorting is observable. doublestar
+	// walks a directory in readdir order, which io/fs sorts, so it yields the
+	// directories as a, a-c, a.b, aZ. Sorting the whole paths reorders them,
+	// because the separator that follows "a" sorts after the '-' and '.' that
+	// follow it in the others. A tree of a, m, z would pass with no sort at
+	// all and pin nothing (§7).
+	for _, rel := range []string{"target/aZ/bom.json", "target/a.b/bom.json", "target/a/bom.json", "target/a-c/bom.json"} {
 		writeFile(t, base, rel)
 	}
 
@@ -212,9 +216,13 @@ func TestResolveSeveralMatchesAreSorted(t *testing.T) {
 	}
 
 	want := []string{
+		filepath.Join(base, "target", "a-c", "bom.json"),
+		filepath.Join(base, "target", "a.b", "bom.json"),
 		filepath.Join(base, "target", "a", "bom.json"),
-		filepath.Join(base, "target", "m", "bom.json"),
-		filepath.Join(base, "target", "z", "bom.json"),
+		filepath.Join(base, "target", "aZ", "bom.json"),
+	}
+	if len(mm.Matches) != len(want) {
+		t.Fatalf("Matches = %v, want %d entries", mm.Matches, len(want))
 	}
 	for i := range want {
 		if mm.Matches[i] != want[i] {
@@ -225,6 +233,36 @@ func TestResolveSeveralMatchesAreSorted(t *testing.T) {
 	_, second := discover.Resolve(base, "rcp-client", "target/**/bom.json")
 	if err.Error() != second.Error() {
 		t.Errorf("two runs produced different messages:\n%s\n---\n%s", err, second)
+	}
+}
+
+func TestResolveExcludedDirectoriesAreSorted(t *testing.T) {
+	base := t.TempDir()
+	// Same trick as TestResolveSeveralMatchesAreSorted, on the list of
+	// near misses: it is part of the message and §7 covers all of it.
+	for _, rel := range []string{"target/aZ/bom.json", "target/a.b/bom.json", "target/a/bom.json", "target/a-c/bom.json"} {
+		makeDir(t, base, rel)
+	}
+
+	var nm *discover.NoMatchError
+	_, err := discover.Resolve(base, "rcp-client", "target/**/bom.json")
+	if !errors.As(err, &nm) {
+		t.Fatalf("Resolve error is %T, want *discover.NoMatchError", err)
+	}
+
+	want := []string{
+		filepath.Join(base, "target", "a-c", "bom.json"),
+		filepath.Join(base, "target", "a.b", "bom.json"),
+		filepath.Join(base, "target", "a", "bom.json"),
+		filepath.Join(base, "target", "aZ", "bom.json"),
+	}
+	if len(nm.Directories) != len(want) {
+		t.Fatalf("Directories = %v, want %d entries", nm.Directories, len(want))
+	}
+	for i := range want {
+		if nm.Directories[i] != want[i] {
+			t.Fatalf("Directories = %v, want %v", nm.Directories, want)
+		}
 	}
 }
 
@@ -280,6 +318,23 @@ func TestResolveRejectsEmptyPattern(t *testing.T) {
 	}
 }
 
+func TestResolveRejectsPaddedPattern(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, base, "target/bom.json")
+
+	// The padded glob used to be accepted and searched literally, so rio went
+	// looking in a directory named " target" and reported a zero match whose
+	// glob line looked exactly like the working one.
+	var pe *discover.PatternError
+	if _, err := discover.Resolve(base, "rcp-client", " target/bom.json "); !errors.As(err, &pe) {
+		t.Fatalf("Resolve error is %T, want *discover.PatternError", err)
+	}
+	// §10: the message has to show the offending value, padding included.
+	if msg := pe.Error(); !strings.Contains(msg, `" target/bom.json "`) {
+		t.Errorf("pattern error does not show the padded glob: %s", msg)
+	}
+}
+
 func TestResolveRejectsMalformedPattern(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, base, "target/bom.json")
@@ -287,6 +342,11 @@ func TestResolveRejectsMalformedPattern(t *testing.T) {
 	var pe *discover.PatternError
 	if _, err := discover.Resolve(base, "rcp-client", "target/[a-.json"); !errors.As(err, &pe) {
 		t.Fatalf("Resolve error is %T, want *discover.PatternError", err)
+	}
+	// The reason matters, not just the type: a malformed glob must be
+	// reported as malformed and not as a directory rio failed to search.
+	if msg := pe.Error(); !strings.Contains(msg, "malformed") {
+		t.Errorf("pattern error does not say the glob is malformed: %s", msg)
 	}
 }
 
@@ -299,5 +359,25 @@ func TestResolveRejectsPatternNamingADirectory(t *testing.T) {
 	var pe *discover.PatternError
 	if _, err := discover.Resolve(base, "rcp-client", "."); !errors.As(err, &pe) {
 		t.Fatalf("Resolve error is %T, want *discover.PatternError", err)
+	}
+}
+
+func TestResolveReportsAnUnsearchableRootAbsolutely(t *testing.T) {
+	base := t.TempDir()
+	// A regular file where the pattern expects a directory. doublestar
+	// reports this against the DirFS root as "open .: not a directory", which
+	// names no path the reader can act on (§10).
+	file := writeFile(t, base, "target/bom.json")
+
+	var pe *discover.PatternError
+	if _, err := discover.Resolve(base, "rcp-client", "target/bom.json/*.json"); !errors.As(err, &pe) {
+		t.Fatalf("Resolve error is %T, want *discover.PatternError", err)
+	}
+	msg := pe.Error()
+	if !strings.Contains(msg, file) {
+		t.Errorf("message does not name %q as the path that is not a directory:\n%s", file, msg)
+	}
+	if strings.Contains(msg, "open .:") || strings.Contains(msg, "stat .:") {
+		t.Errorf("message still carries a DirFS relative path:\n%s", msg)
 	}
 }

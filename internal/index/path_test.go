@@ -1,6 +1,7 @@
 package index_test
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -20,6 +21,9 @@ func TestRelPath(t *testing.T) {
 		{"base with trailing slash", "/repo/", "/repo/rio.yaml", "rio.yaml"},
 		{"unclean segments", "/repo/./sub/..", "/repo/rio.yaml", "rio.yaml"},
 		{"both relative", "target/rio", "target/rio/server-war.cdx.json", "server-war.cdx.json"},
+		{"sibling directory", "/repo/target/rio", "/repo/rio.yaml", "../../rio.yaml"},
+		{"different root", "/repo", "/elsewhere/bom.json", "../elsewhere/bom.json"},
+		{"parent", "/repo/sub", "/repo", ".."},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -34,34 +38,57 @@ func TestRelPath(t *testing.T) {
 	}
 }
 
-// TestRelPathRefusesEscape backs §7: an index that names a path outside the
-// directory it is relative to is not portable, so refuse it loudly.
-func TestRelPathRefusesEscape(t *testing.T) {
-	tests := []struct {
-		name   string
-		base   string
-		target string
-	}{
-		{"sibling directory", "/repo/target/rio", "/repo/rio.yaml"},
-		{"different root", "/repo", "/elsewhere/bom.json"},
-		{"parent", "/repo/sub", "/repo"},
+// TestRelPathUpwardEscapeSurvivesIntoTheIndex: a manifest whose sbom glob
+// points at a sibling module -- "../ext/bom.json", an ordinary multi-module
+// layout -- must be recorded, not refused. §7 bars absolute paths; a path
+// relative to the manifest directory is exactly what it asks for, whichever
+// way it points.
+func TestRelPathUpwardEscapeSurvivesIntoTheIndex(t *testing.T) {
+	root := t.TempDir()
+	base := filepath.Join(root, "repo")
+	target := filepath.Join(root, "ext", "bom.json")
+
+	got, err := index.RelPath(base, target)
+	if err != nil {
+		t.Fatalf("RelPath(%q, %q): %v", base, target, err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := index.RelPath(tt.base, tt.target)
-			if err == nil {
-				t.Fatalf("RelPath(%q, %q) = %q, want an error", tt.base, tt.target, got)
-			}
-			if !strings.Contains(err.Error(), "outside") {
-				t.Errorf("error must say the path escapes, got %v", err)
-			}
-			if !strings.Contains(err.Error(), tt.target) {
-				t.Errorf("error must name the offending path, got %v", err)
-			}
-			if got != "" {
-				t.Errorf("a refused path must return %q, got %q", "", got)
-			}
-		})
+	if want := "../ext/bom.json"; got != want {
+		t.Fatalf("RelPath = %q, want %q", got, want)
+	}
+	if filepath.IsAbs(got) {
+		t.Errorf("RelPath returned an absolute path: %q", got)
+	}
+	if strings.Contains(got, root) {
+		t.Errorf("RelPath leaked the build machine's layout: %q", got)
+	}
+
+	// Round trip it through the index: the recorded path is what a consumer
+	// reads back, so assert there and not just at the function boundary.
+	idx := &index.Index{
+		Tool:     index.Tool{Name: "rio", Version: "0.1.0"},
+		Manifest: index.FileRef{Path: "rio.yaml", SHA256: "x"},
+		Artifacts: []index.Artifact{{
+			ID:    "outside",
+			Input: index.FileRef{Path: got, SHA256: "x"},
+			Gate:  index.GateOK,
+		}},
+	}
+	data, err := index.Marshal(idx)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var doc struct {
+		Artifacts []struct {
+			Input struct {
+				Path string `json:"path"`
+			} `json:"input"`
+		} `json:"artifacts"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+	if want := "../ext/bom.json"; doc.Artifacts[0].Input.Path != want {
+		t.Errorf("index recorded input.path = %q, want %q", doc.Artifacts[0].Input.Path, want)
 	}
 }
 
@@ -101,10 +128,14 @@ func TestRelPathNeverAbsoluteAndAlwaysSlashed(t *testing.T) {
 	}
 }
 
-// A relative base is resolved against the process working directory, so a
-// relative target that lands outside it is still caught.
+// A relative base and a relative target are resolved against the same working
+// directory, so the escape between them is expressed and not lost.
 func TestRelPathRelativeEscape(t *testing.T) {
-	if _, err := index.RelPath("target/rio", "target/other/bom.json"); err == nil {
-		t.Error("a relative target outside the base must be refused")
+	got, err := index.RelPath("target/rio", "target/other/bom.json")
+	if err != nil {
+		t.Fatalf("RelPath: %v", err)
+	}
+	if want := "../other/bom.json"; got != want {
+		t.Errorf("RelPath = %q, want %q", got, want)
 	}
 }

@@ -20,7 +20,7 @@ import (
 // is only atomic within one filesystem.
 //
 // index.json is written last, after every artifact, so its existence means the
-// run got that far (§4.2). A run that fails to serialize writes nothing.
+// run got that far (§5 step 5). A run that fails to serialize writes nothing.
 func Write(dir string, idx *Index) ([]byte, error) {
 	data, err := Marshal(idx)
 	if err != nil {

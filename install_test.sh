@@ -8,13 +8,10 @@
 # Makes no network calls. install.sh is sourced with RIO_SOURCE_ONLY=1 so the
 # pure helpers can be exercised directly, and the end to end runs get a PATH
 # shim whose `curl` and `wget` serve fixture files from a temp directory and
-# record every url they were asked for.
-
-# SC1091/SC2154/SC2034: the helpers and constants under test come from sourcing
-# install.sh, which shellcheck does not follow here.
-# SC2030/SC2031: PATH is meant to be scoped to the subshells and `env` calls
-# that run install.sh with a stubbed http client.
-# shellcheck disable=SC1091,SC2034,SC2030,SC2031,SC2154
+# record both the urls and the full argument lists they were asked for.
+#
+# Lint directives are scoped to the lines that need them rather than switched
+# off for the whole file: a blanket disable hides the next real finding.
 
 set -eu
 
@@ -60,8 +57,10 @@ trap 'rm -rf "$t"' EXIT INT TERM HUP
 
 # Sourcing pulls in `set -eu`; the assertions below deliberately run commands
 # that fail, so turn -e back off and check statuses by hand.
+# shellcheck disable=SC2034  # read by install.sh below, which shellcheck does not follow
 RIO_SOURCE_ONLY=1
 # shellcheck source=install.sh
+# shellcheck disable=SC1091  # sourced for its helpers; not analysed from here
 . "$script"
 set +e
 
@@ -73,6 +72,7 @@ eq darwin "$(detect_os Darwin)" "detect_os Darwin"
 out=$( (detect_os FreeBSD) 2>&1 )
 eq 1 "$?" "detect_os FreeBSD exits non-zero"
 contains "$out" FreeBSD "detect_os FreeBSD names what it saw"
+# shellcheck disable=SC2154  # rio_releases_url comes from the sourced install.sh
 contains "$out" "$rio_releases_url" "detect_os FreeBSD points at the releases page"
 
 out=$( (detect_os MINGW64_NT-10.0-22621) 2>&1 )
@@ -112,6 +112,42 @@ eq "" "$(printf '{"message":"Not Found"}\n' | tag_from_api_json)" \
 
 eq rio_0.1.0_linux_amd64.tar.gz "$(asset_name 0.1.0 linux amd64)" "asset_name linux/amd64"
 eq rio_1.2.3_darwin_arm64.tar.gz "$(asset_name 1.2.3 darwin arm64)" "asset_name darwin/arm64"
+
+# The name that matters is the one goreleaser publishes, so pin asset_name to
+# .goreleaser.yaml instead of to itself: every end to end run below serves its
+# fixture under a name built the same way, so a wrong name would agree with
+# itself and prove nothing.
+goreleaser="$here/.goreleaser.yaml"
+if [ -f "$goreleaser" ]; then
+  tmpl=$(sed -n 's/^[[:space:]]*name_template:[[:space:]]*"\(.*ProjectName.*\)"[[:space:]]*$/\1/p' "$goreleaser" | head -n 1)
+  rendered=$(printf '%s' "$tmpl" | sed \
+    -e 's/{{[[:space:]]*\.ProjectName[[:space:]]*}}/rio/' \
+    -e 's/{{[[:space:]]*\.Version[[:space:]]*}}/0.1.0/' \
+    -e 's/{{[[:space:]]*\.Os[[:space:]]*}}/linux/' \
+    -e 's/{{[[:space:]]*\.Arch[[:space:]]*}}/amd64/')
+  eq rio_0.1.0_linux_amd64 "$rendered" "the archive name_template in .goreleaser.yaml renders as expected"
+  eq "$rendered.tar.gz" "$(asset_name 0.1.0 linux amd64)" "asset_name matches .goreleaser.yaml's archive name_template"
+  if grep -q '^[[:space:]]*- tar\.gz$' "$goreleaser"; then
+    pass "goreleaser still publishes tar.gz archives"
+  else
+    flunk "goreleaser no longer declares a tar.gz archive format, so the .tar.gz in asset_name is wrong"
+  fi
+else
+  flunk "no .goreleaser.yaml at $goreleaser to pin the asset name against"
+fi
+
+# --- version validation ------------------------------------------------------
+#
+# The version is interpolated into the asset name, which becomes a url and a
+# path under the temp dir. RIO_VERSION=../../../../tmp/pwned used to produce
+# rio_../../../../tmp/pwned_linux_amd64.tar.gz.
+for v in 0.1.0 v0.1.0 1.2.3-rc.1 1.2.3+build.5 2024.06; do
+  if valid_version "$v"; then pass "valid_version accepts $v"; else flunk "valid_version rejected $v"; fi
+done
+# shellcheck disable=SC2016  # the literal $(id) is the point: it must be rejected, not expanded
+for v in '' '../../../../tmp/pwned' 'a/b' '1.0;id' '$(id)' 'a b' 'a*b'; do
+  if valid_version "$v"; then flunk "valid_version accepted [$v]"; else pass "valid_version rejects [$v]"; fi
+done
 
 # --- checksums ---------------------------------------------------------------
 
@@ -156,20 +192,90 @@ eq 1 "$?" "verify_checksum refuses when the asset has no checksum entry"
 
 # --- install directory selection --------------------------------------------
 
-eq 0 "$( PATH="/bin:/usr/bin"; path_has_dir /usr/bin; printf '%s' "$?" )" "path_has_dir finds a dir on PATH"
-eq 1 "$( PATH="/bin:/usr/bin"; path_has_dir /opt/nope; printf '%s' "$?" )" "path_has_dir rejects a dir off PATH"
+# PATH is set and restored around the call instead of being scoped to a
+# subshell: a subshell assignment here would make every later `env PATH=...`
+# look like a use of a change that got lost (SC2030/SC2031).
+path_check() { # want-status path dir label
+  path_saved="$PATH"
+  PATH="$2"
+  path_has_dir "$3"
+  path_rc=$?
+  PATH="$path_saved"
+  eq "$1" "$path_rc" "$4"
+}
+
+path_check 0 "/bin:/usr/bin" /usr/bin "path_has_dir finds a dir on PATH"
+path_check 1 "/bin:/usr/bin" /opt/nope "path_has_dir rejects a dir off PATH"
+# A trailing slash names the same directory, and treating it as different is
+# how the installer came to print "add this to your PATH" for a dir that was
+# already on it.
+path_check 0 "/opt/x/:/usr/bin" /opt/x "path_has_dir ignores a trailing slash on the PATH entry"
+path_check 0 "/opt/x:/usr/bin" /opt/x/ "path_has_dir ignores a trailing slash on the install dir"
+path_check 0 "/opt/x///:/usr/bin" /opt/x "path_has_dir ignores repeated trailing slashes"
+path_check 0 "/:/usr/bin" / "path_has_dir still matches the root directory"
+path_check 1 "/opt/xy:/usr/bin" /opt/x "path_has_dir does not match on a prefix"
 
 mkdir -p "$t/sysbin"
+# shellcheck disable=SC2034  # read by choose_install_dir, from the sourced install.sh
 eq "$t/explicit" "$( RIO_INSTALL_DIR="$t/explicit"; choose_install_dir )" "RIO_INSTALL_DIR wins"
+# shellcheck disable=SC2034  # ditto
 eq "$t/sysbin" "$( rio_system_bin="$t/sysbin"; choose_install_dir )" "a writable system bin dir comes next"
+# shellcheck disable=SC2034  # ditto
 eq "$HOME/.local/bin" "$( rio_system_bin="$t/does-not-exist"; choose_install_dir )" "falls back to ~/.local/bin"
+
+# With HOME unset the fallback used to expand to ./.local/bin, quietly
+# installing into whatever directory the caller was standing in.
+# shellcheck disable=SC2034  # ditto
+out=$( unset HOME RIO_INSTALL_DIR; rio_system_bin="$t/does-not-exist"; choose_install_dir 2>&1 )
+eq 1 "$?" "choose_install_dir fails when HOME is unset"
+contains "$out" HOME "the no-HOME message names HOME"
+contains "$out" RIO_INSTALL_DIR "the no-HOME message points at RIO_INSTALL_DIR"
+
+# --- wget flag probe ---------------------------------------------------------
+#
+# busybox wget understands neither --tries nor --https-only, so the flags are
+# probed against the local wget's help instead of assumed. Both shapes get a
+# fake wget; PATH is moved at this level, never inside a subshell.
+mkdir -p "$t/wgetgnu" "$t/wgetbb"
+cat > "$t/wgetgnu/wget" <<'GNUWGET'
+#!/usr/bin/env sh
+cat <<'HELP'
+GNU Wget 1.21.4, a non-interactive network retriever.
+  -t,  --tries=NUMBER              set number of retries to NUMBER
+       --waitretry=SECONDS         wait 1..SECONDS between retries of a retrieval
+  -T,  --timeout=SECONDS           set all timeout values to SECONDS
+       --https-only                only follow secure HTTPS links
+HELP
+GNUWGET
+cat > "$t/wgetbb/wget" <<'BBWGET'
+#!/usr/bin/env sh
+echo "wget: unrecognized option: help" >&2
+echo "Usage: wget [-cqS] [--spider] [-O FILE] [-T SEC] [-U AGENT] URL" >&2
+exit 1
+BBWGET
+chmod +x "$t/wgetgnu/wget" "$t/wgetbb/wget"
+
+path_saved="$PATH"
+PATH="$t/wgetgnu:$path_saved"
+gnu_flags=$(wget_flags)
+PATH="$t/wgetbb:$path_saved"
+bb_flags=$(wget_flags)
+PATH="$path_saved"
+
+contains "$gnu_flags" "-T 30" "wget_flags always sets a timeout"
+contains "$gnu_flags" "--tries=3" "wget_flags retries when wget has --tries"
+contains "$gnu_flags" "--https-only" "wget_flags pins https when wget has --https-only"
+eq "-T 30" "$bb_flags" "wget_flags falls back to what busybox wget understands"
 
 # --- end to end, with a stubbed http client ---------------------------------
 
 os=$(detect_os "$(uname -s)")
 arch=$(detect_arch "$(uname -m)")
 version=9.9.9
-asset=$(asset_name "$version" "$os" "$arch")
+# Spelled out rather than taken from asset_name: the fixture server is what
+# tells the end to end runs whether the installer asked for the right file, so
+# it must not be named by the function under test.
+asset="rio_${version}_${os}_${arch}.tar.gz"
 
 www="$t/www"
 shim="$t/shim"
@@ -190,6 +296,9 @@ printf 'https://github.com/rebaze/rio/releases/tag/v%s' "$version" > "$www/effec
 cat > "$shim/curl" <<'CURL'
 #!/usr/bin/env sh
 set -eu
+if [ -n "${RIO_TEST_ARGS:-}" ]; then printf '%s\n' "$*" >> "$RIO_TEST_ARGS"; fi
+# A download that accepts the connection and then stalls, for the signal case.
+if [ -n "${RIO_TEST_SLOW:-}" ]; then : > "$RIO_TEST_SLOW"; sleep 2; fi
 url=""; out=""; head=0; writeout=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -214,6 +323,14 @@ CURL
 cat > "$shim/wget" <<'WGET'
 #!/usr/bin/env sh
 set -eu
+if [ -n "${RIO_TEST_ARGS:-}" ]; then printf '%s\n' "$*" >> "$RIO_TEST_ARGS"; fi
+# GNU-wget-shaped help, so install.sh's flag probe has something to read.
+case "${1:-}" in
+  --help)
+    printf '%s\n' '  -t,  --tries=NUMBER' '  -T,  --timeout=SECONDS' '       --https-only'
+    exit 0
+    ;;
+esac
 url=""; out="-"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -232,7 +349,7 @@ chmod +x "$shim/curl" "$shim/wget"
 
 run_install() { # NAME=value ... ; runs install.sh with the shims in front
   env PATH="$shim:$PATH" \
-    RIO_TEST_WWW="$www" RIO_TEST_LOG="$t/requests.log" \
+    RIO_TEST_WWW="$www" RIO_TEST_LOG="$t/requests.log" RIO_TEST_ARGS="$t/args.log" \
     TMPDIR="$scratch" HOME="$t/home" "$@" sh "$script"
 }
 
@@ -241,6 +358,7 @@ scratch_is_empty() {
 }
 
 : > "$t/requests.log"
+: > "$t/args.log"
 out=$(run_install RIO_VERSION="$version" RIO_INSTALL_DIR="$t/bin1" 2>&1)
 eq 0 "$?" "end to end install with an explicit RIO_VERSION succeeds"
 if [ -x "$t/bin1/rio" ]; then pass "the binary landed and is executable"; else flunk "no executable at $t/bin1/rio"; fi
@@ -249,6 +367,15 @@ contains "$out" "$tool" "the run names the tool that verified the checksum"
 if grep -q 'api.github.com' "$t/requests.log"; then flunk "an explicit version still hit the release API"; else pass "an explicit version needs no release lookup"; fi
 if scratch_is_empty; then pass "no temp dir left behind after a successful run"; else flunk "temp dir survived: $(ls -A "$scratch")"; fi
 if grep -q 'releases/download/v9.9.9/checksums.txt' "$t/requests.log"; then pass "checksums.txt is fetched from the same tag"; else flunk "checksums.txt was not fetched"; fi
+
+# An installer people pipe into sh must not be talked down to http by a
+# redirect, and must not hang a CI job when a mirror accepts and then stalls.
+args=$(cat "$t/args.log")
+contains "$args" "--proto =https" "curl pins the scheme to https"
+contains "$args" "--proto-redir =https" "curl pins redirected hops to https too"
+contains "$args" "--connect-timeout " "curl bounds the connect time"
+contains "$args" "--max-time " "curl bounds the whole transfer"
+contains "$args" "--retry " "curl still retries"
 
 : > "$t/requests.log"
 out=$(run_install RIO_INSTALL_DIR="$t/bin2" 2>&1)
@@ -316,6 +443,57 @@ case "$out" in
   *) pass "no PATH hint when the install dir is already on PATH" ;;
 esac
 
+# The installed mode must not depend on the caller's umask: chmod applies to
+# the copy in the install dir, not to the file the copy was made from. Under
+# umask 077 this used to install a 0700 binary into a shared bin directory.
+mkdir -p "$t/bin12"
+out=$( umask 077; run_install RIO_VERSION="$version" RIO_INSTALL_DIR="$t/bin12" 2>&1 )
+eq 0 "$?" "an install under umask 077 succeeds"
+# shellcheck disable=SC2012  # a fixed path we created; ls is the portable way to read a mode
+eq "-rwxr-xr-x" "$(ls -l "$t/bin12/rio" | cut -c1-10)" "the installed binary is 0755 even under umask 077"
+
+# RIO_SYSTEM_BIN is the seam that makes the default install dir testable: with
+# no RIO_INSTALL_DIR the installer takes the system bin dir when it is
+# writable, and $HOME/.local/bin otherwise. Without the seam this case could
+# only be exercised by writing to the real /usr/local/bin.
+mkdir -p "$t/sysbin2"
+out=$(run_install RIO_VERSION="$version" RIO_SYSTEM_BIN="$t/sysbin2" 2>&1)
+eq 0 "$?" "a default install into a writable system bin dir succeeds"
+if [ -x "$t/sysbin2/rio" ]; then pass "the default install used the system bin dir"; else flunk "nothing at $t/sysbin2/rio"; fi
+
+out=$(run_install RIO_VERSION="$version" RIO_SYSTEM_BIN="$t/no-such-sysbin" 2>&1)
+eq 0 "$?" "a default install with no system bin dir succeeds"
+if [ -x "$t/home/.local/bin/rio" ]; then pass "the default install fell back to \$HOME/.local/bin"; else flunk "nothing at $t/home/.local/bin/rio"; fi
+
+# A version that is not a version never reaches a path or a url.
+: > "$t/requests.log"
+out=$(run_install RIO_VERSION='../../../../tmp/pwned' RIO_INSTALL_DIR="$t/bin13" 2>&1)
+eq 1 "$?" "a path-traversal RIO_VERSION fails"
+contains "$out" '../../../../tmp/pwned' "the rejected version is named back"
+if [ -s "$t/requests.log" ]; then flunk "a traversal version still reached the network: $(cat "$t/requests.log")"; else pass "nothing was requested for a traversal version"; fi
+
+# A signal has to stop the run. The trap used to clean up and then resume, so
+# the install carried on against a temp dir that had just been deleted.
+#
+# Spelled out instead of going through run_install: backgrounding a shell
+# function gives you the pid of the subshell wrapping it, so the signal would
+# land on the wrapper (which inherits this script's own EXIT trap) and never
+# reach install.sh. A simple command is fork+exec, so $! is install.sh's shell.
+rm -f "$t/slow.marker"
+env PATH="$shim:$PATH" \
+  RIO_TEST_WWW="$www" RIO_TEST_LOG="$t/requests.log" RIO_TEST_ARGS="$t/args.log" \
+  RIO_TEST_SLOW="$t/slow.marker" TMPDIR="$scratch" HOME="$t/home" \
+  RIO_VERSION="$version" RIO_INSTALL_DIR="$t/bin11" sh "$script" >/dev/null 2>&1 &
+sig_pid=$!
+sleep 1
+kill -TERM "$sig_pid" 2>/dev/null
+wait "$sig_pid"
+sig_rc=$?
+if [ -e "$t/slow.marker" ]; then pass "the signal arrived with a download in flight"; else flunk "the slow download never started, the signal case proves nothing"; fi
+eq 143 "$sig_rc" "SIGTERM stops the run with 128+15 instead of resuming"
+if [ -e "$t/bin11/rio" ]; then flunk "an interrupted install installed something anyway"; else pass "an interrupted install installs nothing"; fi
+if scratch_is_empty; then pass "no temp dir left behind after a signal"; else flunk "temp dir survived a signal: $(ls -A "$scratch")"; fi
+
 # wget-only boxes work too: hide curl by pointing PATH at a shim dir with only wget.
 mkdir -p "$t/wgetonly"
 cp "$shim/wget" "$t/wgetonly/wget"
@@ -325,10 +503,16 @@ for b in sh tar gzip gunzip uname sed awk cut tr mktemp rm cp mv mkdir chmod ls 
          cat id printf shasum sha256sum openssl; do
   p=$(command -v "$b" 2>/dev/null) && ln -sf "$p" "$t/wgetonly/$b"
 done
+: > "$t/wget.args"
 out=$(env PATH="$t/wgetonly" RIO_TEST_WWW="$www" RIO_TEST_LOG="$t/requests.log" \
+  RIO_TEST_ARGS="$t/wget.args" \
   TMPDIR="$scratch" HOME="$t/home" RIO_VERSION="$version" RIO_INSTALL_DIR="$t/bin9" "$sh_bin" "$script" 2>&1)
 eq 0 "$?" "install works with wget and no curl"
 if [ -x "$t/bin9/rio" ]; then pass "wget-only install landed"; else flunk "wget-only install produced nothing: $out"; fi
+wargs=$(grep -v -- '--help' "$t/wget.args")
+contains "$wargs" "-T 30" "wget gets a timeout"
+contains "$wargs" "--tries=3" "wget retries when its help advertises --tries"
+contains "$wargs" "--https-only" "wget pins https when its help advertises --https-only"
 
 # --- flags -------------------------------------------------------------------
 
@@ -336,11 +520,17 @@ out=$(env PATH="$shim:$PATH" sh "$script" --help 2>&1)
 eq 0 "$?" "--help exits 0"
 contains "$out" RIO_VERSION "--help documents RIO_VERSION"
 contains "$out" RIO_INSTALL_DIR "--help documents RIO_INSTALL_DIR"
+# checksums.txt travels with the archive, so matching it says the bytes arrived
+# intact and nothing about where they came from. --help has to say so, and say
+# what to run for the stronger check.
+contains "$out" "transport-integrity" "--help calls the checksum a transport check"
+contains "$out" "checksums.txt.sigstore.json" "--help names the cosign bundle the release publishes"
+contains "$out" "cosign verify-blob" "--help gives the provenance check to run"
 eq "" "$(env PATH="$shim:$PATH" sh "$script" --help 2>/dev/null)" "--help writes nothing to stdout"
 
 out=$(env PATH="$shim:$PATH" sh "$script" --nonsense 2>&1)
 eq 1 "$?" "an unknown flag exits non-zero"
-contains "$out" -- --nonsense "the unknown flag is named back"
+contains "$out" "--nonsense" "the unknown flag is named back"
 
 # --- no http client ----------------------------------------------------------
 

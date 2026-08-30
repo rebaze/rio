@@ -38,6 +38,7 @@ rio_system_bin="${RIO_SYSTEM_BIN:-/usr/local/bin}"
 # Set by pick_http_client, read by the http_* helpers. A plain global because
 # POSIX sh has no `local` and command substitution cannot export upwards.
 rio_http_client=""
+rio_wget_flags=""
 
 # Cleaned up by the EXIT trap installed in main.
 rio_tmp=""
@@ -72,8 +73,20 @@ Examples:
   RIO_INSTALL_DIR=\$HOME/bin sh install.sh
 
 The download is verified against the release's checksums.txt before anything
-is installed. The installer never uses sudo; if the target directory is not
-writable it says so and stops.
+is installed. That is a transport-integrity check and nothing more: the
+checksum file is served from the same release as the archive, so it says that
+the bytes arrived intact, not where they came from.
+
+For provenance, verify the keyless cosign signature the release publishes next
+to it as checksums.txt.sigstore.json:
+
+  cosign verify-blob --bundle checksums.txt.sigstore.json \\
+    --certificate-identity-regexp '^https://github.com/${rio_repo}/' \\
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \\
+    checksums.txt
+
+The installer never uses sudo; if the target directory is not writable it says
+so and stops.
 
 Supported: linux and darwin on amd64 and arm64. Windows builds are published
 as rio_<version>_windows_<arch>.zip at ${rio_releases_url}
@@ -110,35 +123,80 @@ detect_arch() { # uname -m output
 strip_v() { printf '%s\n' "${1#v}"; }
 add_v() { printf 'v%s\n' "${1#v}"; }
 
+# Must stay in step with the archives name_template in .goreleaser.yaml;
+# install_test.sh pins the two against each other.
 asset_name() { # version os arch
   printf 'rio_%s_%s_%s.tar.gz\n' "$1" "$2" "$3"
 }
 
+# The version is interpolated into the asset name, which becomes both a url and
+# a path under the temp dir, so it is checked before it is used anywhere:
+# RIO_VERSION=../../../../tmp/pwned would otherwise write outside the temp dir.
+# Tags are alphanumerics plus . + - (semver's build and prerelease separators);
+# anything else is a mistake or an attack, and either way is not installable.
+valid_version() { # version
+  case "$1" in
+    '' | *[!0-9A-Za-z.+-]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
 # --- http --------------------------------------------------------------------
+
+# Every hop is pinned to https. This script is meant to be run straight off the
+# network, and -L follows redirects, so without --proto-redir a single 302 to
+# http:// would hand the whole install to anyone on the wire.
+#
+# The timeouts are what keep this usable in a pipeline: with only --retry, a
+# mirror that accepts the connection and then stalls blocks the job forever.
+# --connect-timeout bounds the handshake, --max-time the whole transfer.
+rio_curl_flags="-fsSL --proto =https --proto-redir =https --connect-timeout 10 --max-time 300 --retry 3 --retry-delay 1"
+
+# wget builds differ too much to hardcode: busybox's understands neither
+# --tries nor --https-only, and older GNU builds have no --https-only either.
+# So ask this wget what it has and fall back to what both have, -T (in
+# GNU that is the dns, connect and read timeout at once; in busybox the network
+# timeout). Neither build has a total-time cap, so -T is the whole deadline
+# story on the wget path.
+wget_flags() {
+  rio_help=$(wget --help 2>&1 || true)
+  rio_flags="-T 30"
+  case "$rio_help" in *--tries*) rio_flags="$rio_flags --tries=3 --waitretry=1" ;; esac
+  case "$rio_help" in *--https-only*) rio_flags="$rio_flags --https-only" ;; esac
+  printf '%s\n' "$rio_flags"
+}
 
 pick_http_client() {
   if have curl; then
     rio_http_client=curl
   elif have wget; then
     rio_http_client=wget
+    rio_wget_flags=$(wget_flags)
   else
     die "neither curl nor wget was found. Install one of them and re-run."
   fi
 }
 
+# The flag variables are deliberately unquoted: POSIX sh has no arrays, so word
+# splitting is how a flag list gets passed on. Both are built above, never from
+# anything a caller supplies.
 http_fetch() { # url -> body on stdout
   if [ "$rio_http_client" = curl ]; then
-    curl -fsSL --retry 3 --retry-delay 1 "$1"
+    # shellcheck disable=SC2086
+    curl $rio_curl_flags "$1"
   else
-    wget -q -O - "$1"
+    # shellcheck disable=SC2086
+    wget $rio_wget_flags -q -O - "$1"
   fi
 }
 
 http_download() { # url dest
   if [ "$rio_http_client" = curl ]; then
-    curl -fsSL --retry 3 --retry-delay 1 -o "$2" "$1"
+    # shellcheck disable=SC2086
+    curl $rio_curl_flags -o "$2" "$1"
   else
-    wget -q -O "$2" "$1"
+    # shellcheck disable=SC2086
+    wget $rio_wget_flags -q -O "$2" "$1"
   fi
 }
 
@@ -160,7 +218,8 @@ resolve_latest_tag() {
   rio_tag=""
   if [ "$rio_http_client" = curl ]; then
     # -I keeps it a HEAD request; -w prints where the redirects landed.
-    rio_effective=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "${rio_releases_url}/latest" 2>/dev/null || true)
+    # shellcheck disable=SC2086
+    rio_effective=$(curl $rio_curl_flags -I -o /dev/null -w '%{url_effective}' "${rio_releases_url}/latest" 2>/dev/null || true)
     rio_tag=$(tag_from_url "$rio_effective")
   fi
   if [ -z "$rio_tag" ]; then
@@ -201,6 +260,14 @@ expected_sha256() { # checksums-file asset-name
   awk -v want="$2" '$2 == want || $2 == "*" want { print $1; exit }' "$1"
 }
 
+# What this does and does not prove: checksums.txt is fetched from the same
+# release as the archive over the same connection, so matching it catches a
+# truncated or corrupted download and nothing more. It is not a provenance
+# check - whoever could serve a bad archive could serve a matching checksum.
+# .goreleaser.yaml signs checksums.txt with cosign and publishes the bundle as
+# checksums.txt.sigstore.json; verifying that is the stronger check, and the
+# --help text spells out the cosign verify-blob command for it. Deliberately
+# not done here: it would make cosign a prerequisite of a one-line installer.
 verify_checksum() { # archive checksums-file asset-name
   rio_tool=$(sha256_tool) || die "no sha256 tool found (looked for sha256sum, shasum and openssl). Refusing to install an unverified download."
   rio_want=$(expected_sha256 "$2" "$3")
@@ -216,11 +283,32 @@ verify_checksum() { # archive checksums-file asset-name
 
 # --- install location --------------------------------------------------------
 
+# /opt/x/ and /opt/x are the same directory, so a trailing slash on either side
+# must not decide the comparison - it only made the installer print a "add this
+# to your PATH" hint for a directory that was already on PATH.
+strip_trailing_slash() { # path
+  rio_path="$1"
+  while [ "$rio_path" != "/" ] && [ "${rio_path%/}" != "$rio_path" ]; do
+    rio_path="${rio_path%/}"
+  done
+  printf '%s\n' "$rio_path"
+}
+
 path_has_dir() { # dir
-  case ":${PATH:-}:" in
-    *":$1:"*) return 0 ;;
-    *) return 1 ;;
-  esac
+  rio_want=$(strip_trailing_slash "$1")
+  # A subshell keeps IFS and -f from leaking into the rest of the run:
+  # splitting on : is the point here, and -f stops a PATH entry containing a *
+  # from being expanded against the filesystem on the way through.
+  (
+    IFS=:
+    set -f
+    for rio_entry in ${PATH:-}; do
+      if [ "$(strip_trailing_slash "$rio_entry")" = "$rio_want" ]; then
+        exit 0
+      fi
+    done
+    exit 1
+  )
 }
 
 choose_install_dir() {
@@ -229,7 +317,12 @@ choose_install_dir() {
   elif [ -d "$rio_system_bin" ] && [ -w "$rio_system_bin" ]; then
     printf '%s\n' "$rio_system_bin"
   else
-    printf '%s\n' "${HOME:-.}/.local/bin"
+    # Without HOME the old fallback was "./.local/bin", which quietly installed
+    # into whatever directory the caller happened to be standing in. Say what
+    # is missing instead of guessing.
+    [ -n "${HOME:-}" ] ||
+      die "HOME is not set, so there is no \$HOME/.local/bin to fall back to. Set RIO_INSTALL_DIR to the directory rio should be installed into."
+    printf '%s\n' "$HOME/.local/bin"
   fi
 }
 
@@ -276,19 +369,38 @@ main() {
   rio_arch=$(detect_arch "$(uname -m)")
 
   if [ -n "${RIO_VERSION:-}" ]; then
+    valid_version "$(strip_v "$RIO_VERSION")" ||
+      die "RIO_VERSION is not a usable version: ${RIO_VERSION}. Expected something like RIO_VERSION=0.1.0 or RIO_VERSION=v0.1.0 (letters, digits, dot, plus and dash only)."
     rio_tag=$(add_v "$RIO_VERSION")
   else
     log "resolving the latest rio release"
     rio_tag=$(resolve_latest_tag)
   fi
   rio_version=$(strip_v "$rio_tag")
+  # The resolved tag is parsed out of a redirect target or an API body, so it
+  # gets the same check before it reaches a path.
+  valid_version "$rio_version" ||
+    die "refusing to build a download path from an unusable release tag: ${rio_tag}. Set RIO_VERSION explicitly, e.g. RIO_VERSION=0.1.0."
 
   rio_asset=$(asset_name "$rio_version" "$rio_os" "$rio_arch")
   rio_base="${rio_releases_url}/download/${rio_tag}"
 
-  # The trap covers failure too, so a botched download leaves nothing behind.
-  trap cleanup EXIT INT TERM HUP
-  rio_tmp=$(mktemp -d 2>/dev/null || mktemp -d -t rio-install) || die "could not create a temporary directory"
+  # The EXIT trap covers failure too, so a botched download leaves nothing
+  # behind. The signals need handlers of their own: a bare `trap cleanup INT`
+  # cleans up and then *resumes* the script, which would carry on downloading
+  # into a temp dir that no longer exists. Exit with the conventional 128+signo
+  # instead; that also re-runs cleanup through EXIT, which is harmless because
+  # cleanup only removes what is still there.
+  trap cleanup EXIT
+  trap 'cleanup; exit 130' INT
+  trap 'cleanup; exit 143' TERM
+  trap 'cleanup; exit 129' HUP
+
+  # The template is explicit because a bare `mktemp -d` ignores TMPDIR on macOS
+  # (it always lands in /var/folders/...), which is both surprising for anyone
+  # pointing TMPDIR at a big disk and invisible to a test that watches TMPDIR.
+  rio_tmp=$(mktemp -d "${TMPDIR:-/tmp}/rio.XXXXXX" 2>/dev/null || mktemp -d 2>/dev/null) ||
+    die "could not create a temporary directory"
 
   log "downloading ${rio_base}/${rio_asset}"
   http_download "${rio_base}/${rio_asset}" "$rio_tmp/$rio_asset" ||
@@ -308,9 +420,12 @@ main() {
 
   # Copy then rename, so an interrupted install cannot leave a half-written
   # binary at the destination, and so replacing a running rio works.
-  chmod 0755 "$rio_tmp/rio"
   rio_staged="$rio_dir/.rio.install.$$"
   cp "$rio_tmp/rio" "$rio_staged" || die "could not write to $rio_dir"
+  # chmod the copy, not the source: cp creates the destination under the
+  # caller's umask, so setting the mode on the extracted file left a 0700
+  # binary in a shared bin directory whenever the caller ran with umask 077.
+  chmod 0755 "$rio_staged" || die "could not set the mode on the new rio in $rio_dir"
   mv -f "$rio_staged" "$rio_dir/rio" || die "could not install into $rio_dir"
   rio_staged=""
 

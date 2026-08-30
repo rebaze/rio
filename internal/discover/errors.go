@@ -54,6 +54,10 @@ type NoMatchError struct {
 	Missing string
 	// Directories are paths that matched but are directories, sorted.
 	Directories []string
+	// Irregular are paths that matched but are neither regular files nor
+	// directories, sorted by path. A named pipe here is the reason rio checks
+	// at all: reading one never returns.
+	Irregular []IrregularMatch
 	// Unreadable are paths that matched but could not be stat'ed, sorted.
 	Unreadable []string
 }
@@ -68,8 +72,18 @@ func (e *NoMatchError) Error() string {
 		fmt.Fprintf(&b, "\n  note:     %s does not exist", e.Missing)
 	}
 	writeExcluded(&b, e.Directories, "a directory, not an SBOM file")
+	writeIrregular(&b, e.Irregular)
 	writeExcluded(&b, e.Unreadable, "not readable")
 	return b.String()
+}
+
+// IrregularMatch is a matched path that is not a regular file, paired with
+// what it actually is.
+type IrregularMatch struct {
+	Path string
+	// Kind is the human name of the file type, article included, as it goes
+	// straight into the message: "a named pipe".
+	Kind string
 }
 
 // MultipleMatchesError reports a glob that matched more than one SBOM file.
@@ -110,6 +124,22 @@ func writeLocation(b *strings.Builder, pattern, baseDir, resolved string) {
 		fmt.Fprintf(b, " (relative to the manifest directory %s)", baseDir)
 	}
 	fmt.Fprintf(b, "\n  resolved: %s", resolved)
+}
+
+// writeIrregular is writeExcluded for paths that each need their own reason:
+// what the path is, is the whole point of the note.
+func writeIrregular(b *strings.Builder, matches []IrregularMatch) {
+	if len(matches) == 0 {
+		return
+	}
+	if len(matches) == 1 {
+		b.WriteString("\n  note:     1 path matched but is not a regular file:")
+	} else {
+		fmt.Fprintf(b, "\n  note:     %d paths matched but none is a regular file:", len(matches))
+	}
+	for _, m := range matches {
+		fmt.Fprintf(b, "\n    %s (%s)", m.Path, m.Kind)
+	}
 }
 
 func writeExcluded(b *strings.Builder, paths []string, why string) {

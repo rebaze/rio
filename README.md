@@ -23,8 +23,8 @@ criterion for this tool.
   table, and Eclipse version qualifiers are stripped from the purl version.
 - **Checks quality.** A gate asserts the document's subject and the required fields on every
   component, and either warns or fails the build.
-- **Records what it did.** Every repair, every miss and every run parameter is written into the
-  output document itself and into `index.json`.
+- **Records what it did.** Every repair and every miss is written into the output document itself.
+  `index.json` carries the counts, the out-of-scope ones included, and the run parameters.
 
 The full specification lives in issue #4.
 
@@ -38,11 +38,15 @@ curl -sSL https://raw.githubusercontent.com/rebaze/rio/main/install.sh | sh
 
 The script detects the platform, downloads the matching release binary and installs it. Set
 `RIO_VERSION` to pin a release instead of taking the latest, and `RIO_INSTALL_DIR` to choose the
-install directory.
+install directory, which otherwise is `/usr/local/bin` when that is writable and `$HOME/.local/bin`
+when it is not.
+
+The assignments go after the pipe, on `sh`. In front of `curl` they would be set for `curl`, which
+does not read them, and the installer would run with neither.
 
 ```sh
-RIO_VERSION=v0.1.0 RIO_INSTALL_DIR=/usr/local/bin \
-  curl -sSL https://raw.githubusercontent.com/rebaze/rio/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/rebaze/rio/main/install.sh \
+  | RIO_VERSION=v0.1.0 RIO_INSTALL_DIR=/usr/local/bin sh
 ```
 
 Homebrew:
@@ -77,20 +81,55 @@ The three-command pipeline:
 ```sh
 mvn -B verify
 rio normalize --gate fail
-./rio-dtrack-upload.sh target/rio/index.json
+DTRACK_URL=https://dtrack.example.com DTRACK_API_KEY=... \
+  ./rio-dtrack-upload.sh target/rio/index.json
 ```
 
 `rio-dtrack-upload.sh` ships in this repository as an example. It is not part of rio, because rio
-does not upload anywhere.
+does not upload anywhere. It needs `DTRACK_URL` and `DTRACK_API_KEY` and stops immediately without
+either; the API key needs the `BOM_UPLOAD`, `PROJECT_CREATION_UPLOAD` and `VIEW_PORTFOLIO`
+permissions.
 
 One line per artifact on stdout, then a summary. Machine detail belongs in `index.json`, not here.
-Errors and warnings go to stderr.
+Errors and warnings go to stderr. A run over the committed fixtures `testdata/tycho-rcp.cdx.json`
+and `testdata/gate-missing-version.cdx.json` prints:
 
 ```
-rcp-client   1284 components   repaired 947   unmapped 12   gate ok
-server-war    412 components   repaired 0     unmapped 0    gate FAIL (3 components missing version)
+rcp-client  12 components   repaired 8    unmapped 1    gate ok
+server-war   2 components   repaired 0    unmapped 0    gate FAIL (1 component missing version)
 2 artifacts, 1 gate failure
 ```
+
+### Repaired, unmapped, skipped
+
+A transform leaves each component in one of three states, and `index.json` counts all three:
+
+```json
+{ "id": "repair-purl/p2", "applied": 8, "unmapped": 1, "skipped": 4 }
+```
+
+- **repaired**, `applied` in the index: rio rewrote the purl.
+- **unmapped**: the component was in scope and rio found no Maven coordinates for it. It keeps its
+  p2 purl.
+- **skipped**: the component was out of scope for the transform, so rio never looked for
+  coordinates. Out of scope is a different outcome from a miss. The p2 transform is in scope for a
+  purl carrying `classifier=osgi.bundle` under a group starting with `p2.`, and for a component
+  with no purl at all that carries a bundle symbolic name under the same group prefix. Everything
+  else is skipped, because a first-party reactor module is not published to Maven Central and an
+  Eclipse feature is not a Maven artifact at all, so a mapping table hit against either would be a
+  confident false positive. A component that already carries a valid `pkg:maven` purl is left alone
+  unconditionally, even when that purl will never resolve: garbage in stays garbage, visibly,
+  rather than being corrected into different garbage.
+
+The three do not partition the components. `skipped` never appears on stdout, and the two halves of
+the p2 transform are independent: dropping the Eclipse version qualifier can succeed while the
+coordinate lookup finds nothing, so one component can be counted in both `applied` and `unmapped`.
+
+The fixture line above is exactly that. Of its 12 components, 4 are out of scope: the two
+first-party `tycho-demo` modules, an Eclipse feature, and an installable unit already carrying a
+`pkg:maven` purl. The other 8 all had their purl rewritten, and one of them,
+`org.eclipse.equinox.launcher.gtk.linux.x86_64`, is also the unmapped one: its version qualifier was
+dropped, but the table has no entry for it, so it stays `pkg:p2/...`.
 
 ### Exit codes
 
@@ -136,7 +175,7 @@ gate:
 ```
 
 The "exactly one file" rule is deliberate. A glob resolving to several files is the merge case, and
-merge is not v1. An empty match is the most dangerous silent failure in this tool, because a run that
+merge is v2. An empty match is the most dangerous silent failure in this tool, because a run that
 processed nothing looks identical to a clean run.
 
 ## Out of scope
@@ -160,8 +199,13 @@ do is what keeps it small.
 ## What rio writes into the output SBOM
 
 **Component membership never changes.** v1 adds no component and removes none. Only identity fields
-are rewritten. The component array in equals the component array out, member for member. If you are
-diffing an input against an output, any change in the set of components is a bug.
+are rewritten. The component array in equals the component array out, member for member.
+
+An input-versus-output diff still shows more than the repaired purls. rio appends itself to
+`metadata.tools`, in whichever shape the document already uses: an entry in the flat array, or a
+component under `tools.components`. It adds the repair and run records described below to
+`metadata.properties`, and the identity evidence and dropped Eclipse qualifier to the components
+they belong to. What it never changes is the set of components. A change there is a bug.
 
 ### Reading the repair records
 
@@ -187,10 +231,11 @@ Misses are recorded the same way, so they are as visible as hits:
   "value": "rule=repair-purl/p2 | purl=pkg:p2/com.example.internal@1.0.0.v20240101 | reason=no mapping entry" }
 ```
 
-Here `purl=` is the purl that was left untouched and `reason=` says why no coordinate was written.
-An unmapped component keeps its p2 purl and still passes the gate: `pkg:p2/...` is a valid package
-URL. Unmapped is a count, not a failure. rio never guesses a groupId from a symbolic name, because a
-wrong coordinate is worse than a missing one.
+Here `purl=` is the purl as it was found in the input and `reason=` says why no coordinate was
+written. An unmapped component keeps its p2 purl, with any Eclipse version qualifier stripped from
+it, because that half of the transform runs whether or not the coordinates resolve. It still passes
+the gate: `pkg:p2/...` is a valid package URL. Unmapped is a count, not a failure. rio never guesses
+a groupId from a symbolic name, because a wrong coordinate is worse than a missing one.
 
 The same repair is also recorded on the component itself, as an `evidence.identity` entry:
 
@@ -211,9 +256,16 @@ The `value` names the rule and the original purl, so a consumer holding only the
 can still see what the identity used to be. If a component already carries `evidence.identity`, rio
 appends to it and never overwrites an existing entry.
 
-Alongside the per-component records, `metadata.properties` carries the run itself:
-`rebaze:normalize:tool`, `rebaze:normalize:spec-uplift`, `rebaze:normalize:manifest-sha256`,
-`rebaze:normalize:input-sha256` and `rebaze:normalize:artifact-id`.
+Where an Eclipse build qualifier was dropped from a version, the component carries it as a
+`rebaze:normalize:p2-qualifier` property, for example `v20230708-0916`. It is the only link back to
+the exact Eclipse build, so it is recorded rather than discarded.
+
+Alongside the per-component records, `metadata.properties` carries the run itself.
+`rebaze:normalize:tool`, `rebaze:normalize:artifact-id`, `rebaze:normalize:manifest-sha256` and
+`rebaze:normalize:input-sha256` are written on every run. `rebaze:normalize:spec-uplift` appears
+only when the document was below the floor and was raised to it, and
+`rebaze:normalize:subject-override` only when the manifest supplied a `subject` for the artifact,
+carrying the `metadata.component` name and version it replaced.
 
 ## No network calls
 
@@ -221,8 +273,9 @@ rio makes no network calls. Not to resolve coordinates, not to check for updates
 anything up.
 
 That includes schema validation: the CycloneDX schemas are embedded in the binary with `go:embed`,
-`$ref`s resolve locally, and so does the p2 mapping table. The binary is static, `CGO_ENABLED=0`, and
-runs the same on a build agent with no egress as on a laptop.
+and their `$ref`s resolve against each other locally. The p2 mapping table is embedded the same way.
+The binary is static, `CGO_ENABLED=0`, and runs the same on a build agent with no egress as on a
+laptop.
 
 ## Build from source
 

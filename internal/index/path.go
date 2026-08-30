@@ -3,7 +3,6 @@ package index
 import (
 	"fmt"
 	"path/filepath"
-	"strings"
 )
 
 // RelPath expresses target relative to base, slash separated.
@@ -13,9 +12,12 @@ import (
 // beside unreproducible (§7). Inputs are recorded relative to the manifest's
 // directory and outputs relative to the index file's own directory (§4.2).
 //
-// A target outside base is refused rather than emitted as ../.., because such
-// a path is only meaningful on the machine that wrote it. The caller decides
-// what to do about it; silently writing it is not an option.
+// A result that climbs out of base is still a relative path and is returned as
+// one. "../ext/bom.json" is an ordinary multi-module layout, and §7 forbids
+// absolute paths, not upward ones; refusing it would abort the run over a
+// legal manifest. What cannot be expressed relatively at all -- a target on a
+// different Windows volume -- comes back from filepath.Rel as an error, which
+// is the one case §7 actually rules out.
 func RelPath(base, target string) (string, error) {
 	if base == "" {
 		return "", fmt.Errorf("cannot make %q relative: no base directory", target)
@@ -39,16 +41,10 @@ func RelPath(base, target string) (string, error) {
 
 	rel, err := filepath.Rel(absBase, absTarget)
 	if err != nil {
-		return "", fmt.Errorf("%q is outside %q: %w", target, base, err)
+		return "", fmt.Errorf("%q has no path relative to %q: %w", target, base, err)
 	}
 	if rel == "." {
 		return "", fmt.Errorf("%q is the directory %q itself, not a file in it", target, base)
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("%q is outside %q, and the index records no path that escapes its own directory", target, base)
-	}
-	if filepath.IsAbs(rel) {
-		return "", fmt.Errorf("%q is outside %q: no relative path exists", target, base)
 	}
 
 	// Slash separated so an index written on Windows reads the same as one

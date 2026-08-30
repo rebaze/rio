@@ -3,6 +3,7 @@ package manifest_test
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/rebaze/rio/internal/manifest"
+	"github.com/rebaze/rio/internal/sbom"
 	"github.com/rebaze/rio/internal/transform"
 )
 
@@ -175,9 +177,12 @@ func TestGateRequires(t *testing.T) {
 }
 
 // The floor set is owned by internal/sbom; the manifest must not grow a second
-// list that can drift from it.
+// list that can drift from it, and neither must this test.
 func TestSpecVersionFloorAcceptsEverySupportedValue(t *testing.T) {
-	for _, floor := range []string{"1.5", "1.6"} {
+	if len(sbom.SupportedFloors) == 0 {
+		t.Fatal("sbom.SupportedFloors is empty, this test would assert nothing")
+	}
+	for _, floor := range sbom.SupportedFloors {
 		src := "version: 1\nartifacts:\n  - id: only\n    sbom: bom.json\noutput:\n  specVersionFloor: \"" + floor + "\"\n"
 		m, err := manifest.Load(write(t, src))
 		if err != nil {
@@ -240,11 +245,75 @@ artifacts:
 	}
 }
 
+// Every mapping a transform receives is a map[string]any, at every depth, so a
+// transform can type-assert its way down without a special case.
+func TestTransformConfigMapsAreStringKeyedAtEveryDepth(t *testing.T) {
+	src := `version: 1
+artifacts:
+  - id: only
+    sbom: bom.json
+    transforms:
+      - repair-purl:
+          nested:
+            deeper:
+              key: value
+          list:
+            - two: 2
+`
+	m, err := manifest.Load(write(t, src))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	var check func(path string, v any)
+	check = func(path string, v any) {
+		switch got := v.(type) {
+		case map[string]any:
+			for k, child := range got {
+				check(path+"."+k, child)
+			}
+		case []any:
+			for i, child := range got {
+				check(fmt.Sprintf("%s[%d]", path, i), child)
+			}
+		case map[any]any:
+			t.Errorf("%s is a map[any]any; transform code asserting map[string]any would fail on it", path)
+		}
+	}
+	for k, v := range m.Artifacts[0].Transforms[0].Config {
+		check(k, v)
+	}
+}
+
+// A merge key is yaml's own, not a config key, and what it merges in is
+// string-keyed like everything else.
+func TestTransformConfigAcceptsMergeKeys(t *testing.T) {
+	src := `version: 1
+artifacts:
+  - id: only
+    sbom: bom.json
+    transforms:
+      - repair-purl: &base
+          ecosystem: p2
+      - repair-purl:
+          <<: *base
+          table: mapping/p2.yaml
+`
+	m, err := manifest.Load(write(t, src))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := transform.Config{"ecosystem": "p2", "table": "mapping/p2.yaml"}
+	if diff := cmp.Diff(want, m.Artifacts[0].Transforms[1].Config); diff != "" {
+		t.Errorf("merged config mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestLoadRejects(t *testing.T) {
 	cases := []struct {
-		name string
-		src  string
-		want []string // every substring the error must contain
+		name  string
+		src   string
+		want  []string // every substring the error must contain
+		avoid []string // and every substring it must not
 	}{
 		{
 			name: "version missing",
@@ -259,7 +328,56 @@ func TestLoadRejects(t *testing.T) {
 		{
 			name: "version not a number",
 			src:  "version: one\nartifacts:\n  - id: a\n    sbom: bom.json\n",
-			want: []string{"version", "one"},
+			want: []string{"version", `the string "one"`},
+		},
+		// version is the compatibility lever (§9), so it is the integer 1 and
+		// nothing that merely looks like it.
+		{
+			name: "version is a float",
+			src:  "version: 1.0\nartifacts:\n  - id: a\n    sbom: bom.json\n",
+			want: []string{"version", "must be the integer 1", "the number 1.0"},
+		},
+		{
+			name: "version is a quoted string",
+			src:  "version: \"1\"\nartifacts:\n  - id: a\n    sbom: bom.json\n",
+			want: []string{"version", "must be the integer 1", `the string "1"`},
+		},
+		{
+			name: "version is a boolean",
+			src:  "version: true\nartifacts:\n  - id: a\n    sbom: bom.json\n",
+			want: []string{"version", "the boolean true"},
+		},
+		{
+			name: "version is empty",
+			src:  "version:\nartifacts:\n  - id: a\n    sbom: bom.json\n",
+			want: []string{"version", "no value"},
+		},
+		{
+			name: "version is a date",
+			src:  "version: 2001-12-14\nartifacts:\n  - id: a\n    sbom: bom.json\n",
+			want: []string{"version", "2001-12-14"},
+		},
+		{
+			name: "version is too large for an int",
+			src:  "version: 9223372036854775808\nartifacts:\n  - id: a\n    sbom: bom.json\n",
+			want: []string{"version", "9223372036854775808"},
+		},
+		{
+			name: "version is a mapping",
+			src:  "version: {}\nartifacts:\n  - id: a\n    sbom: bom.json\n",
+			want: []string{"version", "a mapping"},
+		},
+		{
+			name: "version is a list",
+			src:  "version: []\nartifacts:\n  - id: a\n    sbom: bom.json\n",
+			want: []string{"version", "a list"},
+		},
+		{
+			// An alias is the one node kind that is neither scalar, mapping
+			// nor sequence by the time it reaches an error message.
+			name: "version is an alias",
+			src:  "artifacts: &a\n  - id: x\n    sbom: y\nversion: *a\n",
+			want: []string{"version", "an unexpected value"},
 		},
 		{
 			name: "artifacts missing",
@@ -332,12 +450,60 @@ func TestLoadRejects(t *testing.T) {
 			want: []string{"artifacts[0].transforms[0]", "repair-purl"},
 		},
 		{
-			// yaml.v3 refuses a non-string key rather than handing back a
-			// map[any]any, so the config reaching a transform is always
-			// plain string-keyed Go values.
+			// The config reaching a transform is plain string-keyed Go values
+			// at every depth, so a key that is not a string is refused here
+			// rather than left to surprise a transform.
 			name: "transform config with a non-string key",
 			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n    transforms:\n      - repair-purl:\n          nested:\n            ? [a, b]\n            : v\n",
-			want: []string{"artifacts[0].transforms[0]", "repair-purl"},
+			want: []string{"artifacts[0].transforms[0]", "repair-purl", "config keys must be plain strings", "a list"},
+		},
+		{
+			name: "transform config with a float key",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n    transforms:\n      - repair-purl:\n          nested:\n            3.8: x\n",
+			want: []string{"artifacts[0].transforms[0]", "config keys must be plain strings", "the number 3.8", "line 8"},
+		},
+		{
+			name: "transform config with an int key",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n    transforms:\n      - repair-purl:\n          5: x\n",
+			want: []string{"artifacts[0].transforms[0]", "config keys must be plain strings", "the number 5"},
+		},
+		{
+			name: "transform config with a boolean key",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n    transforms:\n      - repair-purl:\n          nested:\n            true: x\n",
+			want: []string{"config keys must be plain strings", "the boolean true"},
+		},
+		{
+			name: "transform config with a null key",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n    transforms:\n      - repair-purl:\n          nested:\n            ~: x\n",
+			want: []string{"config keys must be plain strings", "no value"},
+		},
+		{
+			// Inside a list, too: transform code walks whatever it is handed.
+			name: "transform config with a non-string key inside a list",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n    transforms:\n      - repair-purl:\n          list:\n            - 5: x\n",
+			want: []string{"config keys must be plain strings", "the number 5", "line 8"},
+		},
+		{
+			// A transform named 5 would reach the registry as "5" and be
+			// reported as an unknown transform, hiding the real mistake.
+			name: "transform name is a number",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n    transforms:\n      - 5: {}\n",
+			want: []string{"artifacts[0].transforms[0]", "must be a plain string", "the number 5"},
+		},
+		{
+			name: "transform name is a boolean",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n    transforms:\n      - true: {}\n",
+			want: []string{"artifacts[0].transforms[0]", "must be a plain string", "the boolean true"},
+		},
+		{
+			name: "transform name is empty",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n    transforms:\n      - \"\": {}\n",
+			want: []string{"artifacts[0].transforms[0]", "must be a plain string"},
+		},
+		{
+			name: "transform entry is null",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n    transforms:\n      - ~\n",
+			want: []string{"artifacts[0].transforms[0]", "no value"},
 		},
 		{
 			name: "subject without version",
@@ -372,27 +538,140 @@ func TestLoadRejects(t *testing.T) {
 		{
 			name: "unknown top level key",
 			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\noutputs:\n  specVersionFloor: \"1.6\"\n",
-			want: []string{"outputs"},
+			want: []string{`unknown key "outputs"`},
 		},
 		{
 			name: "unknown artifact key",
 			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n    sboms: other.json\n",
-			want: []string{"sboms"},
+			want: []string{"artifacts[0]", `unknown key "sboms"`},
 		},
 		{
 			name: "unknown output key",
 			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\noutput:\n  floor: \"1.6\"\n",
-			want: []string{"floor"},
+			want: []string{"output", `unknown key "floor"`},
 		},
 		{
 			name: "unknown gate key",
 			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\ngate:\n  required: [name]\n",
-			want: []string{"required"},
+			want: []string{"gate", `unknown key "required"`},
 		},
 		{
 			name: "unknown subject key",
 			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n    subject:\n      name: n\n      version: v\n      purl: pkg:maven/a/b@1\n",
-			want: []string{"purl"},
+			want: []string{"artifacts[0].subject", `unknown key "purl"`},
+		},
+		{
+			// A key is whatever the author quoted, spaces and all.
+			name: "unknown key containing a space",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n    \"my key\": 1\n",
+			want: []string{"artifacts[0]", `unknown key "my key"`},
+		},
+		{
+			name: "unknown key that is empty",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n    \"\": 1\n",
+			want: []string{"artifacts[0]", `unknown key ""`},
+		},
+		// A value of the wrong shape names the key it was written under and
+		// the shape that key must have, never the Go type this package
+		// happens to decode it into (§10).
+		{
+			name: "artifacts is a scalar",
+			src:  "version: 1\nartifacts: nope\n",
+			want: []string{"artifacts: line 2", "must be a list of artifact entries", `the string "nope"`},
+		},
+		{
+			name: "artifacts entry is a scalar",
+			src:  "version: 1\nartifacts:\n  - nope\n",
+			want: []string{"artifacts[0]: line 3", "must be a mapping with id and sbom", `the string "nope"`},
+		},
+		{
+			name: "id is a list",
+			src:  "version: 1\nartifacts:\n  - id: [a]\n    sbom: bom.json\n",
+			want: []string{"artifacts[0].id: line 3", "must be a string", "a list"},
+		},
+		{
+			name: "sbom is a mapping",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: {x: y}\n",
+			want: []string{"artifacts[0].sbom: line 4", "must be a string", "a mapping"},
+		},
+		{
+			name: "subject is a scalar",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n    subject: thing\n",
+			want: []string{"artifacts[0].subject: line 5", "must be a mapping with name and version", `the string "thing"`},
+		},
+		{
+			name: "transforms is a mapping",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n    transforms: {a: {}}\n",
+			want: []string{"artifacts[0].transforms: line 5", "must be a list of transforms", "a mapping"},
+		},
+		{
+			name: "output is a scalar",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\noutput: \"1.6\"\n",
+			want: []string{"output: line 5", "must be a mapping", `the string "1.6"`},
+		},
+		{
+			name: "specVersionFloor is a list",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\noutput:\n  specVersionFloor: [1.6]\n",
+			want: []string{"output.specVersionFloor: line 6", "must be a string", "a list"},
+		},
+		{
+			name: "gate is a list",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\ngate: [name]\n",
+			want: []string{"gate: line 5", "must be a mapping", "a list"},
+		},
+		{
+			name: "gate.require is a scalar",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\ngate:\n  require: name\n",
+			want: []string{"gate.require: line 6", "must be a list of strings", `the string "name"`},
+		},
+		{
+			name: "gate.require holds a list",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\ngate:\n  require: [[name]]\n",
+			want: []string{"gate.require[0]: line 6", "must be a string", "a list"},
+		},
+		{
+			name: "manifest is a list",
+			src:  "- version: 1\n",
+			want: []string{"line 1", "the manifest must be a mapping with version and artifacts", "a list"},
+		},
+		{
+			// Two keys of the same type on one line cannot be told apart, so
+			// the message drops the key rather than naming the wrong one.
+			name: "two values of the wrong shape on one line",
+			src:  "version: 1\nartifacts: [{id: [a], sbom: [b]}]\n",
+			want: []string{"line 2", "must be a string", "a list"},
+		},
+		{
+			// go-yaml reports the value it choked on, truncated past ten
+			// characters, so finding the key it belongs to takes more than a
+			// string comparison.
+			name: "subject is a long scalar",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n    subject: a very long thing indeed\n",
+			want: []string{"artifacts[0].subject: line 5", `the string "a very long thing indeed"`},
+		},
+		{
+			// Two entries on one line each carry an "x", so which mapping was
+			// meant is unknowable; the section still gets named.
+			name: "unknown key in one of two entries on a line",
+			src:  "version: 1\nartifacts: [{id: a, sbom: b, x: 1}, {id: c, sbom: d, x: 2}]\n",
+			want: []string{"artifacts", `unknown key "x"`},
+		},
+		{
+			name: "duplicate top level key",
+			src:  "version: 1\nversion: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n",
+			want: []string{"line 2", `key "version" already defined`},
+		},
+		{
+			name: "duplicate artifact key",
+			src:  "version: 1\nartifacts:\n  - id: a\n    id: b\n    sbom: bom.json\n",
+			want: []string{"line 4", `key "id" already defined`},
+		},
+		{
+			name: "duplicate transform config key",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n    transforms:\n      - repair-purl:\n          ecosystem: p2\n          ecosystem: maven\n",
+			want: []string{"artifacts[0].transforms[0]", "repair-purl", `key "ecosystem" already defined`},
+			// go-yaml wraps its messages in a header nobody needs to read.
+			avoid: []string{"unmarshal errors"},
 		},
 		{
 			name: "not yaml",
@@ -405,9 +684,24 @@ func TestLoadRejects(t *testing.T) {
 			want: []string{"rio.yaml", "empty"},
 		},
 		{
+			// The second document is parsed too, so its syntax errors are
+			// reported like the first document's.
+			name: "second document is not yaml",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n---\nartifacts: [\n",
+			want: []string{"rio.yaml"},
+		},
+		{
 			name: "second document",
 			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n---\nversion: 1\n",
-			want: []string{"rio.yaml"},
+			want: []string{"more than one YAML document"},
+		},
+		{
+			// The document after the marker is empty, so calling the file
+			// "more than one document" describes it wrongly.
+			name:  "trailing document marker",
+			src:   "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\n---\n",
+			want:  []string{`"---"`, "empty document", "remove the marker"},
+			avoid: []string{"more than one"},
 		},
 	}
 
@@ -428,7 +722,53 @@ func TestLoadRejects(t *testing.T) {
 					t.Errorf("error %q does not mention %q", msg, want)
 				}
 			}
+			for _, avoid := range tc.avoid {
+				if strings.Contains(msg, avoid) {
+					t.Errorf("error %q should not mention %q", msg, avoid)
+				}
+			}
+			// A message about the manifest never names the Go types this
+			// package reads it with: the author has never seen them (§10).
+			// The path is exempt, being the author's own.
+			detail := strings.ReplaceAll(msg, path, "")
+			for _, leak := range []string{"manifest.", "yaml.Node", "[]string", "unmarshal", "not found in type"} {
+				if strings.Contains(detail, leak) {
+					t.Errorf("error %q leaks an internal detail: %q", msg, leak)
+				}
+			}
 		})
+	}
+}
+
+// One decode failure is one message, however many fields go-yaml blamed for
+// it: the same sentence twice reads like two problems.
+func TestOneMessagePerDistinctProblem(t *testing.T) {
+	path := write(t, "version: 1\nartifacts: [{id: [a], sbom: [b]}]\n")
+	_, err := manifest.Load(path)
+	if err == nil {
+		t.Fatal("Load succeeded, want an error")
+	}
+	if n := strings.Count(err.Error(), "must be a string"); n != 1 {
+		t.Errorf("error %q states the same problem %d times, want once", err, n)
+	}
+}
+
+// An explicitly empty require list is the empty subset (§2), not a mistake and
+// not the default: the subject check still runs, no component field is
+// required. Changing that would silently re-arm three checks.
+func TestGateRequireEmptyIsTheEmptySubset(t *testing.T) {
+	path := write(t, "version: 1\nartifacts:\n  - id: only\n    sbom: bom.json\ngate:\n  require: []\n")
+	m, err := manifest.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(m.Gate.Require) != 0 {
+		t.Fatalf("Gate.Require = %v, want the empty subset", m.Gate.Require)
+	}
+	for _, field := range manifest.DefaultRequire() {
+		if m.Gate.Requires(field) {
+			t.Errorf("Requires(%q) = true, want false", field)
+		}
 	}
 }
 
@@ -440,6 +780,41 @@ func TestLoadMissingFileNamesPath(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), path) {
 		t.Errorf("error %q does not name the path it looked for (%q)", err, path)
+	}
+}
+
+// A manifest that exists but cannot be read is not "not found": the two send
+// the author looking in different places.
+func TestLoadUnreadableFileIsNotReportedAsMissing(t *testing.T) {
+	dir := t.TempDir()
+	_, err := manifest.Load(dir)
+	if err == nil {
+		t.Fatal("Load succeeded on a directory, want an error")
+	}
+	if !strings.Contains(err.Error(), dir) {
+		t.Errorf("error %q does not name the path %q", err, dir)
+	}
+	if strings.Contains(err.Error(), "not found") {
+		t.Errorf("error %q calls an unreadable manifest missing", err)
+	}
+}
+
+// A relative path is reported as given and as resolved, because the two differ
+// by the working directory the caller happened to be in.
+func TestLoadMissingRelativeFileNamesBothPaths(t *testing.T) {
+	const rel = "no-such-directory/rio.yaml"
+	_, err := manifest.Load(rel)
+	if err == nil {
+		t.Fatal("Load succeeded on a missing manifest, want an error")
+	}
+	abs, absErr := filepath.Abs(rel)
+	if absErr != nil {
+		t.Fatal(absErr)
+	}
+	for _, want := range []string{rel, abs} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not name %q", err, want)
+		}
 	}
 }
 

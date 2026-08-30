@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -144,7 +145,7 @@ func Load(path string) (*Manifest, error) {
 		SHA256: hex.EncodeToString(sum[:]),
 	}
 
-	l := loader{path: path}
+	l := loader{path: path, src: data}
 
 	var f fileSection
 	dec := yaml.NewDecoder(bytes.NewReader(data))
@@ -160,6 +161,11 @@ func Load(path string) (*Manifest, error) {
 	// A second document would be read by nobody and quietly ignored.
 	var extra yaml.Node
 	if err := dec.Decode(&extra); err == nil {
+		if emptyDocument(&extra) {
+			// A trailing "---" with nothing after it is the common case, and
+			// calling that "more than one document" describes the file badly.
+			return nil, l.errf("", `a "---" marker starts a second, empty document, rio reads exactly one: remove the marker`)
+		}
 		return nil, l.errf("", "manifest holds more than one YAML document, rio reads exactly one")
 	} else if !errors.Is(err, io.EOF) {
 		return nil, l.yamlError(err)
@@ -216,8 +222,13 @@ type gateSection struct {
 	Require *[]string `yaml:"require"`
 }
 
-// loader carries the manifest path so every message can name it (§10).
-type loader struct{ path string }
+// loader carries the manifest path so every message can name it, and the
+// source bytes so a decode failure can be traced back to the key that caused
+// it (§10).
+type loader struct {
+	path string
+	src  []byte
+}
 
 func (l loader) errf(field, format string, a ...any) error {
 	msg := fmt.Sprintf(format, a...)
@@ -231,9 +242,17 @@ func (l loader) version(f *fileSection, m *Manifest) error {
 	if f.Version.IsZero() {
 		return l.errf("version", "is required and must be %d", Version)
 	}
+	// The node must be an integer, not merely something that decodes into one:
+	// yaml reads 1.0 as a float and "1" as a string, and letting either stand
+	// for 1 would make rio's compatibility lever (§9) depend on how it was
+	// quoted.
+	if f.Version.Tag != intTag {
+		return l.errf("version", "must be the integer %d, got %s", Version, describe(&f.Version))
+	}
 	var v int
 	if err := f.Version.Decode(&v); err != nil {
-		return l.errf("version", "must be %d, got %s", Version, describe(&f.Version))
+		// An integer too large for an int lands here.
+		return l.errf("version", "must be the integer %d, got %s", Version, describe(&f.Version))
 	}
 	if v != Version {
 		return l.errf("version", "must be %d, got %d", Version, v)
@@ -348,36 +367,280 @@ func supportedFloor(v string) bool {
 	return false
 }
 
-// unknownField matches the go-yaml phrasing for a KnownFields violation, which
-// names an internal Go type the manifest author has never heard of.
-var unknownField = regexp.MustCompile(`field (\S+) not found in type \S+`)
+// The YAML tags this package reasons about. yaml.v3 keeps them unexported.
+const (
+	strTag   = "!!str"
+	intTag   = "!!int"
+	floatTag = "!!float"
+	boolTag  = "!!bool"
+	nullTag  = "!!null"
+	mapTag   = "!!map"
+	seqTag   = "!!seq"
+	mergeTag = "!!merge"
+)
 
-// yamlError turns a decode failure into a message about the manifest rather
-// than about this package's structs.
-func (l loader) yamlError(err error) error {
-	var typeErr *yaml.TypeError
-	if errors.As(err, &typeErr) {
-		msgs := make([]string, 0, len(typeErr.Errors))
-		for _, e := range typeErr.Errors {
-			msgs = append(msgs, unknownField.ReplaceAllString(e, `unknown field "$1"`))
-		}
-		return l.errf("", "%s", strings.Join(msgs, "; "))
-	}
-	return l.errf("", "%s", strings.TrimPrefix(err.Error(), "yaml: "))
+// go-yaml reports a decode failure in terms of the Go type it was decoding
+// into. These match its two phrasings so both can be rewritten to name the
+// manifest key the author actually wrote (§10).
+var (
+	// The key is matched lazily and may be empty, because a YAML key can
+	// contain spaces ("my key": 1) or be the empty string.
+	unknownKey = regexp.MustCompile("^line ([0-9]+): field (.*?) not found in type (\\S+)$")
+	// For example: line 5: cannot unmarshal !!str `thing` into manifest.subjectSection
+	typeMismatch = regexp.MustCompile("^line ([0-9]+): cannot unmarshal (\\S+)(?: `(.*)`)? into (\\S+)$")
+)
+
+// yamlTargets maps every Go type reachable from fileSection to the manifest
+// keys that hold it and the shape those keys must have. The types are this
+// package's private business; the manifest author only ever wrote the key, so
+// that is what a message names (§10).
+//
+// where is the set of manifest paths a value of that type can sit at, as §2
+// defines them. It is what tells the id in artifacts[0].id apart from the
+// artifacts list itself when both start on the reported line.
+var yamlTargets = map[string]struct {
+	field string         // named when the source lookup finds nothing
+	shape string         // what the author should have written there
+	root  bool           // the document itself, which has no key to name
+	where *regexp.Regexp // paths that hold a value of this type
+}{
+	"manifest.fileSection": {shape: "a mapping with version and artifacts", root: true},
+	"[]manifest.artifactSection": {field: "artifacts", shape: "a list of artifact entries",
+		where: regexp.MustCompile(`^artifacts$`)},
+	"manifest.artifactSection": {field: "artifacts[]", shape: "a mapping with id and sbom",
+		where: regexp.MustCompile(`^artifacts\[[0-9]+\]$`)},
+	"manifest.subjectSection": {field: "subject", shape: "a mapping with name and version",
+		where: regexp.MustCompile(`^artifacts\[[0-9]+\]\.subject$`)},
+	"manifest.outputSection": {field: "output", shape: "a mapping",
+		where: regexp.MustCompile(`^output$`)},
+	"manifest.gateSection": {field: "gate", shape: "a mapping",
+		where: regexp.MustCompile(`^gate$`)},
+	"[]yaml.Node": {field: "transforms", shape: "a list of transforms",
+		where: regexp.MustCompile(`^artifacts\[[0-9]+\]\.transforms$`)},
+	"[]string": {field: "gate.require", shape: "a list of strings",
+		where: regexp.MustCompile(`^gate\.require$`)},
+	// The one type several keys share, which is why it names none of them
+	// when the lookup below cannot tell which one was meant.
+	"string": {shape: "a string", where: regexp.MustCompile(
+		`^(artifacts\[[0-9]+\]\.(id|sbom|subject\.(name|version))|output\.specVersionFloor|gate\.require\[[0-9]+\])$`)},
 }
 
-// describe renders a node for an error message: its scalar text when it has
-// one, otherwise the shape it turned out to be.
-func describe(n *yaml.Node) string {
-	if n.Kind == yaml.ScalarNode {
-		return fmt.Sprintf("%q", n.Value)
+// yamlDetail reduces a decode failure to go-yaml's own words, without the
+// "yaml:" prefix and the "unmarshal errors:" header it wraps them in.
+func yamlDetail(err error) string {
+	var typeErr *yaml.TypeError
+	if errors.As(err, &typeErr) {
+		return strings.Join(typeErr.Errors, "; ")
 	}
+	return strings.TrimPrefix(err.Error(), "yaml: ")
+}
+
+// yamlError turns a decode failure into a message about the manifest rather
+// than about this package's structs: it rewrites every message go-yaml
+// produced so it names the manifest key and the shape that key must have,
+// never an internal Go type (§10).
+func (l loader) yamlError(err error) error {
+	var typeErr *yaml.TypeError
+	if !errors.As(err, &typeErr) {
+		return l.errf("", "%s", yamlDetail(err))
+	}
+	// The document parsed (a syntax error is not a TypeError), so re-reading it
+	// as a node tree is what turns a reported line into a path such as
+	// artifacts[0].subject. If it somehow fails, only that detail is lost.
+	var doc yaml.Node
+	_ = yaml.Unmarshal(l.src, &doc)
+
+	msgs := make([]string, 0, len(typeErr.Errors))
+	seen := make(map[string]bool, len(typeErr.Errors))
+	for _, e := range typeErr.Errors {
+		msg := l.rewrite(e, &doc)
+		// go-yaml reports one failure per field, and two fields written on one
+		// line can rewrite to the same message. Repeating it adds nothing.
+		if seen[msg] {
+			continue
+		}
+		seen[msg] = true
+		msgs = append(msgs, msg)
+	}
+	return l.errf("", "%s", strings.Join(msgs, "; "))
+}
+
+// rewrite restates one go-yaml message in the manifest's own vocabulary. doc is
+// the manifest source as a node tree, used to name the offending key.
+func (l loader) rewrite(msg string, doc *yaml.Node) string {
+	if m := unknownKey.FindStringSubmatch(msg); m != nil {
+		line, key := m[1], m[2]
+		field := yamlTargets[m[3]].field
+		if path, ok := mappingPath(doc, atoiOrZero(line), key); ok {
+			field = path
+		}
+		if field == "" {
+			return fmt.Sprintf("line %s: unknown key %q", line, key)
+		}
+		return fmt.Sprintf("%s: line %s: unknown key %q", field, line, key)
+	}
+
+	m := typeMismatch.FindStringSubmatch(msg)
+	if m == nil {
+		// go-yaml's remaining phrasing, a duplicate key, already talks about
+		// the manifest and names no Go type.
+		return msg
+	}
+	line, tag, value := m[1], m[2], m[3]
+	target, known := yamlTargets[m[4]]
+	if !known {
+		// Unreachable while yamlTargets covers fileSection; a new field of a
+		// new type would land here with go-yaml's own phrasing.
+		return msg
+	}
+	// The reported tag and value are enough to describe the offending value
+	// even when it cannot be located in the source.
+	got := describe(nodeFor(tag, value))
+	if target.root {
+		return fmt.Sprintf("line %s: the manifest must be %s, got %s", line, target.shape, got)
+	}
+	field := target.field
+	if path, n, ok := valuePath(doc, target.where, atoiOrZero(line), tag, value); ok {
+		field, got = path, describe(n)
+	}
+	if field == "" {
+		return fmt.Sprintf("line %s: must be %s, got %s", line, target.shape, got)
+	}
+	return fmt.Sprintf("%s: line %s: must be %s, got %s", field, line, target.shape, got)
+}
+
+// walk visits the document's root and every value below it, giving each the
+// manifest path of the key or index that holds it: artifacts[0].subject rather
+// than a line number. Keys are not visited: only values are decode targets.
+func walk(n *yaml.Node, path string, fn func(path string, n *yaml.Node)) {
+	if n.Kind == yaml.DocumentNode {
+		for _, c := range n.Content {
+			walk(c, path, fn)
+		}
+		return
+	}
+	fn(path, n)
 	switch n.Kind {
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			key, value := n.Content[i], n.Content[i+1]
+			child := key.Value
+			if path != "" {
+				child = path + "." + key.Value
+			}
+			walk(value, child, fn)
+		}
+	case yaml.SequenceNode:
+		for i, c := range n.Content {
+			walk(c, fmt.Sprintf("%s[%d]", path, i), fn)
+		}
+	}
+}
+
+// valuePath finds the value go-yaml refused, by the line, tag and text it
+// reported and the paths that can hold its type. A line alone is not enough:
+// a block sequence starts on the line of its first entry, and a flow
+// collection holds its children on its own line. Two candidates that are both
+// legal (artifacts: [{id: [a], sbom: [b]}]) yield nothing rather than a
+// message pointing at the wrong one.
+func valuePath(doc *yaml.Node, where *regexp.Regexp, line int, tag, value string) (string, *yaml.Node, bool) {
+	var found *yaml.Node
+	foundPath, matches := "", 0
+	walk(doc, "", func(path string, n *yaml.Node) {
+		if n.Line != line || n.Tag != tag || !where.MatchString(path) || !valueMatches(n.Value, value) {
+			return
+		}
+		found, foundPath, matches = n, path, matches+1
+	})
+	if matches != 1 {
+		return "", nil, false
+	}
+	return foundPath, found, true
+}
+
+// mappingPath finds the mapping that holds key at line, so an unknown key is
+// reported against the section it was written in. The root mapping has the
+// empty path, which reads as "no section", exactly what a stray top-level key
+// deserves.
+func mappingPath(doc *yaml.Node, line int, key string) (string, bool) {
+	found := ""
+	matches := 0
+	walk(doc, "", func(path string, n *yaml.Node) {
+		if n.Kind != yaml.MappingNode {
+			return
+		}
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			if k := n.Content[i]; k.Value == key && k.Line == line {
+				found, matches = path, matches+1
+			}
+		}
+	})
+	if matches != 1 {
+		return "", false
+	}
+	return found, true
+}
+
+// valueMatches compares a node's text with the text go-yaml reported, which
+// truncates anything over ten characters to seven and an ellipsis.
+func valueMatches(got, reported string) bool {
+	if len(reported) == 10 && strings.HasSuffix(reported, "...") {
+		return strings.HasPrefix(got, strings.TrimSuffix(reported, "..."))
+	}
+	return got == reported
+}
+
+// atoiOrZero keeps a line number usable in a message even if it does not parse:
+// zero matches no node, so the lookup simply finds nothing.
+func atoiOrZero(s string) int {
+	n, _ := strconv.Atoi(s)
+	return n
+}
+
+// nodeFor rebuilds just enough of a node from what go-yaml reported about it
+// for describe to render it the same way as a node read from the source.
+func nodeFor(tag, value string) *yaml.Node {
+	n := &yaml.Node{Kind: yaml.ScalarNode, Tag: tag, Value: value}
+	switch tag {
+	case mapTag:
+		n.Kind = yaml.MappingNode
+	case seqTag:
+		n.Kind = yaml.SequenceNode
+	}
+	return n
+}
+
+// emptyDocument reports whether a decoded document holds nothing, which is what
+// a trailing "---" produces.
+func emptyDocument(n *yaml.Node) bool {
+	return len(n.Content) == 0 || n.Content[0].Tag == nullTag
+}
+
+// describe renders a node for an error message: what it holds and, for a
+// scalar, which YAML type it holds it as. The type is part of the value:
+// version: "1" and version: 1 differ in nothing else (§9).
+func describe(n *yaml.Node) string {
+	switch n.Kind {
+	case yaml.ScalarNode:
+		switch n.Tag {
+		case strTag:
+			return fmt.Sprintf("the string %q", n.Value)
+		case intTag, floatTag:
+			return "the number " + n.Value
+		case boolTag:
+			return "the boolean " + n.Value
+		case nullTag:
+			return "no value"
+		default:
+			// A tag rio has no name for, such as !!timestamp.
+			return fmt.Sprintf("%q", n.Value)
+		}
 	case yaml.MappingNode:
 		return "a mapping"
 	case yaml.SequenceNode:
 		return "a list"
 	default:
+		// An alias (version: *anchor) is the only kind that reaches here.
 		return "an unexpected value"
 	}
 }
