@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "tool": {
+    "name": "rio",
+    "version": "0.1.0-test"
+  },
+  "manifest": {
+    "path": "rio.yaml",
+    "sha256": "1f39e445ddb09088d6206f19f709a945567f42f6f80a9bd61304f792ff1f2b0c"
+  },
+  "artifacts": [
+    {
+      "id": "rcp-client",
+      "input": {
+        "path": "in/tycho-rcp.cdx.json",
+        "sha256": "f591443c43c61e429a01e6a1d8dcd5cebceed92c816280618947e01176324eaf"
+      },
+      "output": {
+        "path": "rcp-client.cdx.json",
+        "sha256": "48cc5cf0db06128d47558bba6694e0907568cb300e8a4893f7aaedfc3cbcf874"
+      },
+      "specVersion": {
+        "input": "1.4",
+        "output": "1.6"
+      },
+      "schemaValidated": true,
+      "components": 12,
+      "transforms": [
+        {
+          "id": "repair-purl/p2",
+          "applied": 8,
+          "unmapped": 1,
+          "skipped": 4
+        }
+      ],
+      "gate": "ok",
+      "gateFindings": [],
+      "integrityFindings": [
+        {
+          "ref": "pkg:p2/org.eclipse.equinox.executable_root.gtk.linux.x86_64@3.8.2300.v20231106-1826?classifier=binary&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+          "kind": "dependency"
+        }
+      ]
+    }
+  ]
+}
