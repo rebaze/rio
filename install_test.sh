@@ -33,6 +33,11 @@ failures=0
 pass() { checks=$((checks + 1)); printf 'ok   %s\n' "$1"; }
 flunk() { checks=$((checks + 1)); failures=$((failures + 1)); printf 'FAIL %s\n' "$1"; }
 
+# A skip is counted and printed, never silently dropped: a check that stopped
+# running has to be visible in the log.
+skips=0
+skip() { skips=$((skips + 1)); printf 'skip %s\n' "$1"; }
+
 eq() { # want got label
   if [ "$1" = "$2" ]; then pass "$3"; else flunk "$3: want [$1], got [$2]"; fi
 }
@@ -283,14 +288,22 @@ eq 1 "$?" "a version with no asset fails"
 contains "$out" "$rio_releases_url" "the missing-asset message points at the releases page"
 
 # An unwritable target is reported, never sudo'd around.
-mkdir -p "$t/ro"
-chmod 500 "$t/ro"
-out=$(run_install RIO_VERSION="$version" RIO_INSTALL_DIR="$t/ro/bin" 2>&1)
-rc=$?
-chmod 700 "$t/ro"
-eq 1 "$rc" "an unwritable install dir fails"
-contains "$out" RIO_INSTALL_DIR "the unwritable-dir message suggests RIO_INSTALL_DIR"
-contains "$out" "will not use sudo" "the failure says it will not sudo"
+#
+# Root ignores the mode bits, so the premise does not hold there and the check
+# is skipped rather than failed. GitHub-hosted runners run as a normal user, so
+# this does exercise on CI; a root container (docker, act) reports the skip.
+if [ "$(id -u)" = "0" ]; then
+  skip "an unwritable install dir fails (running as root)"
+else
+  mkdir -p "$t/ro"
+  chmod 500 "$t/ro"
+  out=$(run_install RIO_VERSION="$version" RIO_INSTALL_DIR="$t/ro/bin" 2>&1)
+  rc=$?
+  chmod 700 "$t/ro"
+  eq 1 "$rc" "an unwritable install dir fails"
+  contains "$out" RIO_INSTALL_DIR "the unwritable-dir message suggests RIO_INSTALL_DIR"
+  contains "$out" "will not use sudo" "the failure says it will not sudo"
+fi
 
 # The PATH hint fires only when the install dir is off PATH.
 out=$(run_install RIO_VERSION="$version" RIO_INSTALL_DIR="$t/bin7" 2>&1)
@@ -306,7 +319,10 @@ esac
 # wget-only boxes work too: hide curl by pointing PATH at a shim dir with only wget.
 mkdir -p "$t/wgetonly"
 cp "$shim/wget" "$t/wgetonly/wget"
-for b in sh tar uname sed awk cut tr mktemp rm cp mv mkdir chmod ls shasum sha256sum openssl; do
+# gzip matters: GNU tar shells out to it for -z, while the bsdtar on macOS
+# decompresses in-process. Leaving it out passed locally and failed on Linux.
+for b in sh tar gzip gunzip uname sed awk cut tr mktemp rm cp mv mkdir chmod ls \
+         cat id printf shasum sha256sum openssl; do
   p=$(command -v "$b" 2>/dev/null) && ln -sf "$p" "$t/wgetonly/$b"
 done
 out=$(env PATH="$t/wgetonly" RIO_TEST_WWW="$www" RIO_TEST_LOG="$t/requests.log" \
@@ -334,5 +350,9 @@ eq 1 "$?" "no curl and no wget fails"
 contains "$out" curl "the message names curl"
 contains "$out" wget "the message names wget"
 
-printf '\n%s checks, %s failures\n' "$checks" "$failures"
+if [ "$skips" -gt 0 ]; then
+  printf '\n%s checks, %s failures, %s skipped\n' "$checks" "$failures" "$skips"
+else
+  printf '\n%s checks, %s failures\n' "$checks" "$failures"
+fi
 [ "$failures" -eq 0 ]
