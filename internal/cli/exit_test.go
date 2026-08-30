@@ -2,6 +2,11 @@ package cli
 
 import (
 	"encoding/json"
+
+	"github.com/google/go-cmp/cmp"
+
+	"github.com/rebaze/rio/internal/gate"
+	"github.com/rebaze/rio/internal/manifest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -357,5 +362,49 @@ func TestUnknownFlagAndCommandAreUsageErrors(t *testing.T) {
 	}
 	if r := rio(t, dir, "normalize", "extra-argument"); r.exit != ExitUsage {
 		t.Fatalf("unexpected argument exit = %d, want %d", r.exit, ExitUsage)
+	}
+}
+
+// No absolute paths in output; recorded paths are relative to the manifest
+// directory (§7). The index's digests are a contract, and a machine-local
+// path in it makes two identical runs produce different bytes.
+func TestManifestPathInTheIndexIsNeverAbsolute(t *testing.T) {
+	dir := project(t, tychoManifest, "tycho-rcp.cdx.json")
+	abs := filepath.Join(dir, "rio.yaml")
+
+	// The same run, reached three different ways, must produce the same index.
+	var digests []string
+	for _, args := range [][]string{
+		{"normalize"},
+		{"normalize", "--manifest", "rio.yaml"},
+		{"normalize", "--manifest", abs},
+	} {
+		requireExit(t, rio(t, dir, args...), ExitOK)
+
+		idx := decode(t, readFile(t, dir, "target", "rio", "index.json"))
+		manifest, _ := idx["manifest"].(map[string]any)
+		path, _ := manifest["path"].(string)
+		if path != "rio.yaml" {
+			t.Fatalf("%v recorded manifest.path = %q, want %q", args, path, "rio.yaml")
+		}
+		digests = append(digests, string(readFile(t, dir, "target", "rio", "index.json")))
+	}
+	for i := range digests[1:] {
+		if digests[i+1] != digests[0] {
+			t.Fatal("index.json differs depending on how the manifest was named")
+		}
+	}
+}
+
+// The three gate requirements are defined twice, as manifest strings and as
+// gate.Requirement values, and converted at the call site. Adding a fourth to
+// one side without the other would make the gate silently stop checking it.
+func TestGateRequirementsAgreeWithTheManifest(t *testing.T) {
+	var fromManifest []gate.Requirement
+	for _, r := range manifest.DefaultRequire() {
+		fromManifest = append(fromManifest, gate.Requirement(r))
+	}
+	if diff := cmp.Diff(gate.All(), fromManifest); diff != "" {
+		t.Fatalf("manifest.DefaultRequire() and gate.All() have drifted (-gate +manifest):\n%s", diff)
 	}
 }

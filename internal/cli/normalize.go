@@ -307,7 +307,15 @@ func writeAll(man *manifest.Manifest, artifacts []*artifact, outDir string) erro
 		return internalErrorf("creating output directory %s: %w", outDir, err)
 	}
 
-	idx := index.New(version, index.FileRef{Path: man.Path, SHA256: man.SHA256})
+	// The manifest lives in its own directory by construction, so its path
+	// relative to that directory is its base name. Recording man.Path verbatim
+	// would put whatever the caller typed into the index, and
+	// "rio normalize --manifest $WORKSPACE/rio.yaml" would bake a machine
+	// local absolute path into a file whose digests are a contract (§7).
+	idx := index.New(version, index.FileRef{
+		Path:   filepath.Base(man.Path),
+		SHA256: man.SHA256,
+	})
 
 	for _, a := range artifacts {
 		name := a.spec.ID + ".cdx.json"

@@ -6,10 +6,18 @@
 //   - raw, a map[string]any decoded with UseNumber(). Every write lands here
 //     and this is what gets serialized, so fields no library models survive
 //     the round trip (§8).
-//   - typed, a cyclonedx-go BOM used for typed reads only. Never re-encoded.
+//   - typed, a cyclonedx-go BOM decoded from those same bytes. It is a
+//     snapshot of the INPUT, used for spec version handling and to confirm the
+//     document decodes as CycloneDX at all. It is never re-encoded, and it is
+//     never refreshed after a write.
 //
 // components[i] refers to the same component in both views, so the slice index
 // is the join key between them.
+//
+// Every accessor for a field rio may rewrite reads the raw tree, not the
+// snapshot. §5 runs the transforms and then the gate over one Document, and a
+// second transform reads what the first one wrote, so a stale snapshot would
+// hand both of them the purl the document no longer carries.
 package sbom
 
 import (
@@ -314,42 +322,33 @@ func (d *Document) Bytes() ([]byte, error) {
 type Component struct {
 	Index int
 
-	doc   *Document
-	raw   map[string]any
+	doc *Document
+	raw map[string]any
+
+	// typed is the input snapshot for this component. Nothing reads a mutable
+	// field through it; see the Document doc comment.
 	typed *cdx.Component
 }
 
-// Name returns component.name.
-func (c *Component) Name() string {
-	if c.typed != nil {
-		return c.typed.Name
-	}
-	return stringField(c.raw, "name")
-}
+// Typed returns the cyclonedx-go view of this component as it was decoded from
+// the input, or nil when the typed decode was unavailable.
+//
+// It is the seam §8 asks for and what later commands will read for the fields
+// rio never rewrites. Do not read purl through it: writes land on the raw tree.
+func (c *Component) Typed() *cdx.Component { return c.typed }
 
-// Version returns component.version.
-func (c *Component) Version() string {
-	if c.typed != nil {
-		return c.typed.Version
-	}
-	return stringField(c.raw, "version")
-}
+// Name returns component.name.
+func (c *Component) Name() string { return stringField(c.raw, "name") }
+
+// Version returns component.version. rio never writes it, even where it
+// disagrees with a repaired purl: that divergence is intentional (§6.4).
+func (c *Component) Version() string { return stringField(c.raw, "version") }
 
 // Group returns component.group.
-func (c *Component) Group() string {
-	if c.typed != nil {
-		return c.typed.Group
-	}
-	return stringField(c.raw, "group")
-}
+func (c *Component) Group() string { return stringField(c.raw, "group") }
 
 // PURL returns component.purl.
-func (c *Component) PURL() string {
-	if c.typed != nil {
-		return c.typed.PackageURL
-	}
-	return stringField(c.raw, "purl")
-}
+func (c *Component) PURL() string { return stringField(c.raw, "purl") }
 
 // BOMRef returns component.bom-ref. rio never writes it (§6.4).
 func (c *Component) BOMRef() string { return stringField(c.raw, "bom-ref") }
@@ -435,4 +434,53 @@ func stringField(obj map[string]any, key string) string {
 	}
 	s, _ := obj[key].(string)
 	return s
+}
+
+// ComponentRef locates one component anywhere in the document, including
+// nested ones, for read-only checks.
+//
+// §5 step 4 gates "every component", and a component nested under another is
+// still shipped. The transform layer stays on the top-level array, because
+// that is what the join by index in §8 addresses, so this is deliberately a
+// separate read-only walk rather than a widening of Components().
+type ComponentRef struct {
+	// Path locates the component for a human, e.g. "components[3]" or
+	// "components[3].components[1]".
+	Path    string
+	Group   string
+	Name    string
+	Version string
+	PURL    string
+}
+
+// EveryComponent walks the whole component tree in document order.
+func (d *Document) EveryComponent() []ComponentRef {
+	var out []ComponentRef
+	walkComponents(d.raw["components"], "components", &out)
+	return out
+}
+
+func walkComponents(node any, path string, out *[]ComponentRef) {
+	list, ok := node.([]any)
+	if !ok {
+		return
+	}
+	for i, entry := range list {
+		here := fmt.Sprintf("%s[%d]", path, i)
+		obj, ok := entry.(map[string]any)
+		if !ok {
+			// A non-object entry is schema-invalid; validation reports it.
+			// Record it so a check can still name where it sits.
+			*out = append(*out, ComponentRef{Path: here})
+			continue
+		}
+		*out = append(*out, ComponentRef{
+			Path:    here,
+			Group:   stringField(obj, "group"),
+			Name:    stringField(obj, "name"),
+			Version: stringField(obj, "version"),
+			PURL:    stringField(obj, "purl"),
+		})
+		walkComponents(obj["components"], here+".components", out)
+	}
 }

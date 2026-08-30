@@ -512,3 +512,72 @@ func identityEntries(t *testing.T, doc *sbom.Document, component int) []map[stri
 	}
 	return decoded.Components[component].Evidence.Identity
 }
+
+// §5 runs the transforms and then the gate over one Document. A second reader
+// must see what the first writer wrote: the typed cyclonedx-go view is a
+// snapshot of the input and is never refreshed, so reading a mutable field
+// through it would hand the gate a purl the document no longer carries.
+func TestWritesAreVisibleToTheNextReader(t *testing.T) {
+	doc := load(t, fixture(t, "tycho-rcp.cdx.json"))
+
+	c := doc.Component(2)
+	if c.Typed() == nil {
+		t.Fatal("expected the typed snapshot to be available for this fixture")
+	}
+	before := c.PURL()
+
+	const repaired = "pkg:maven/org.eclipse.platform/org.eclipse.core.databinding@1.13.100"
+	c.SetPURL(repaired)
+
+	// The same view, a freshly fetched view, and the serialized bytes must all
+	// agree with the write.
+	if got := c.PURL(); got != repaired {
+		t.Fatalf("PURL() on the same view = %q, want %q", got, repaired)
+	}
+	if got := doc.Component(2).PURL(); got != repaired {
+		t.Fatalf("PURL() on a fresh view = %q, want %q", got, repaired)
+	}
+	out, err := doc.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(out, []byte(repaired)) {
+		t.Fatal("the repaired purl is missing from the serialized document")
+	}
+
+	// The snapshot itself still holds the input value, which is what makes it
+	// unsafe to read for a mutable field.
+	if c.Typed().PackageURL != before {
+		t.Fatalf("the typed snapshot changed; it is documented as a snapshot of the input")
+	}
+}
+
+func TestEveryComponentWalksNestedComponents(t *testing.T) {
+	doc := load(t, []byte(`{"bomFormat":"CycloneDX","specVersion":"1.6","version":1,
+"components":[
+  {"type":"library","name":"outer","version":"1.0","purl":"pkg:maven/g/outer@1.0",
+   "components":[{"type":"library","name":"inner","purl":"pkg:maven/g/inner@2.0","version":"2.0"}]},
+  {"type":"library","name":"second","version":"3.0"}]}`))
+
+	want := []sbom.ComponentRef{
+		{Path: "components[0]", Name: "outer", Version: "1.0", PURL: "pkg:maven/g/outer@1.0"},
+		{Path: "components[0].components[0]", Name: "inner", Version: "2.0", PURL: "pkg:maven/g/inner@2.0"},
+		{Path: "components[1]", Name: "second", Version: "3.0"},
+	}
+	if diff := cmp.Diff(want, doc.EveryComponent()); diff != "" {
+		t.Fatalf("EveryComponent() (-want +got):\n%s", diff)
+	}
+
+	// Components() stays top-level: it is the join key the transform layer
+	// addresses by index (§8).
+	if got := doc.ComponentCount(); got != 2 {
+		t.Fatalf("ComponentCount() = %d, want the two top-level components", got)
+	}
+}
+
+func TestEveryComponentOnADocumentWithNoComponents(t *testing.T) {
+	doc := load(t, []byte(`{"bomFormat":"CycloneDX","specVersion":"1.6","version":1}`))
+	if got := doc.EveryComponent(); len(got) != 0 {
+		t.Fatalf("EveryComponent() = %v, want none", got)
+	}
+}

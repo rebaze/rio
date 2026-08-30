@@ -12,7 +12,7 @@
 package gate
 
 import (
-	"fmt"
+	"strings"
 
 	"github.com/package-url/packageurl-go"
 
@@ -38,8 +38,9 @@ func All() []Requirement {
 	return []Requirement{RequireName, RequireVersion, RequirePURL}
 }
 
-// Finding is one gate failure, serialized into index.json as a member of
-// gateFindings (§4.2).
+// Finding is one gate failure. internal/index carries its own GateFinding for
+// the on-disk shape and the caller converts, so the wire contract in §4.2 has
+// exactly one owner; the tags here keep the two readable side by side.
 type Finding struct {
 	// Subject marks the finding as being about metadata.component rather than
 	// a member of the components array.
@@ -97,16 +98,20 @@ func Check(doc *sbom.Document, require []Requirement) Result {
 		return Result{Findings: findings}
 	}
 
-	for _, c := range doc.Components() {
+	// Every component, including components nested under another: a nested
+	// component is still shipped, and §5 step 4 says every one is evaluated.
+	// The gate only reads, so unlike the transform layer it is not bound to
+	// the top-level array that §8's join by index addresses.
+	for _, c := range doc.EveryComponent() {
 		// Fixed order, independent of the order require arrived in (§7).
 		var missing []string
-		if wantName && c.Name() == "" {
+		if wantName && blank(c.Name) {
 			missing = append(missing, string(RequireName))
 		}
-		if wantVersion && c.Version() == "" {
+		if wantVersion && blank(c.Version) {
 			missing = append(missing, string(RequireVersion))
 		}
-		if wantPURL && !validPURL(c.PURL()) {
+		if wantPURL && !validPURL(c.PURL) {
 			missing = append(missing, string(RequirePURL))
 		}
 		if len(missing) > 0 {
@@ -121,10 +126,10 @@ func Check(doc *sbom.Document, require []Requirement) Result {
 func checkSubject(doc *sbom.Document) (Finding, bool) {
 	name, version := doc.Subject()
 	var missing []string
-	if name == "" {
+	if blank(name) {
 		missing = append(missing, string(RequireName))
 	}
-	if version == "" {
+	if blank(version) {
 		missing = append(missing, string(RequireVersion))
 	}
 	if len(missing) == 0 {
@@ -140,34 +145,47 @@ func checkSubject(doc *sbom.Document) (Finding, bool) {
 // p2 transform could not map is still a purl and still passes: unmapped is a
 // count in index.json, not a gate failure (§5 step 4).
 func validPURL(purl string) bool {
-	if purl == "" {
+	if blank(purl) {
 		return false
 	}
 	_, err := packageurl.FromString(purl)
 	return err == nil
 }
 
+// blank reports whether a required field is absent or effectively empty. A
+// name of "   " is present but not identity, and it would reach
+// DependencyTrack as a whitespace project name (§5 step 4, §4.3d).
+func blank(s string) bool { return strings.TrimSpace(s) == "" }
+
 // identify renders a component in the most recognisable form it can support,
 // so a finding is actionable without opening the SBOM.
-func identify(c *sbom.Component) string {
-	if purl := c.PURL(); purl != "" {
+func identify(c sbom.ComponentRef) string {
+	if !blank(c.PURL) {
 		// Reported verbatim even when it failed to parse: the broken string is
 		// exactly what the reader has to go and fix.
-		return purl
+		return c.PURL
 	}
 
-	name, group := c.Name(), c.Group()
-	if name != "" || group != "" {
-		id := name
-		if group != "" {
-			id = group + ":" + name
-		}
-		if version := c.Version(); version != "" {
-			id += "@" + version
-		}
-		return id
+	group, name := strings.TrimSpace(c.Group), strings.TrimSpace(c.Name)
+	var id string
+	switch {
+	case group != "" && name != "":
+		id = group + ":" + name
+	case name != "":
+		id = name
+	case group != "":
+		id = group
+	default:
+		// No name of its own, so locate it positionally instead. Nested
+		// components make the path the only unambiguous locator.
+		id = c.Path
 	}
 
-	// No identity at all, so locate it positionally instead.
-	return fmt.Sprintf("components[%d]", c.Index)
+	// The version is appended even to a positional identifier: it is the only
+	// value a version-only component has, and dropping it makes the finding
+	// harder to act on than the data allows (§10).
+	if version := strings.TrimSpace(c.Version); version != "" {
+		id += "@" + version
+	}
+	return id
 }

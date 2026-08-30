@@ -281,9 +281,12 @@ func TestComponentIdentityFallbacks(t *testing.T) {
 		{"group name version", `{"type": "library", "name": "n", "group": "g", "version": "1.0.0"}`, "g:n@1.0.0"},
 		{"name and version", `{"type": "library", "name": "n", "version": "1.0.0"}`, "n@1.0.0"},
 		{"name only", `{"type": "library", "name": "n"}`, "n"},
-		{"group only", `{"type": "library", "group": "g"}`, "g:"},
+		{"group only", `{"type": "library", "group": "g"}`, "g"},
 		{"nothing at all", `{"type": "library"}`, "components[0]"},
-		{"version only", `{"type": "library", "version": "1.0.0"}`, "components[0]"},
+		// The version is the only value this component has; a bare
+		// "components[0]" would throw it away (§10).
+		{"version only", `{"type": "library", "version": "1.0.0"}`, "components[0]@1.0.0"},
+		{"whitespace name is not identity", `{"type": "library", "name": "  ", "version": "1.0.0"}`, "components[0]@1.0.0"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -359,4 +362,56 @@ func mustJSON(t *testing.T, s string) string {
 		t.Fatalf("marshalling %q: %v", s, err)
 	}
 	return string(b)
+}
+
+// §5 step 4 evaluates every component, and a component nested under another is
+// still shipped. The gate only reads, so unlike the transform layer it is not
+// confined to the top-level array.
+func TestNestedComponentsAreGated(t *testing.T) {
+	doc := load(t, `{"bomFormat": "CycloneDX", "specVersion": "1.6", "version": 1,
+"metadata": {"component": {"type": "application", "name": "rcp-client", "version": "4.2.0"}},
+"components": [
+  {"type": "library", "name": "outer", "version": "1.0", "purl": "pkg:maven/g/outer@1.0",
+   "components": [{"type": "library", "name": "inner", "purl": "pkg:maven/g/inner@2.0"}]}]}`)
+
+	got := gate.Check(doc, all())
+	if len(got.Findings) != 1 {
+		t.Fatalf("Findings = %+v, want the nested component reported", got.Findings)
+	}
+	if got.Findings[0].Component != "pkg:maven/g/inner@2.0" {
+		t.Fatalf("Component = %q, want the nested component's purl", got.Findings[0].Component)
+	}
+	if diff := cmp.Diff([]string{"version"}, got.Findings[0].Missing); diff != "" {
+		t.Fatalf("Missing (-want +got):\n%s", diff)
+	}
+}
+
+// A field that is present but whitespace is not identity: it would reach
+// DependencyTrack as a whitespace project name (§5 step 4, §4.3d).
+func TestWhitespaceIsNotIdentity(t *testing.T) {
+	t.Run("subject", func(t *testing.T) {
+		doc := load(t, `{"bomFormat": "CycloneDX", "specVersion": "1.6", "version": 1,
+"metadata": {"component": {"type": "application", "name": "  ", "version": "\t"}}}`)
+
+		got := gate.Check(doc, all())
+		if len(got.Findings) != 1 || !got.Findings[0].Subject {
+			t.Fatalf("Findings = %+v, want a subject finding", got.Findings)
+		}
+		if diff := cmp.Diff([]string{"name", "version"}, got.Findings[0].Missing); diff != "" {
+			t.Fatalf("Missing (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("component", func(t *testing.T) {
+		doc := load(t, docWith(goodSubject,
+			`{"type": "library", "name": " ", "version": "  ", "purl": "   "}`))
+
+		got := gate.Check(doc, all())
+		if len(got.Findings) != 1 {
+			t.Fatalf("Findings = %+v, want one", got.Findings)
+		}
+		if diff := cmp.Diff([]string{"name", "version", "purl"}, got.Findings[0].Missing); diff != "" {
+			t.Fatalf("Missing (-want +got):\n%s", diff)
+		}
+	})
 }
