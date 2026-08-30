@@ -190,7 +190,7 @@ func TestVersionQualifier(t *testing.T) {
 			}
 
 			props := componentProperties(t, doc, 0)
-			got, present := props["rebaze:normalize:p2-qualifier"]
+			got, present := props[p2.QualifierProperty]
 			if tc.wantQualifier == "" {
 				if present {
 					t.Errorf("qualifier property written as %q, want none", got)
@@ -411,8 +411,14 @@ func TestSkipped(t *testing.T) {
 			wantPURL:  mavenPURL,
 		},
 		{
-			name:      "no purl at all",
-			component: component("nothing", "p2.eclipse.plugin", "nothing", "1.0.0.v1", "", ""),
+			// No name to resolve it by, so §6.3's second case cannot apply.
+			name:      "no purl and no name",
+			component: component("nameless", "p2.eclipse.plugin", "", "1.0.0.v1", "", ""),
+			wantPURL:  "",
+		},
+		{
+			name:      "no purl and a group outside the p2. prefix",
+			component: component("nothing", "tycho-demo", "nothing", "1.0.0.v1", "", ""),
 			wantPURL:  "",
 		},
 		{
@@ -724,7 +730,7 @@ func TestScopeFilterGatesBothOperations(t *testing.T) {
 			if purls[0] != tc.purl {
 				t.Errorf("purl = %q, want it untouched at %q", purls[0], tc.purl)
 			}
-			if got := componentProperties(t, doc, 0)["rebaze:normalize:p2-qualifier"]; got != "" {
+			if got := componentProperties(t, doc, 0)[p2.QualifierProperty]; got != "" {
 				t.Errorf("rebaze:normalize:p2-qualifier = %q, want nothing written on a skipped component", got)
 			}
 			if len(res.Changes) != 0 {
@@ -751,7 +757,7 @@ func TestVersionFixSurvivesAFailedMapping(t *testing.T) {
 	if purls[0] != want {
 		t.Errorf("purl = %q, want %q", purls[0], want)
 	}
-	if got := componentProperties(t, doc, 0)["rebaze:normalize:p2-qualifier"]; got != "v20231003-1442" {
+	if got := componentProperties(t, doc, 0)[p2.QualifierProperty]; got != "v20231003-1442" {
 		t.Errorf("rebaze:normalize:p2-qualifier = %q, want %q", got, "v20231003-1442")
 	}
 	if len(res.Changes) != 1 {
@@ -785,5 +791,119 @@ func TestComponentVersionIsNeverTouched(t *testing.T) {
 	}
 	if got := after[0]["group"]; got != "p2.eclipse.plugin" {
 		t.Errorf("group = %v, want it untouched", got)
+	}
+}
+
+// §6.3: "The transform only touches components whose purl type is p2, or whose
+// purl is absent but which carry an OSGi bundle symbolic name."
+//
+// There is no classifier qualifier to check on a component with no purl, so
+// the scope filter is the group prefix plus a symbolic name, and a coordinate
+// is only ever written on a real table or property hit. Nothing is inferred
+// from the name.
+func TestComponentWithNoPURLIsResolvedByItsSymbolicName(t *testing.T) {
+	t.Run("a table hit writes the coordinate and strips the qualifier", func(t *testing.T) {
+		res, purls, doc := run(t, nil, source(component(
+			"ref", "p2.eclipse.plugin", "org.eclipse.osgi", "3.18.600.v20231110-1900", "", "")))
+
+		want := "pkg:maven/org.eclipse.platform/org.eclipse.osgi@3.18.600"
+		if purls[0] != want {
+			t.Fatalf("purl = %q, want %q", purls[0], want)
+		}
+		if got := componentProperties(t, doc, 0)[p2.QualifierProperty]; got != "v20231110-1900" {
+			t.Fatalf("%s = %q, want %q", p2.QualifierProperty, got, "v20231110-1900")
+		}
+		if len(res.Changes) != 1 {
+			t.Fatalf("Changes = %+v, want one", res.Changes)
+		}
+		// There was no purl, so the repair record's from= is empty. That is
+		// the honest reading: nothing was replaced, a coordinate was supplied.
+		if res.Changes[0].From != "" || res.Changes[0].To != want {
+			t.Fatalf("Change = %+v", res.Changes[0])
+		}
+		if len(res.Notes) != 0 {
+			t.Fatalf("Notes = %+v, want none", res.Notes)
+		}
+	})
+
+	t.Run("component properties resolve it too", func(t *testing.T) {
+		_, purls, _ := run(t, nil, source(component(
+			"ref", "p2.eclipse.plugin", "com.example.widget", "2.0.0", "",
+			properties("maven-groupId", "com.example", "maven-artifactId", "widget"))))
+
+		if want := "pkg:maven/com.example/widget@2.0.0"; purls[0] != want {
+			t.Fatalf("purl = %q, want %q", purls[0], want)
+		}
+	})
+
+	t.Run("no hit writes nothing and is reported unmapped", func(t *testing.T) {
+		res, purls, doc := run(t, nil, source(component(
+			"ref", "p2.eclipse.plugin", "com.example.foo", "1.0.0.v1", "", "")))
+
+		if purls[0] != "" {
+			t.Fatalf("purl = %q, want it left absent: a groupId is never inferred from a name", purls[0])
+		}
+		if got := componentProperties(t, doc, 0)[p2.QualifierProperty]; got != "" {
+			t.Fatalf("%s = %q, want nothing written when no coordinate was found", p2.QualifierProperty, got)
+		}
+		if len(res.Changes) != 0 {
+			t.Fatalf("Changes = %+v, want none", res.Changes)
+		}
+		if n := onlyNote(t, res); n.Kind != transform.NoteUnmapped {
+			t.Fatalf("note kind = %q, want %q", n.Kind, transform.NoteUnmapped)
+		}
+	})
+}
+
+// packageurl-go only refuses an empty name, so a groupId carrying a separator
+// silently becomes a nested namespace that looks plausible and resolves to
+// nothing. Steps 1 and 2 of §6.2 read these out of the SBOM.
+func TestResolvedCoordinatesAreValidated(t *testing.T) {
+	cases := []struct {
+		name, group, artifact, wantReason string
+	}{
+		{"a slash in the groupId", "com/example", "widget", "contains a purl separator"},
+		{"an at sign in the artifactId", "com.example", "widget@1", "contains a purl separator"},
+		{"whitespace in the groupId", "com example", "widget", "contains whitespace"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			purl := "pkg:p2/com.example.widget@2.0.0?classifier=osgi.bundle"
+			res, purls, _ := run(t, nil, source(component(
+				purl, "p2.eclipse.plugin", "com.example.widget", "2.0.0", purl,
+				properties("maven-groupId", tc.group, "maven-artifactId", tc.artifact))))
+
+			if strings.HasPrefix(purls[0], "pkg:maven/") {
+				t.Fatalf("purl = %q, want the bad coordinate refused", purls[0])
+			}
+			n := onlyNote(t, res)
+			if n.Kind != transform.NoteUnmapped {
+				t.Fatalf("note kind = %q, want %q", n.Kind, transform.NoteUnmapped)
+			}
+			if !strings.Contains(n.Reason, tc.wantReason) {
+				t.Fatalf("reason = %q, want it to mention %q", n.Reason, tc.wantReason)
+			}
+		})
+	}
+}
+
+// §6.1 is applied once, to the raw version substring, with the decoded form
+// derived from that same split. Applying it separately to the decoded version
+// disagrees when the version carries percent-encoding — %2E is a dot after
+// decoding but not before — and the document would then claim a qualifier drop
+// that did not happen.
+func TestVersionRuleIsAppliedOnceToTheRawVersion(t *testing.T) {
+	purl := "pkg:p2/com.google.gson@1.0.0%2E5.v1?classifier=osgi.bundle"
+	_, purls, doc := run(t, nil, source(component(
+		purl, "p2.eclipse.plugin", "com.google.gson", "1.0.0.5.v1", purl, "")))
+
+	// Raw segments: "1", "0", "0%2E5", "v1" — four, the fourth non-numeric, so
+	// the qualifier is dropped and the decoded version follows the same split.
+	want := "pkg:maven/com.google.code.gson/gson@1.0.0.5"
+	if purls[0] != want {
+		t.Fatalf("purl = %q, want %q", purls[0], want)
+	}
+	if got := componentProperties(t, doc, 0)[p2.QualifierProperty]; got != "v1" {
+		t.Fatalf("%s = %q, want %q", p2.QualifierProperty, got, "v1")
 	}
 }

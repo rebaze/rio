@@ -20,6 +20,7 @@ package p2
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/package-url/packageurl-go"
@@ -110,13 +111,14 @@ func (r *repairer) Apply(doc *sbom.Document) (transform.Result, error) {
 func (r *repairer) applyTo(c *sbom.Component, res *transform.Result) {
 	original := c.PURL()
 
-	// Scope filter step 1 (§6.3). A component whose purl is absent, unparseable
-	// or not of type p2 is left alone unconditionally. That includes the
-	// installable unit already carrying a valid pkg:maven purl with a synthetic
-	// groupId that will never resolve: garbage in stays garbage, visibly,
+	// Scope filter step 1 (§6.3). The transform touches a component whose purl
+	// type is p2, or one whose purl is absent but which carries an OSGi bundle
+	// symbolic name. A component with a valid pkg:maven purl is left alone
+	// unconditionally — including the installable unit carrying a synthetic
+	// groupId that will never resolve. Garbage in stays garbage, visibly,
 	// rather than being silently "corrected" into different garbage.
 	if original == "" {
-		r.skip(res, c.Index, original, "component has no purl")
+		r.applyToBundleWithoutPURL(c, res)
 		return
 	}
 	parsed, err := packageurl.FromString(original)
@@ -151,52 +153,37 @@ func (r *repairer) applyTo(c *sbom.Component, res *transform.Result) {
 	// Operation A, the version qualifier (§6.1). It runs independently of
 	// whether the coordinates can be mapped, so a bundle can have its version
 	// fixed while staying unmapped.
+	//
+	// The rule is applied once, to the raw version substring, and the decoded
+	// form is derived from that same split. Applying it separately to the
+	// decoded version can disagree with the raw one when the version carries
+	// percent-encoding — a %2E is a dot after decoding but not before — and
+	// the document would then claim a qualifier drop that did not happen.
 	repaired := original
 	version := parsed.Version
 	if splittable {
 		if base, dropped := splitVersionQualifier(rawVersion); dropped != "" {
 			repaired = head + base + tail
-			version, _ = splitVersionQualifier(parsed.Version)
-			c.AddProperty(QualifierProperty, dropped)
+			version = decodeSegment(base, parsed.Version)
+			c.AddProperty(QualifierProperty, decodeSegment(dropped, dropped))
 		}
 	}
 
 	// Operation B, the coordinate mapping (§6.2).
-	if coords, found := r.resolve(c, parsed); !found {
+	coords, found := r.resolve(c, &parsed)
+	if !found {
 		// No hit. The purl keeps its p2 type, its name and all its qualifiers;
 		// only the version fix from A survives. A groupId is never inferred
 		// from the symbolic name prefix, because a wrong coordinate is worse
 		// than a missing one: it produces confident lookups against the wrong
 		// package.
-		res.Notes = append(res.Notes, transform.Note{
-			ComponentIndex: c.Index,
-			Kind:           transform.NoteUnmapped,
-			PURL:           original,
-			Reason:         unmappedReason,
-		})
+		r.unmapped(res, c.Index, original, unmappedReason)
+	} else if reason, ok := coords.valid(); !ok {
+		r.unmapped(res, c.Index, original, reason)
 	} else {
 		// The p2 qualifiers describe the p2 repository, not the Maven
 		// artifact, so they are dropped along with any subpath.
-		mapped := packageurl.PackageURL{
-			Type:      packageurl.TypeMaven,
-			Namespace: coords.GroupID,
-			Name:      coords.ArtifactID,
-			Version:   version,
-		}
-		if err := mapped.Normalize(); err != nil {
-			// Coordinates that cannot form a purl are reported, never written:
-			// a malformed lookup key is the failure mode this transform exists
-			// to remove.
-			res.Notes = append(res.Notes, transform.Note{
-				ComponentIndex: c.Index,
-				Kind:           transform.NoteUnmapped,
-				PURL:           original,
-				Reason: fmt.Sprintf("resolved coordinates %s:%s do not form a valid purl: %v",
-					coords.GroupID, coords.ArtifactID, err),
-			})
-		} else {
-			repaired = mapped.ToString()
-		}
+		repaired = mavenPURL(coords, version)
 	}
 
 	// One Change per component even when both operations fired: the purl has
@@ -213,6 +200,109 @@ func (r *repairer) applyTo(c *sbom.Component, res *transform.Result) {
 	})
 }
 
+// applyToBundleWithoutPURL handles §6.3's second case: a component with no
+// purl that carries an OSGi bundle symbolic name.
+//
+// There is no classifier qualifier to check here, so the scope filter is the
+// group prefix plus a symbolic name, and a coordinate is only ever written on
+// a real table or property hit. Nothing is inferred from the name: writing a
+// purl the generator did not write is only defensible when a curated entry
+// says what it should be.
+func (r *repairer) applyToBundleWithoutPURL(c *sbom.Component, res *transform.Result) {
+	name := c.Name()
+	if group := c.Group(); !strings.HasPrefix(group, r.groupPrefix) {
+		r.skip(res, c.Index, "", fmt.Sprintf(
+			"component has no purl, and group %q does not start with %q", group, r.groupPrefix))
+		return
+	}
+	if name == "" {
+		r.skip(res, c.Index, "", "component has no purl and no name to resolve it by")
+		return
+	}
+
+	coords, found := r.resolveByName(c, name)
+	if !found {
+		r.unmapped(res, c.Index, "", unmappedReason)
+		return
+	}
+	if reason, ok := coords.valid(); !ok {
+		r.unmapped(res, c.Index, "", reason)
+		return
+	}
+
+	// component.version is the only version available, so §6.1 applies to it
+	// here. The component's own version field still stays as found (§6.4).
+	version, dropped := splitVersionQualifier(c.Version())
+	if dropped != "" {
+		c.AddProperty(QualifierProperty, dropped)
+	}
+
+	repaired := mavenPURL(coords, version)
+	c.SetPURL(repaired)
+	res.Changes = append(res.Changes, transform.Change{
+		ComponentIndex: c.Index,
+		Field:          "purl",
+		From:           "",
+		To:             repaired,
+	})
+}
+
+// mavenPURL builds the repaired coordinate. Rebuilding through packageurl-go
+// rather than by hand keeps percent-encoding and qualifier ordering correct.
+func mavenPURL(coords coordinates, version string) string {
+	p := packageurl.PackageURL{
+		Type:      packageurl.TypeMaven,
+		Namespace: coords.GroupID,
+		Name:      coords.ArtifactID,
+		Version:   version,
+	}
+	return p.ToString()
+}
+
+// valid rejects coordinates that would produce a confident but wrong lookup
+// key, and says why.
+//
+// packageurl-go only refuses an empty name, so it is no guard here: a groupId
+// of "com/example" silently becomes the nested namespace
+// pkg:maven/com/example/artifact, which resolves to nothing while looking
+// entirely plausible. Steps 1 and 2 of §6.2 read these values out of the SBOM,
+// so they are as untrusted as the document itself.
+func (c coordinates) valid() (reason string, ok bool) {
+	for _, f := range []struct{ what, value string }{
+		{"groupId", c.GroupID},
+		{"artifactId", c.ArtifactID},
+	} {
+		switch {
+		case f.value == "":
+			return "resolved " + f.what + " is empty", false
+		case strings.ContainsAny(f.value, "/?#@"):
+			return fmt.Sprintf("resolved %s %q contains a purl separator", f.what, f.value), false
+		case strings.TrimSpace(f.value) != f.value || strings.ContainsAny(f.value, " \t\n\r"):
+			return fmt.Sprintf("resolved %s %q contains whitespace", f.what, f.value), false
+		}
+	}
+	return "", true
+}
+
+// decodeSegment returns the decoded form of a raw purl segment, falling back to
+// the value the parser already produced when the escape is malformed.
+func decodeSegment(raw, fallback string) string {
+	decoded, err := url.PathUnescape(raw)
+	if err != nil {
+		return fallback
+	}
+	return decoded
+}
+
+func (r *repairer) unmapped(res *transform.Result, index int, purl, reason string) {
+	res.Notes = append(res.Notes, transform.Note{
+		ComponentIndex: index,
+		Kind:           transform.NoteUnmapped,
+		PURL:           purl,
+		Reason:         reason,
+	})
+}
+
 func (r *repairer) skip(res *transform.Result, index int, purl, reason string) {
 	res.Notes = append(res.Notes, transform.Note{
 		ComponentIndex: index,
@@ -225,7 +315,7 @@ func (r *repairer) skip(res *transform.Result, index int, purl, reason string) {
 // inScope reports whether the component is in scope for the transform, and why
 // not when it is not (§6.2).
 func (r *repairer) inScope(c *sbom.Component, parsed packageurl.PackageURL) (reason string, ok bool) {
-	classifier := qualifier(parsed, "classifier")
+	classifier := qualifier(&parsed, "classifier")
 	if classifier != r.classifier {
 		if classifier == "" {
 			return fmt.Sprintf("purl carries no classifier qualifier, want %q", r.classifier), false
@@ -239,12 +329,22 @@ func (r *repairer) inScope(c *sbom.Component, parsed packageurl.PackageURL) (rea
 }
 
 // resolve runs §6.2's resolution order, first hit wins.
-func (r *repairer) resolve(c *sbom.Component, parsed packageurl.PackageURL) (coordinates, bool) {
+func (r *repairer) resolve(c *sbom.Component, parsed *packageurl.PackageURL) (coordinates, bool) {
 	// 1. Qualifiers already on the purl. Free, exact, no table needed.
 	if g, a := qualifier(parsed, qualifierGroupID), qualifier(parsed, qualifierArtifactID); g != "" && a != "" {
 		return coordinates{GroupID: g, ArtifactID: a}, true
 	}
 
+	// Steps 2 and 3 are keyed by the bundle symbolic name, which is the purl's
+	// name segment rather than component.name: the purl is the field being
+	// repaired and the only one guaranteed to hold the symbolic name, even
+	// though the two agree in every generator seen so far.
+	return r.resolveByName(c, parsed.Name)
+}
+
+// resolveByName runs steps 2 and 3 of §6.2's resolution order. Step 1 needs
+// purl qualifiers and is therefore unavailable to a component with no purl.
+func (r *repairer) resolveByName(c *sbom.Component, name string) (coordinates, bool) {
 	// 2. The component's own properties, for generators that carry Maven
 	//    coordinates there.
 	props := c.Properties()
@@ -255,11 +355,8 @@ func (r *repairer) resolve(c *sbom.Component, parsed packageurl.PackageURL) (coo
 		}
 	}
 
-	// 3. The mapping table, keyed by bundle symbolic name. The key is the
-	//    purl's name segment rather than component.name: the purl is the field
-	//    being repaired and the only one guaranteed to hold the symbolic name,
-	//    even though the two agree in every generator seen so far.
-	if coords, found := r.table[parsed.Name]; found {
+	// 3. The mapping table.
+	if coords, found := r.table[name]; found {
 		return coords, true
 	}
 
@@ -269,7 +366,7 @@ func (r *repairer) resolve(c *sbom.Component, parsed packageurl.PackageURL) (coo
 
 // qualifier reads one purl qualifier. Keys are compared case-insensitively
 // because packageurl-go lowercases them on parse and generators do not.
-func qualifier(parsed packageurl.PackageURL, key string) string {
+func qualifier(parsed *packageurl.PackageURL, key string) string {
 	for _, q := range parsed.Qualifiers {
 		if strings.EqualFold(q.Key, key) {
 			return q.Value
