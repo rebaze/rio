@@ -19,6 +19,11 @@ jobs:
     name: Analyze Go
     runs-on: ubuntu-latest
     permissions:
+      # contents: read is not inherited: a job-level permissions block replaces
+      # the workflow-level one outright rather than adding to it. Without it
+      # actions/checkout gets a token that cannot read this private repository
+      # and fails with "Repository not found".
+      contents: read
       security-events: write
 
     steps:
