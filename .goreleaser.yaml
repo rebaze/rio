@@ -49,6 +49,10 @@ changelog:
       - "^docs:"
       - "^test:"
       - "^ci:"
+      # Every change lands through a PR, so the merge commit says nothing the
+      # commit it merges does not already say. Without this the notes are
+      # roughly half "Merge pull request #NN from rebaze/...".
+      - "^Merge pull request"
 
 homebrew_casks:
   - repository:
