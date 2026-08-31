@@ -227,7 +227,10 @@ class Fetcher:
         if cached:
             return data
         if self.offline:
-            return None
+            # A cache miss offline means nobody was asked, which is not the
+            # same as being told no. Returning None here would let --offline
+            # quietly demote good coordinates on a half-warm cache.
+            raise Transient(f"{url}: not cached and running offline")
         self.misses += 1
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         return self._fetch(req, path, marker, timeout)
@@ -245,7 +248,7 @@ class Fetcher:
         if cached:
             return data
         if self.offline:
-            return None
+            raise Transient(f"{url}: not cached and running offline")
         self.misses += 1
         req = urllib.request.Request(
             url,
@@ -1116,6 +1119,7 @@ def main() -> int:
         unpublished: list[tuple[str, str]] = []
         unknown = 0
         stale = 0
+        absent = 0
         for (bsn, hit), verdict in zip(claimed.items(), published):
             entry = (hit[0], hit[1], ECLIPSE_ASSERTED, hit[2])
             if verdict == UNKNOWN:
@@ -1125,6 +1129,7 @@ def main() -> int:
                 unknown += 1
                 resolved[bsn] = entry
             elif verdict == ABSENT:
+                absent += 1
                 unpublished.append((bsn, hit[1]))
             elif verdict == WRONG_VERSION:
                 # A real coordinate, but not one that ships this build. The
@@ -1143,10 +1148,10 @@ def main() -> int:
                 deferred[bsn] = entry
             else:
                 resolved[bsn] = entry
-        if unpublished:
-            log(f"  rejected {len(unpublished)} coordinates that Central does not publish")
+        if absent:
+            log(f"  {absent} name a coordinate Central does not publish at all")
         if stale:
-            log(f"  {stale} exist but do not publish this bundle's version")
+            log(f"  {stale} exist on Central but not at this bundle's version")
         if unknown:
             log(f"  {unknown} could not be confirmed (network); kept, rerun to settle")
         if deferred:
