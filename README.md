@@ -372,11 +372,15 @@ could not settle:
    name, then the jar is fetched and its `Bundle-SymbolicName` header read back. A mismatch
    rejects the guess and the next candidate is tried. Only the first 32 KB of each jar is
    fetched, since the manifest is the first entry.
-4. **Maven Central by exact SHA-1**, where the SBOM's hashes are usable at all. Needs `--search`.
+4. **Maven Central by exact SHA-1**, where the SBOM's hashes are usable at all. Exact when it
+   hits. It asks only about what the stages above could not settle, and skips any hash shared by
+   more than one component, so it is normally a handful of requests — on the estate this was built
+   for, eleven. `--no-hash` turns it off.
 
-`--search` also lets stages 2 and 3 ask `search.maven.org` which groupIds publish an artifactId.
-It is off by default: it is the only rate-limited dependency here, and on the estate this was
-built for it added nothing the repo1-only stages had not already found.
+`--search` is separate, and off by default. It lets stages 1b and 2 ask `search.maven.org` which
+groupIds publish a given artifactId, for names the repo1 stages could not settle. On the estate
+this was built for it found nothing they had not already found, and it is slow, because every
+answer it offers still costs a jar to verify.
 
 Two things are reported rather than guessed at. **Ambiguity**: when several groupIds publish a jar
 declaring the same symbolic name, one is a re-publisher and the manifest cannot say which, so no

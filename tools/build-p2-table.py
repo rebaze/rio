@@ -29,7 +29,8 @@ corroborate it.
      Bundle-SymbolicName header read back. A mismatch rejects the guess and the
      next candidate is tried. The guess is never trusted on its own.
   3. Maven Central by exact SHA-1, where the SBOM's hashes are usable at all;
-     often they are not, see poisoned_hashes. Needs --search.
+     often they are not, see poisoned_hashes. Exact when it hits, and it only
+     asks about what stages 1 and 2 could not settle, so it stays cheap.
 
 Anything that survives none of those is reported rather than guessed at. So is
 anything genuinely ambiguous: when several groupIds publish a jar declaring the
@@ -1010,13 +1011,20 @@ def main() -> int:
                    help="p2 repository to harvest; repeatable, later wins. Defaults to SimRel + Orbit")
     p.add_argument("--no-p2", action="store_true", help="skip the Eclipse metadata stage")
     p.add_argument("--no-name-split", action="store_true", help="skip the name-split stage")
-    p.add_argument("--no-hash", action="store_true", help="skip the SHA-1 stage")
+    p.add_argument(
+        "--no-hash",
+        action="store_true",
+        help="skip the SHA-1 stage. It runs by default: it only asks about bundles "
+        "the earlier stages left unresolved, and only those whose hash is not shared "
+        "with another component, so it is usually a handful of requests",
+    )
     p.add_argument(
         "--search",
         action="store_true",
-        help="also ask search.maven.org which groupIds publish an artifactId. Off by "
-        "default: on the estate this was built for it added nothing the repo1 stages "
-        "had not already found, while being the only rate-limited dependency here",
+        help="also ask search.maven.org which groupIds publish an artifactId, for names "
+        "the repo1 stages could not settle. Off by default: on the estate this was built "
+        "for it added nothing they had not already found, and it is slow because each "
+        "answer costs a jar to verify. Unrelated to --no-hash, which has its own stage",
     )
     p.add_argument("--first-party-prefix", action="append", dest="first_party", default=[],
                    metavar="PREFIX", help="never map bundles under this prefix; repeatable")
@@ -1236,7 +1244,7 @@ def main() -> int:
                 log(f"  {len(ambiguous)} left ambiguous between several groupIds")
 
     # ---- stage 3 ---------------------------------------------------------
-    if not args.no_hash and args.search:
+    if not args.no_hash:
         poisoned = poisoned_hashes(list(work.values()))
         if poisoned:
             log(f"stage 3: ignoring {len(poisoned)} SHA-1 values shared by several components")
