@@ -1,5 +1,12 @@
 # rio
 
+[![CI](https://github.com/rebaze/rio/actions/workflows/ci.yaml/badge.svg)](https://github.com/rebaze/rio/actions/workflows/ci.yaml)
+[![Release](https://github.com/rebaze/rio/actions/workflows/release.yaml/badge.svg)](https://github.com/rebaze/rio/actions/workflows/release.yaml)
+[![GitHub Release](https://img.shields.io/github/v/release/rebaze/rio)](https://github.com/rebaze/rio/releases/latest)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/github/go-mod/go-version/rebaze/rio)](go.mod)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rebaze/rio/badge)](https://scorecard.dev/viewer/?uri=github.com/rebaze/rio)
+
 The open supply chain governance CLI: it collects the evidence your build already produces,
 normalizes it into a shape the rest of the world can actually resolve, and holds it to a standard
 you declared before it leaves the pipeline.
