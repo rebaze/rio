@@ -133,6 +133,14 @@ Hardest evidence first. Each stage only sees what the ones before it could not s
    `com.google.guava:guava`. That shape is not a split at all, and it is one of the commonest
    conventions in Java.
 
+   The version is evidence rather than output — the table records no version — so it only has to be
+   good enough to fetch the right jar. An OSGi version has nowhere to put a Maven qualifier, so
+   guava's `30.1-jre` and `30.1-android` are both the bundle's `30.1.0`, and both are searched. A
+   further numeric segment is not a qualifier: `30.1.1` is a different release from `30.1`, while
+   `4.1.65.Final` is `4.1.65`. Which variant a bundle came from is still a guess, so a qualified
+   version may only ever reach `manifest-proven` — never `inferred`, which would be two guesses
+   stacked.
+
 4. **Maven Central by exact SHA-1.** Exact when it hits, where the SBOM's hashes are usable at all.
    It asks only about what the stages above could not settle and skips any hash shared by more than
    one component, so it is normally a handful of requests. `--no-hash` turns it off.

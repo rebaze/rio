@@ -591,6 +591,32 @@ def version_candidates(version: str) -> list[str]:
     return out
 
 
+def qualified_versions(wanted: list[str], published: list[str]) -> list[str]:
+    """Published versions that are one of `wanted` with a Maven qualifier on it.
+
+    An OSGi version is major.minor.micro and has nowhere to put a Maven
+    qualifier, so guava's 30.1-jre and 30.1-android are both the bundle's
+    30.1.0 and neither is spelled that way anywhere in the SBOM. Refusing to
+    look at them leaves a coordinate that could be proven sitting at inferred.
+
+    A further numeric segment is NOT a qualifier: 30.1.1 is a different release
+    from 30.1, while 4.1.65.Final is 4.1.65. A Maven qualifier never begins
+    with a digit, and that is exactly the distinction drawn here.
+
+    Sorted, so the run does not depend on the order maven-metadata.xml happens
+    to list versions in (§7).
+    """
+    out = set()
+    for want in wanted:
+        for version in published:
+            if version == want or not version.startswith(want):
+                continue
+            rest = version[len(want):]
+            if rest[0] == "-" or (rest[0] == "." and len(rest) > 1 and not rest[1].isdigit()):
+                out.add(version)
+    return sorted(out)
+
+
 def coordinate_candidates(bsn: str, limit: int = 12) -> list[tuple[str, str]]:
     """Every (groupId, artifactId) the symbolic name could decompose into.
 
@@ -774,19 +800,40 @@ def resolve_by_name(fetcher: Fetcher, bundle: Bundle) -> Optional[tuple]:
         # The table records only groupId and artifactId, so the version is
         # evidence rather than output: it is what lets the jar be fetched and
         # the symbolic name read back.
+        #
+        # The version the bundle states is used when Central publishes it. A
+        # Maven qualifier is the fallback, because it is something OSGi cannot
+        # express -- but which variant of a release the bundle was built from
+        # is then a guess, so it is only allowed to reach a PROVEN answer,
+        # never the unproven one below. Two guesses stacked is not an entry.
         matching = [v for v in wanted if v in published]
-        if not matching:
-            continue
-        version = matching[0]
+        if matching:
+            version, stated = matching[0], True
+        else:
+            qualified = qualified_versions(wanted, published)
+            if not qualified:
+                continue
+            version, stated = qualified[0], False
+
         declared = jar_symbolic_name(fetcher, group, artifact, version)
         if declared in (bundle.bsn, stem):
-            return group, artifact, MANIFEST_PROVEN, f"{group}:{artifact}:{version}"
+            evidence = f"{group}:{artifact}:{version}"
+            if not stated:
+                # Say why the version read is not the one the bundle states,
+                # or the review report reads like a mismatch.
+                evidence += f" (Maven qualifier; bundle version {bundle.version})"
+            return group, artifact, MANIFEST_PROVEN, evidence
         if declared:
             # The jar names a different bundle. Wrong artifact, keep going.
             continue
-        # Exists at the right version, but the jar predates OSGi and carries no
-        # symbolic name, so nothing can prove it. Hold it in case nothing
-        # better turns up.
+        if not stated:
+            # No header on a variant this run picked. Every variant of one
+            # release carries the same headers, so there is nothing else to
+            # read and nothing that could be inferred from a guessed variant.
+            continue
+        # Exists at the version the bundle states, but the jar predates OSGi
+        # and carries no symbolic name, so nothing can prove it. Hold it in
+        # case nothing better turns up.
         if fallback is None:
             fallback = (
                 group,

@@ -22,6 +22,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+import zipfile
 
 
 def _load_tool():
@@ -433,6 +434,136 @@ class CandidateTest(unittest.TestCase):
             with self.subTest(bsn=bsn):
                 candidates = tool.coordinate_candidates(bsn)
                 self.assertEqual(len(candidates), len(set(candidates)))
+
+
+class FakeCentral:
+    """Just enough of repo1 to drive the name-split stage with no network.
+
+    artifacts maps (groupId, artifactId) to {version: Bundle-SymbolicName},
+    where None means the jar carries no such header at all -- the distinction
+    the whole inferred tier rests on.
+    """
+
+    def __init__(self, artifacts):
+        self.artifacts = artifacts
+        self.fetched = []
+
+    def _jar(self, bsn):
+        buf = io.BytesIO()
+        lines = "Manifest-Version: 1.0\r\n"
+        if bsn:
+            lines += f"Bundle-SymbolicName: {bsn}\r\n"
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
+            zf.writestr("META-INF/MANIFEST.MF", lines)
+        return buf.getvalue()
+
+    def get(self, url, timeout=30):
+        self.fetched.append(url)
+        for (group, artifact), versions in self.artifacts.items():
+            base = f"{tool.REPO1}/{group.replace('.', '/')}/{artifact}"
+            if url == f"{base}/maven-metadata.xml":
+                body = "".join(f"<version>{v}</version>" for v in versions)
+                return f"<metadata><versioning><versions>{body}</versions></versioning></metadata>".encode()
+            for version, bsn in versions.items():
+                if url == f"{base}/{version}/{artifact}-{version}.jar":
+                    return self._jar(bsn)
+        return None
+
+    def get_range(self, url, nbytes, timeout=30):
+        data = self.get(url, timeout=timeout)
+        return data[:nbytes] if data else None
+
+
+class QualifiedVersionTest(unittest.TestCase):
+    """An OSGi version cannot express a Maven qualifier.
+
+    guava's 30.1-jre and 30.1-android are both the bundle's 30.1.0, and
+    neither is spelled that way anywhere in the SBOM. Refusing to look at them
+    leaves a coordinate that could be proven sitting at inferred.
+    """
+
+    def test_a_hyphen_qualifier_is_the_same_release(self):
+        self.assertEqual(
+            tool.qualified_versions(["30.1.0", "30.1"], ["30.1-jre", "30.1-android", "29.0"]),
+            ["30.1-android", "30.1-jre"],
+        )
+
+    def test_a_dot_qualifier_is_the_same_release(self):
+        self.assertEqual(
+            tool.qualified_versions(["4.1.65"], ["4.1.65.Final", "4.1.64.Final"]),
+            ["4.1.65.Final"],
+        )
+
+    def test_a_further_numeric_segment_is_a_different_release(self):
+        # 30.1.1 is not 30.1. A Maven qualifier never begins with a digit,
+        # which is exactly the distinction.
+        self.assertEqual(tool.qualified_versions(["30.1"], ["30.1.1", "30.1.0"]), [])
+
+    def test_an_exact_match_is_not_a_qualified_one(self):
+        self.assertEqual(tool.qualified_versions(["30.1"], ["30.1"]), [])
+
+    def test_an_unrelated_version_never_matches(self):
+        self.assertEqual(tool.qualified_versions(["1.2"], ["1.20-jre", "11.2-jre"]), [])
+
+
+class ResolveByNameTest(unittest.TestCase):
+    """The name-split stage end to end, against a fake Central."""
+
+    def resolve(self, artifacts, bsn, version):
+        central = FakeCentral(artifacts)
+        return central, tool.resolve_by_name(central, tool.Bundle(bsn, version, None))
+
+    def test_a_qualified_version_can_prove_a_coordinate(self):
+        # The guava shape: the bundle says 30.1.0, Central publishes 30.1-jre,
+        # and the jar's own header settles it.
+        _, hit = self.resolve(
+            {("com.google.guava", "guava"): {"30.1-jre": "com.google.guava"}},
+            "com.google.guava", "30.1.0.v20210127-2300")
+        self.assertIsNotNone(hit)
+        group, artifact, confidence, evidence = hit
+        self.assertEqual((group, artifact), ("com.google.guava", "guava"))
+        self.assertEqual(confidence, tool.MANIFEST_PROVEN)
+        # The evidence says which variant was read, and why it is not the
+        # version the bundle states.
+        self.assertIn("30.1-jre", evidence)
+        self.assertIn("30.1.0.v20210127-2300", evidence)
+
+    def test_a_qualified_version_alone_never_stands_as_inferred(self):
+        # No header means nothing proved it, and the variant was a guess on
+        # top of that. Two guesses stacked is not an entry.
+        _, hit = self.resolve(
+            {("com.google.guava", "guava"): {"30.1-jre": None}},
+            "com.google.guava", "30.1.0.v20210127-2300")
+        self.assertIsNone(hit)
+
+    def test_the_stated_version_with_no_header_still_stands_as_inferred(self):
+        # The xstream shape, unchanged: Central publishes exactly this
+        # version, and the jar predates OSGi.
+        _, hit = self.resolve(
+            {("com.thoughtworks.xstream", "xstream"): {"1.4.3": None}},
+            "com.thoughtworks.xstream", "1.4.3")
+        self.assertEqual(hit[:3], ("com.thoughtworks.xstream", "xstream", tool.INFERRED))
+
+    def test_the_stated_version_is_preferred_over_a_qualified_one(self):
+        central, hit = self.resolve(
+            {("com.google.guava", "guava"): {"30.1": "com.google.guava", "30.1-jre": "com.google.guava"}},
+            "com.google.guava", "30.1.0")
+        self.assertIn("30.1", hit[3])
+        self.assertNotIn("30.1-jre", hit[3])
+        self.assertFalse([u for u in central.fetched if "30.1-jre" in u],
+                         "a qualified variant was fetched although the stated version exists")
+
+    def test_a_jar_declaring_another_bundle_is_still_rejected(self):
+        _, hit = self.resolve(
+            {("com.example.thing", "thing"): {"1.0-final": "com.example.somethingelse"}},
+            "com.example.thing", "1.0.0")
+        self.assertIsNone(hit)
+
+    def test_a_different_release_is_not_reached_through_a_qualifier(self):
+        _, hit = self.resolve(
+            {("com.google.guava", "guava"): {"30.1.1": "com.google.guava"}},
+            "com.google.guava", "30.1.0")
+        self.assertIsNone(hit)
 
 
 class MalformedInputTest(Base):
