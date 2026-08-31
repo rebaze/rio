@@ -1,10 +1,31 @@
 # rio
 
-A Go CLI that reads a manifest, finds each declared artifact's SBOM, levels the CycloneDX spec
-version, repairs p2 coordinates to Maven coordinates, checks minimum quality, and writes the results
-plus an index.
+The open supply chain governance CLI: it collects the evidence your build already produces,
+normalizes it into a shape the rest of the world can actually resolve, and holds it to a standard
+you declared before it leaves the pipeline.
 
 ## Why it exists
+
+Every build emits supply chain evidence, and everything downstream — advisory databases, policy
+engines, dashboards, auditors — expects that evidence in a shape nobody produced. SBOMs land in a
+dozen target directories, at different spec versions, describing the module that built the artifact
+rather than the artifact, carrying identities that resolve nowhere. Between "the build wrote
+something" and "a downstream tool can answer a question with it" sits a step nobody owns, and it is
+usually a pile of pipeline glue nobody wants to maintain.
+
+rio is the missing piece there. One manifest, committed next to the code and reviewed like code,
+declares which artifacts a repository ships and what their evidence has to look like. One run
+collects each artifact's SBOM, levels the spec version, repairs identity, checks the result against
+the quality you asked for, and writes the normalized documents plus an `index.json` that says what
+happened. It is a single static binary that makes no network calls, so it behaves the same on an
+air-gapped build agent as on a laptop.
+
+Nothing is guessed and nothing is silent. Every change rio makes is recorded in the document that
+carries it, so a normalized SBOM can be read on its own and still say what was rewritten, by which
+rule, and what it used to be. Every miss is recorded the same way, because a gap you can see is
+worth more than a coordinate that might be wrong.
+
+### The case it was built for
 
 An Eclipse RCP product's SBOM uploads to DependencyTrack today with almost no findings, because
 nothing in the vulnerability world understands p2 coordinates. A component identified as
@@ -13,7 +34,8 @@ project comes back clean and the clean result is meaningless.
 
 After normalization the same component reads `pkg:maven/com.google.code.gson/gson@2.8.9`, and the
 CVEs that were there the whole time appear. That before-and-after difference is the acceptance
-criterion for this tool.
+criterion for this tool. p2 is the first ecosystem rio repairs, not the reason it exists: the seam
+it plugs into is a transform seam, and the next broken identity scheme lands next to it.
 
 ## What `rio normalize` does
 
@@ -210,8 +232,9 @@ processed nothing looks identical to a clean run.
 
 ## Out of scope
 
-These are deliberate refusals, not gaps. Do not implement, and do not leave hooks that invite
-implementation:
+rio owns the evidence layer — collect, normalize, gate, index. Analysis, enrichment and storage
+belong to the tools it feeds, and the following are deliberate refusals rather than gaps. Do not
+implement them, and do not leave hooks that invite implementation:
 
 - merging multiple SBOMs into one closure
 - scope filtering or shipped-set reduction

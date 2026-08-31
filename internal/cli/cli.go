@@ -65,10 +65,12 @@ type globalOptions struct {
 func newRootCommand(opts *globalOptions, stdout, stderr io.Writer) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "rio",
-		Short: "Normalize CycloneDX SBOMs so downstream tools can resolve identity",
-		Long: "rio reads a manifest, finds each declared artifact's SBOM, levels the\n" +
-			"CycloneDX spec version, repairs p2 coordinates to Maven coordinates,\n" +
-			"checks minimum quality, and writes the results plus an index.\n\n" +
+		Short: "Collect, normalize and gate a build's supply chain evidence",
+		Long: "rio is the open supply chain governance CLI. It collects the evidence your\n" +
+			"build already produces, normalizes it into a shape downstream tools can\n" +
+			"resolve, and holds it to the quality you declared in the manifest.\n\n" +
+			"One manifest in; one normalized document per artifact plus index.json out.\n" +
+			"Every repair and every miss is recorded in the document that carries it.\n\n" +
 			"rio makes no network calls.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
