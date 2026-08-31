@@ -203,8 +203,10 @@ Four more rules follow from the same principle, each because its absence has a f
   existing redundant entry is dropped on the next run. One that *contradicts* the built-in is kept,
   because that is a deliberate local override, and flagged in the review file.
 
-A table whose `schemaVersion` is not 1 is refused rather than rewritten: rio would not load it, and
-rewriting it would produce a file rio still refuses with the old contents gone.
+A table rio would refuse to load is refused here too, and refused *before* any of it is rewritten —
+a wrong `schemaVersion`, an entry that is not a coordinate pair, an empty `groupId`. The alternative
+is spending a whole run producing a file rio still will not load, having destroyed what was there in
+the process.
 
 `--overwrite` lifts the pin rule and the no-downgrade rule together. Both exist for a reason; this
 is the escape hatch, not the normal path.

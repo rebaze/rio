@@ -411,8 +411,7 @@ def infer_first_party_prefix(doc: dict) -> Optional[str]:
 
 
 def read_sbom(path: str, scope: Scope) -> tuple[list[Bundle], Optional[str]]:
-    with open(path, "rb") as fh:
-        doc = json.load(fh)
+    doc = read_json_document(path, "SBOM")
     bundles = []
     for component in doc.get("components") or []:
         b = in_scope(component, scope)
@@ -968,6 +967,25 @@ def fail(msg: str) -> "SystemExit":
     return SystemExit("error: " + msg)
 
 
+def read_json_document(path: str, what: str) -> dict:
+    """Read one JSON document, turning every way it can fail into a message.
+
+    An unreadable file, a truncated write and a document that is not an object
+    at all are each something a person can act on, and none of them is worth a
+    traceback (§10). Everything downstream may then assume it has a mapping.
+    """
+    try:
+        with open(path, "rb") as fh:
+            doc = json.load(fh)
+    except OSError as err:
+        raise fail(f"reading the {what} {path}: {err.strerror or err}")
+    except ValueError as err:
+        raise fail(f"the {what} {path} is not JSON: {err}")
+    if not isinstance(doc, dict):
+        raise fail(f"the {what} {path} is not a JSON object")
+    return doc
+
+
 def load_plan(args) -> dict:
     """Get the wiring: rio.yaml as rio reads it, via `rio plan --json`.
 
@@ -978,8 +996,11 @@ def load_plan(args) -> dict:
         if args.plan == "-":
             raw, source = sys.stdin.read(), "standard input"
         else:
-            with open(args.plan, encoding="utf-8") as fh:
-                raw, source = fh.read(), args.plan
+            try:
+                with open(args.plan, encoding="utf-8") as fh:
+                    raw, source = fh.read(), args.plan
+            except OSError as err:
+                raise fail(f"reading the plan {args.plan}: {err.strerror or err}")
     else:
         cmd = [args.rio, "plan", "--json", "--manifest", args.manifest]
         try:
@@ -1023,6 +1044,23 @@ def load_plan(args) -> dict:
             "Upgrade rio."
         )
     return plan
+
+
+def plan_builtin(plan: dict) -> dict:
+    """rio's own mapping table, as the plan publishes it.
+
+    Checked here rather than trusted, because --plan takes a file a person can
+    hand-edit, and a value that is not a coordinate pair would otherwise reach
+    the merge and fail there with a traceback about a missing attribute.
+    """
+    builtin = plan.get("builtinTable") or {}
+    if not isinstance(builtin, dict) or any(not isinstance(e, dict) for e in builtin.values()):
+        raise fail(
+            "the plan's builtinTable is not a map of coordinates. This plan is not one "
+            "this tool can read; check that rio and tools/build-p2-table.py come from "
+            "the same release."
+        )
+    return builtin
 
 
 class Source(NamedTuple):
@@ -1146,19 +1184,41 @@ def plan_jobs(plan: dict) -> list[Job]:
 
 
 def load_table(path: str) -> dict:
-    """Read the table this run owns. A missing file is the bootstrap, not an error."""
+    """Read the table this run owns. A missing file is the bootstrap, not an error.
+
+    A table rio would refuse to load is refused here too, and refused BEFORE
+    any of it is rewritten. The alternative is spending a whole run producing a
+    file rio still will not load, having destroyed what was there in the
+    process. It is also what lets everything downstream -- the merge rules, the
+    built-in delta -- take an entry for a coordinate pair without re-checking.
+    """
     if not os.path.exists(path):
         return {}
-    with open(path, "rb") as fh:
-        doc = json.load(fh)
+    doc = read_json_document(path, "mapping table")
+
     if doc.get("schemaVersion") != SCHEMA_VERSION:
-        # rio would refuse to load this file. Rewriting it would produce a
-        # table it still refuses, with the old contents gone.
         raise fail(
             f"{path}: schemaVersion is {doc.get('schemaVersion')}, want {SCHEMA_VERSION}. "
             "rio would refuse to load this table, so it will not be rewritten."
         )
-    return doc.get("entries") or {}
+
+    entries = doc.get("entries") or {}
+    if not isinstance(entries, dict):
+        raise fail(f"{path}: entries is not an object. rio would refuse this table.")
+    for bsn, entry in entries.items():
+        if not isinstance(entry, dict):
+            raise fail(f"{path}: entry {bsn!r} is not an object. rio would refuse this table.")
+        for key in ("groupId", "artifactId"):
+            # Half an entry is worse than no entry: it produces a purl with an
+            # empty segment that looks resolvable and is not, which is why rio
+            # rejects it rather than reading around it.
+            value = entry.get(key)
+            if not isinstance(value, str) or not value:
+                raise fail(
+                    f"{path}: entry {bsn!r} has no usable {key}. rio would refuse this "
+                    "table, so it will not be rewritten."
+                )
+    return entries
 
 
 def write_table(path: str, entries: dict) -> None:
@@ -1209,6 +1269,10 @@ def merge_entries(existing: dict, resolved: dict, builtin: dict, overwrite: bool
       every later fix rio makes to it. A derived entry identical to the built-in
       is left out; one that contradicts it is kept, because that is a deliberate
       local override, and flagged for review.
+
+    Every entry in `existing` is a coordinate pair, because load_table refused
+    the table otherwise. That is held at the boundary rather than re-checked
+    here, in redundant_pins and in contradicts_builtin.
 
     Returns the new entries, the bucket each name landed in, and the coordinate
     changes worth showing a human.
@@ -1611,16 +1675,13 @@ def resolve_work(fetcher: Fetcher, args, work: dict[str, Bundle]):
 
 def run_job(fetcher: Fetcher, args, plan: dict, job: Job, review_override: Optional[str]) -> None:
     """Build one table from the SBOMs the manifest points at it."""
-    builtin = plan.get("builtinTable") or {}
+    builtin = plan_builtin(plan)
 
     # ---- work-list -------------------------------------------------------
     bundles: dict[str, Bundle] = {}
     inferred_prefixes: list[str] = []
     for source in job.sources:
-        try:
-            found, prefix = read_sbom(source.path, job.scope)
-        except OSError as err:
-            raise fail(f"artifact {source.artifact!r}: reading {source.path}: {err.strerror}")
+        found, prefix = read_sbom(source.path, job.scope)
         log(f"  {source.artifact}  {source.rel}   {len(found)} in-scope bundles")
         if prefix and not args.no_infer_first_party:
             inferred_prefixes.append(prefix)

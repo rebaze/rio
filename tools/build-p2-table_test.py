@@ -381,6 +381,98 @@ class SchemaVersionTest(Base):
         self.assertEqual(self.read_json("p2-maven.json")["schemaVersion"], 2)
 
 
+class MalformedInputTest(Base):
+    """Nothing a person can mistype should reach a traceback.
+
+    A refusal is a message that says what to fix; a stack trace is neither.
+    These are the inputs that arrive from outside the tool -- a table, an
+    SBOM, a plan -- and every way each of them can be wrong.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.write_json("bom.json", sbom(p2_bundle("com.example.one")))
+        self.doc = self.plan([self.artifact("a", "bom.json")])
+
+    def write_raw(self, name, text):
+        with open(self.path(name), "w", encoding="utf-8") as fh:
+            fh.write(text)
+
+    def test_a_table_that_is_not_json_is_refused(self):
+        self.write_raw("p2-maven.json", "{ this is not json")
+        message = self.expect_plan_failure(self.doc)
+        self.assertIn("p2-maven.json", message)
+        self.assertIn("not JSON", message)
+
+    def test_a_table_that_is_not_an_object_is_refused(self):
+        self.write_raw("p2-maven.json", "[]")
+        message = self.expect_plan_failure(self.doc)
+        self.assertIn("p2-maven.json", message)
+        self.assertIn("not a JSON object", message)
+
+    @unittest.skipIf(getattr(os, "geteuid", lambda: -1)() == 0,
+                     "root ignores the mode bits this relies on")
+    def test_an_unreadable_table_is_refused_by_name(self):
+        self.write_json("p2-maven.json", {"schemaVersion": 1, "entries": {}})
+        os.chmod(self.path("p2-maven.json"), 0o000)
+        self.addCleanup(os.chmod, self.path("p2-maven.json"), 0o644)
+        message = self.expect_plan_failure(self.doc)
+        self.assertIn("p2-maven.json", message)
+        self.assertNotIn("Traceback", message)
+
+    def test_a_table_rio_could_not_decode_is_refused_rather_than_rewritten(self):
+        # rio decodes each entry into a groupId/artifactId pair. Half an entry
+        # makes a purl with an empty segment that looks resolvable and is not,
+        # so rio refuses the file -- and a run that rewrote it in place would
+        # have spent itself producing a table rio still will not load.
+        for name, entries in (
+            ("entries is not an object", "nope"),
+            ("an entry is not an object", {"a.b": "nope"}),
+            ("an entry has no groupId", {"a.b": {"artifactId": "a"}}),
+            ("an entry has an empty artifactId", {"a.b": {"groupId": "g", "artifactId": ""}}),
+            ("an entry has a non-string groupId", {"a.b": {"groupId": 7, "artifactId": "a"}}),
+        ):
+            with self.subTest(name):
+                before = {"schemaVersion": 1, "entries": entries}
+                self.write_json("p2-maven.json", before)
+                message = self.expect_plan_failure(self.doc)
+                self.assertIn("rio would refuse", message)
+                self.assertNotIn("Traceback", message)
+                self.assertEqual(self.read_json("p2-maven.json"), before,
+                                 "a table rio refuses must not be rewritten")
+
+    def test_a_malformed_sbom_is_refused_by_artifact(self):
+        self.write_raw("bom.json", "{ truncated")
+        message = self.expect_plan_failure(self.doc)
+        self.assertIn("bom.json", message)
+        self.assertIn("not JSON", message)
+        self.assertNotIn("Traceback", message)
+
+    def test_a_missing_plan_file_is_refused_by_name(self):
+        message = self.expect_failure("--plan", self.path("no-such-plan.json"))
+        self.assertIn("no-such-plan.json", message)
+        self.assertNotIn("Traceback", message)
+
+    def test_a_plan_whose_builtin_table_is_junk_is_refused(self):
+        doc = self.plan([self.artifact("a", "bom.json")], builtin={"a.b": "not coordinates"})
+        message = self.expect_plan_failure(doc)
+        self.assertIn("builtinTable", message)
+        self.assertNotIn("Traceback", message)
+
+    def test_a_malformed_pin_cannot_reach_the_merge(self):
+        # merge_entries and redundant_pins assume every entry is a coordinate
+        # pair. That invariant is held at the boundary rather than re-checked
+        # in each of them, so this asserts the boundary actually holds it --
+        # including under --overwrite, which is the path that treats a pinned
+        # entry as this run's to replace.
+        self.write_json("p2-maven.json", {"schemaVersion": 1, "entries": {"a.b": "junk"}})
+        for extra in ([], ["--overwrite"]):
+            with self.subTest(extra=extra):
+                message = self.expect_plan_failure(self.doc, *extra)
+                self.assertIn("rio would refuse", message)
+                self.assertNotIn("Traceback", message)
+
+
 class MergeRulesTest(unittest.TestCase):
     """The merge rules on their own, where each one is a single assertion."""
 

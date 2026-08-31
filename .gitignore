@@ -6,3 +6,7 @@ DS_Store/
 .env
 
 __pycache__/
+
+# build-p2-table.py's default HTTP cache. It is regenerable, and a warm one
+# is tens of thousands of files.
+/.p2cache/
