@@ -12,4 +12,19 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 5
+    # Raised from 5: the cap is per ecosystem, and a capped batch does not
+    # queue the leftovers — the actions it did not reach simply get no PR and
+    # stay behind until a later run happens to have room.
+    open-pull-requests-limit: 15
+    groups:
+      # Dependabot counts each action path as its own dependency, so the four
+      # codeql-action subpaths and the two attest-* actions arrive as unrelated
+      # single-pin PRs. Each family has to move as a unit: a CodeQL run rejects
+      # steps from mismatched releases, and the two attestation steps share a
+      # node runtime. Group them so one PR moves the whole family.
+      codeql-action:
+        patterns:
+          - github/codeql-action*
+      attestations:
+        patterns:
+          - actions/attest*
