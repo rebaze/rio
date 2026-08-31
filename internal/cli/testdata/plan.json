@@ -1,0 +1,89 @@
+{
+  "planVersion": 1,
+  "tool": {
+    "name": "rio",
+    "version": "0.1.0-test"
+  },
+  "manifest": {
+    "path": "rio.yaml",
+    "dir": "<manifest dir>",
+    "sha256": "7094c279687b9090ac94a792aded92a1ef1733b964a9ff458dc465125d0113d6"
+  },
+  "out": "target/rio",
+  "builtinTable": {
+    "com.google.gson": {
+      "groupId": "com.google.code.gson",
+      "artifactId": "gson"
+    },
+    "org.apache.commons.lang3": {
+      "groupId": "org.apache.commons",
+      "artifactId": "commons-lang3"
+    },
+    "org.eclipse.core.databinding": {
+      "groupId": "org.eclipse.platform",
+      "artifactId": "org.eclipse.core.databinding"
+    },
+    "org.eclipse.core.databinding.beans": {
+      "groupId": "org.eclipse.platform",
+      "artifactId": "org.eclipse.core.databinding.beans"
+    },
+    "org.eclipse.core.databinding.observable": {
+      "groupId": "org.eclipse.platform",
+      "artifactId": "org.eclipse.core.databinding.observable"
+    },
+    "org.eclipse.core.databinding.property": {
+      "groupId": "org.eclipse.platform",
+      "artifactId": "org.eclipse.core.databinding.property"
+    },
+    "org.eclipse.equinox.common": {
+      "groupId": "org.eclipse.platform",
+      "artifactId": "org.eclipse.equinox.common"
+    },
+    "org.eclipse.equinox.launcher": {
+      "groupId": "org.eclipse.platform",
+      "artifactId": "org.eclipse.equinox.launcher"
+    },
+    "org.eclipse.osgi": {
+      "groupId": "org.eclipse.platform",
+      "artifactId": "org.eclipse.osgi"
+    }
+  },
+  "artifacts": [
+    {
+      "id": "rcp-example",
+      "input": {
+        "path": "tycho-rcp.cdx.json"
+      },
+      "output": {
+        "path": "rcp-example.cdx.json"
+      },
+      "transforms": [
+        {
+          "name": "repair-purl",
+          "ecosystem": "p2",
+          "table": "p2-maven.json",
+          "groupPrefix": "p2.",
+          "classifier": "osgi.bundle",
+          "syntheticNamespace": "p2.eclipse.plugin"
+        }
+      ]
+    },
+    {
+      "id": "rcp-example-unmapped",
+      "input": {
+        "path": "tycho-rcp.cdx.json"
+      },
+      "output": {
+        "path": "rcp-example-unmapped.cdx.json"
+      },
+      "transforms": []
+    }
+  ],
+  "gate": {
+    "require": [
+      "name",
+      "version",
+      "purl"
+    ]
+  }
+}

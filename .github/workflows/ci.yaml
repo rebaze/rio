@@ -43,16 +43,19 @@ jobs:
           go=false
           goreleaser=false
           shell=false
+          python=false
           # Fixtures, golden files and the embedded CycloneDX schemas are
           # inputs to the test suite, so a change to any of them has to run it.
           # Missing that is how a stale golden file reaches main.
           if grep -E '(\.go$|^go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$)' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.goreleaser\.yaml$' <<<"$CHANGED" >/dev/null; then goreleaser=true; fi
           if grep -E '\.sh$' <<<"$CHANGED" >/dev/null; then shell=true; fi
-          if grep -E '^\.github/workflows/ci\.yaml$' <<<"$CHANGED" >/dev/null; then go=true; goreleaser=true; shell=true; fi
+          if grep -E '\.py$' <<<"$CHANGED" >/dev/null; then python=true; fi
+          if grep -E '^\.github/workflows/ci\.yaml$' <<<"$CHANGED" >/dev/null; then go=true; goreleaser=true; shell=true; python=true; fi
           echo "go=$go" >> "$GITHUB_OUTPUT"
           echo "goreleaser=$goreleaser" >> "$GITHUB_OUTPUT"
           echo "shell=$shell" >> "$GITHUB_OUTPUT"
+          echo "python=$python" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: steps.changes.outputs.go == 'true' || steps.changes.outputs.goreleaser == 'true'
@@ -106,6 +109,7 @@ jobs:
           go build -trimpath -o rio ./cmd/rio
           ./rio version
           ./rio normalize --help > /dev/null
+          ./rio plan --help > /dev/null
 
       - name: Lint shell scripts
         if: steps.changes.outputs.shell == 'true'
@@ -126,6 +130,23 @@ jobs:
           set -euo pipefail
           ./install_test.sh
           ./tools/rio-dtrack-upload_test.sh
+
+      # build-p2-table.py advertises "Python 3.9+ and nothing else", and that
+      # is a promise about the interpreter a client already has rather than a
+      # rough guess. Pinning the floor here is what keeps it true: on the
+      # runner's own newer python, a 3.10-only expression would pass and only
+      # fail on the workstation it was written for.
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        if: steps.changes.outputs.python == 'true'
+        with:
+          python-version: "3.9"
+
+      - name: Test the Python tools
+        if: steps.changes.outputs.python == 'true'
+        run: |
+          set -euo pipefail
+          python3 --version
+          python3 tools/build-p2-table_test.py
 
       - name: Install GoReleaser
         if: steps.changes.outputs.goreleaser == 'true'

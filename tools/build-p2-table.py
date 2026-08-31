@@ -6,6 +6,18 @@ embedded in the binary or merged in from the manifest. This script is how that
 table is produced. It runs occasionally, on a workstation, and its output is
 reviewed and committed like any other asset.
 
+Run it from a repository root and it needs no arguments:
+
+    python3 tools/build-p2-table.py
+
+rio.yaml already says which SBOMs to read, which table to write and under which
+scope filter, so nothing here asks you to say it again. The wiring arrives as
+JSON from `rio plan --json`, which this script execs -- rio.yaml is YAML, and
+YAML is not in the standard library, so a Python parser for it would be either
+a dependency or a subset that drifts from rio's own loader. A tool that
+disagreed with rio about which files it read would be worse than one that made
+you type them.
+
 The ordering of the resolution stages is the whole design. A bundle symbolic
 name is NOT reliably groupId.artifactId -- com.google.inject is guice,
 com.ibm.icu is icu4j, com.sun.jna.platform is net.java.dev.jna:jna-platform,
@@ -51,6 +63,7 @@ import lzma
 import os
 import re
 import struct
+import subprocess
 import sys
 import time
 import urllib.error
@@ -109,10 +122,16 @@ ECLIPSE_GROUPS = (
     "org.eclipse.microprofile.health",
 )
 
-# Set by --synthetic-namespace; matches rio's DefaultSyntheticNamespace.
-DEFAULT_SYNTHETIC_NAMESPACE = "p2.eclipse.plugin"
-DEFAULT_GROUP_PREFIX = "p2."
-DEFAULT_CLASSIFIER = "osgi.bundle"
+# The plan contract this build understands. It is checked before anything else,
+# so a plan from a newer rio is refused by number rather than misread key by
+# key. rio calls the same number planVersion.
+PLAN_VERSION = 1
+
+# The transform and ecosystem this tool builds tables for. rio dispatches on
+# the same two values, and an artifact declaring neither is not this tool's
+# business.
+REPAIR_PURL = "repair-purl"
+ECOSYSTEM = "p2"
 
 # Confidence tiers, strongest first. The value lands in the emitted entry so a
 # reviewer can see how each coordinate was arrived at without rerunning this.
@@ -131,6 +150,14 @@ CONFIDENCE_RANK = {
     HASH_EXACT: 2,
     INFERRED: 3,
 }
+
+# Two tiers, not four. The three proven kinds are different KINDS of evidence
+# -- Eclipse said so, the jar's own manifest said so, a hash matched exactly --
+# rather than different strengths of one, and ranking them against each other
+# would invent a hierarchy nothing supports. What does need ranking is proof
+# against no proof: a rerun must never let an inferred guess overwrite a
+# coordinate something actually corroborated.
+PROVEN = frozenset({ECLIPSE_ASSERTED, MANIFEST_PROVEN, HASH_EXACT})
 
 
 class Transient(Exception):
@@ -269,6 +296,26 @@ class Bundle(NamedTuple):
     sha1: Optional[str]
 
 
+# The manifest keys the scope filter is spelled with, in Scope's field order.
+# A message about a disagreement has to name the key the author wrote, not the
+# identifier this module happens to use for it (§10).
+SCOPE_KEYS = ("groupPrefix", "classifier", "syntheticNamespace")
+
+
+class Scope(NamedTuple):
+    """rio's scope filter, as rio has it.
+
+    Every value comes from the plan, resolved, defaults already applied. This
+    tool holds no copy of "p2." or "osgi.bundle": a manifest that overrides
+    groupPrefix and a tool run that did not would harvest under one filter and
+    have rio read the result back under another, silently.
+    """
+
+    group_prefix: str
+    classifier: str
+    synthetic_namespace: str
+
+
 def parse_purl(purl: str) -> Optional[dict]:
     """Enough of a purl parser for the three shapes rio puts in scope."""
     if not purl.startswith("pkg:"):
@@ -306,7 +353,7 @@ def sha1_of(component: dict) -> Optional[str]:
     return None
 
 
-def in_scope(component: dict, synthetic_ns: str, group_prefix: str, classifier: str):
+def in_scope(component: dict, scope: Scope):
     """Mirror rio's scope filter, so this script and rio agree on the work-list.
 
     Diverging here would be worse than useless: the script would curate entries
@@ -319,7 +366,7 @@ def in_scope(component: dict, synthetic_ns: str, group_prefix: str, classifier: 
 
     if not purl:
         # A component with no purl beside an OSGi symbolic name.
-        if group.startswith(group_prefix) and name:
+        if group.startswith(scope.group_prefix) and name:
             return Bundle(name, version, sha1_of(component))
         return None
 
@@ -327,7 +374,7 @@ def in_scope(component: dict, synthetic_ns: str, group_prefix: str, classifier: 
     if not parsed:
         return None
 
-    if parsed["type"] == "maven" and parsed["namespace"] == synthetic_ns:
+    if parsed["type"] == "maven" and parsed["namespace"] == scope.synthetic_namespace:
         # A nested artefact repeats its bundle's name and version; resolving it
         # by name would put the bundle's coordinate on a jar shipped inside it.
         if parsed["qualifiers"].get("classifier"):
@@ -335,9 +382,9 @@ def in_scope(component: dict, synthetic_ns: str, group_prefix: str, classifier: 
         return Bundle(parsed["name"], parsed["version"] or version, sha1_of(component))
 
     if parsed["type"] == "p2":
-        if parsed["qualifiers"].get("classifier") != classifier:
+        if parsed["qualifiers"].get("classifier") != scope.classifier:
             return None
-        if not group.startswith(group_prefix):
+        if not group.startswith(scope.group_prefix):
             return None
         return Bundle(parsed["name"], parsed["version"] or version, sha1_of(component))
 
@@ -363,14 +410,11 @@ def infer_first_party_prefix(doc: dict) -> Optional[str]:
     return None
 
 
-def read_sbom(path: str, args) -> tuple[list[Bundle], Optional[str]]:
-    with open(path, "rb") as fh:
-        doc = json.load(fh)
+def read_sbom(path: str, scope: Scope) -> tuple[list[Bundle], Optional[str]]:
+    doc = read_json_document(path, "SBOM")
     bundles = []
     for component in doc.get("components") or []:
-        b = in_scope(
-            component, args.synthetic_namespace, args.group_prefix, args.classifier
-        )
+        b = in_scope(component, scope)
         if b:
             bundles.append(b)
     return bundles, infer_first_party_prefix(doc)
@@ -547,6 +591,32 @@ def version_candidates(version: str) -> list[str]:
     return out
 
 
+def qualified_versions(wanted: list[str], published: list[str]) -> list[str]:
+    """Published versions that are one of `wanted` with a Maven qualifier on it.
+
+    An OSGi version is major.minor.micro and has nowhere to put a Maven
+    qualifier, so guava's 30.1-jre and 30.1-android are both the bundle's
+    30.1.0 and neither is spelled that way anywhere in the SBOM. Refusing to
+    look at them leaves a coordinate that could be proven sitting at inferred.
+
+    A further numeric segment is NOT a qualifier: 30.1.1 is a different release
+    from 30.1, while 4.1.65.Final is 4.1.65. A Maven qualifier never begins
+    with a digit, and that is exactly the distinction drawn here.
+
+    Sorted, so the run does not depend on the order maven-metadata.xml happens
+    to list versions in (§7).
+    """
+    out = set()
+    for want in wanted:
+        for version in published:
+            if version == want or not version.startswith(want):
+                continue
+            rest = version[len(want):]
+            if rest[0] == "-" or (rest[0] == "." and len(rest) > 1 and not rest[1].isdigit()):
+                out.add(version)
+    return sorted(out)
+
+
 def coordinate_candidates(bsn: str, limit: int = 12) -> list[tuple[str, str]]:
     """Every (groupId, artifactId) the symbolic name could decompose into.
 
@@ -555,13 +625,18 @@ def coordinate_candidates(bsn: str, limit: int = 12) -> list[tuple[str, str]]:
     dotted and the dashed artifactId are offered, since Eclipse writes
     org.apache.commons.lang3 for what Maven calls commons-lang3.
 
+    The longest groupId of all is the whole symbolic name, with the artifactId
+    repeating its last label -- com.thoughtworks.xstream:xstream,
+    com.google.guava:guava. Splitting only BETWEEN labels can never reach that
+    shape, and it is one of the commonest conventions in Java, so both of those
+    came back unresolved while sitting on Central under a coordinate no stage
+    had asked about.
+
     Nothing here is trusted. These are hypotheses for the manifest check.
     """
     stem = strip_embedded_version(bsn)
     parts = stem.split(".")
-    out: list[tuple[str, str]] = []
-    if len(parts) == 1:
-        out.append((stem, stem))
+    out: list[tuple[str, str]] = [(stem, parts[-1])]
     for i in range(len(parts) - 1, 0, -1):
         group = ".".join(parts[:i])
         out.append((group, ".".join(parts[i:])))
@@ -725,19 +800,40 @@ def resolve_by_name(fetcher: Fetcher, bundle: Bundle) -> Optional[tuple]:
         # The table records only groupId and artifactId, so the version is
         # evidence rather than output: it is what lets the jar be fetched and
         # the symbolic name read back.
+        #
+        # The version the bundle states is used when Central publishes it. A
+        # Maven qualifier is the fallback, because it is something OSGi cannot
+        # express -- but which variant of a release the bundle was built from
+        # is then a guess, so it is only allowed to reach a PROVEN answer,
+        # never the unproven one below. Two guesses stacked is not an entry.
         matching = [v for v in wanted if v in published]
-        if not matching:
-            continue
-        version = matching[0]
+        if matching:
+            version, stated = matching[0], True
+        else:
+            qualified = qualified_versions(wanted, published)
+            if not qualified:
+                continue
+            version, stated = qualified[0], False
+
         declared = jar_symbolic_name(fetcher, group, artifact, version)
         if declared in (bundle.bsn, stem):
-            return group, artifact, MANIFEST_PROVEN, f"{group}:{artifact}:{version}"
+            evidence = f"{group}:{artifact}:{version}"
+            if not stated:
+                # Say why the version read is not the one the bundle states,
+                # or the review report reads like a mismatch.
+                evidence += f" (Maven qualifier; bundle version {bundle.version})"
+            return group, artifact, MANIFEST_PROVEN, evidence
         if declared:
             # The jar names a different bundle. Wrong artifact, keep going.
             continue
-        # Exists at the right version, but the jar predates OSGi and carries no
-        # symbolic name, so nothing can prove it. Hold it in case nothing
-        # better turns up.
+        if not stated:
+            # No header on a variant this run picked. Every variant of one
+            # release carries the same headers, so there is nothing else to
+            # read and nothing that could be inferred from a guessed variant.
+            continue
+        # Exists at the version the bundle states, but the jar predates OSGi
+        # and carries no symbolic name, so nothing can prove it. Hold it in
+        # case nothing better turns up.
         if fallback is None:
             fallback = (
                 group,
@@ -913,22 +1009,268 @@ def resolve_by_sha1(fetcher: Fetcher, throttle: "Throttle", sha1: str) -> Option
     doc = docs[0]
     return doc["g"], doc["a"], HASH_EXACT, f"sha1:{sha1}"
 
-
 # --------------------------------------------------------------------------
-# Output
+# The plan
 # --------------------------------------------------------------------------
 
 
-def load_existing(path: Optional[str]) -> dict:
-    if not path or not os.path.exists(path):
-        return {}
-    with open(path, "rb") as fh:
-        doc = json.load(fh)
-    if doc.get("schemaVersion") != SCHEMA_VERSION:
-        raise SystemExit(
-            f"{path}: schemaVersion is {doc.get('schemaVersion')}, want {SCHEMA_VERSION}"
+def fail(msg: str) -> "SystemExit":
+    """Every refusal is a message a human can act on, not a traceback (§10)."""
+    return SystemExit("error: " + msg)
+
+
+def read_json_document(path: str, what: str) -> dict:
+    """Read one JSON document, turning every way it can fail into a message.
+
+    An unreadable file, a truncated write and a document that is not an object
+    at all are each something a person can act on, and none of them is worth a
+    traceback (§10). Everything downstream may then assume it has a mapping.
+    """
+    try:
+        with open(path, "rb") as fh:
+            doc = json.load(fh)
+    except OSError as err:
+        raise fail(f"reading the {what} {path}: {err.strerror or err}")
+    except ValueError as err:
+        raise fail(f"the {what} {path} is not JSON: {err}")
+    if not isinstance(doc, dict):
+        raise fail(f"the {what} {path} is not a JSON object")
+    return doc
+
+
+def load_plan(args) -> dict:
+    """Get the wiring: rio.yaml as rio reads it, via `rio plan --json`.
+
+    --plan takes a pre-computed plan instead, which is how the tests drive this
+    with no rio binary in sight.
+    """
+    if args.plan:
+        if args.plan == "-":
+            raw, source = sys.stdin.read(), "standard input"
+        else:
+            try:
+                with open(args.plan, encoding="utf-8") as fh:
+                    raw, source = fh.read(), args.plan
+            except OSError as err:
+                raise fail(f"reading the plan {args.plan}: {err.strerror or err}")
+    else:
+        cmd = [args.rio, "plan", "--json", "--manifest", args.manifest]
+        try:
+            proc = subprocess.run(cmd, capture_output=True)
+        except OSError as err:
+            # A bare ENOENT here is the least helpful thing this tool could
+            # say, because there are three ways out and none of them is
+            # obvious from it.
+            raise fail(
+                f"could not run {args.rio!r}: {err.strerror}.\n"
+                "  --rio PATH   point at the binary if it is not on PATH\n"
+                "  --plan FILE  use a plan you already have (rio plan --json > plan.json)\n"
+                "  or install rio: https://github.com/rebaze/rio"
+            )
+        if proc.returncode != 0:
+            # rio's manifest diagnostics name the offending field and line.
+            # Re-phrasing them here would lose the part that helps.
+            sys.stderr.write(proc.stderr.decode("utf-8", "replace"))
+            raise fail(f"{' '.join(cmd)} exited {proc.returncode}")
+        raw = proc.stdout.decode("utf-8")
+        source = " ".join(cmd)
+
+    try:
+        plan = json.loads(raw)
+    except ValueError as err:
+        raise fail(f"{source}: not JSON: {err}")
+    if not isinstance(plan, dict):
+        raise fail(f"{source}: not a plan document")
+
+    # Before anything else, so a document this build cannot read is refused by
+    # number rather than misunderstood key by key.
+    got = plan.get("planVersion")
+    if got != PLAN_VERSION:
+        if isinstance(got, int) and got > PLAN_VERSION:
+            raise fail(
+                f"{source}: planVersion is {got}, this tool understands {PLAN_VERSION}. "
+                "Upgrade tools/build-p2-table.py; it ships with rio."
+            )
+        raise fail(
+            f"{source}: planVersion is {got!r}, this tool understands {PLAN_VERSION}. "
+            "Upgrade rio."
         )
-    return doc.get("entries") or {}
+    return plan
+
+
+def plan_builtin(plan: dict) -> dict:
+    """rio's own mapping table, as the plan publishes it.
+
+    Checked here rather than trusted, because --plan takes a file a person can
+    hand-edit, and a value that is not a coordinate pair would otherwise reach
+    the merge and fail there with a traceback about a missing attribute.
+    """
+    builtin = plan.get("builtinTable") or {}
+    if not isinstance(builtin, dict) or any(not isinstance(e, dict) for e in builtin.values()):
+        raise fail(
+            "the plan's builtinTable is not a map of coordinates. This plan is not one "
+            "this tool can read; check that rio and tools/build-p2-table.py come from "
+            "the same release."
+        )
+    return builtin
+
+
+class Source(NamedTuple):
+    """One artifact's SBOM, as a job reads it."""
+
+    artifact: str
+    path: str  # absolute
+    rel: str  # as the plan names it, relative to the manifest directory
+
+
+class Job(NamedTuple):
+    """One mapping table and everything that feeds it.
+
+    Artifacts are bucketed by the table their p2 transform names, because that
+    is the file this run reads and rewrites. Two artifacts pointing at one
+    table are one job over both their SBOMs.
+    """
+
+    path: str  # absolute path of the table
+    rel: str  # the table exactly as the manifest wrote it
+    scope: Scope
+    sources: list
+
+
+def plan_scope(artifact_id: str, transform: dict) -> Scope:
+    """Read the resolved scope filter out of one transform.
+
+    Missing keys are a refusal rather than a default. Defaulting here would put
+    back exactly the second copy of "p2." that reading the plan exists to
+    remove, and it would do it silently.
+    """
+    values = []
+    for key in SCOPE_KEYS:
+        value = transform.get(key)
+        if not isinstance(value, str) or not value:
+            raise fail(
+                f"artifact {artifact_id!r}: the plan's repair-purl transform carries no {key}. "
+                "This plan is not one this tool can read; check that rio and "
+                "tools/build-p2-table.py come from the same release."
+            )
+        values.append(value)
+    return Scope(*values)
+
+
+def plan_jobs(plan: dict) -> list[Job]:
+    """Bucket the plan's artifacts by the table each one's p2 transform names."""
+    manifest = plan.get("manifest") or {}
+    base = manifest.get("dir")
+    if not base:
+        raise fail("the plan carries no manifest.dir, so nothing can be resolved against it")
+
+    jobs: dict[str, Job] = {}
+    scoped_by: dict[str, str] = {}  # table -> the artifact that set its scope
+
+    for artifact in plan.get("artifacts") or []:
+        artifact_id = artifact.get("id") or "?"
+        transforms = [
+            t
+            for t in (artifact.get("transforms") or [])
+            if t.get("name") == REPAIR_PURL and t.get("ecosystem") == ECOSYSTEM
+        ]
+        if not transforms:
+            log(f"  {artifact_id}: no {REPAIR_PURL} with ecosystem {ECOSYSTEM}; skipped")
+            continue
+
+        for transform in transforms:
+            table = transform.get("table") or ""
+            if not table:
+                raise fail(
+                    f"artifact {artifact_id!r} declares {REPAIR_PURL} with ecosystem "
+                    f"{ECOSYSTEM} but names no table, so there is nothing to build "
+                    "and nothing for rio to read back.\n"
+                    "  Add one to the manifest:\n"
+                    "      transforms:\n"
+                    "        - repair-purl:\n"
+                    "            ecosystem: p2\n"
+                    "            table: p2-maven.json"
+                )
+            scope = plan_scope(artifact_id, transform)
+
+            if table in jobs:
+                job = jobs[table]
+                # Two artifacts sharing a table but filtering differently would
+                # be harvested under one filter and read back under the other.
+                # First wins is exactly the silence this tool exists to remove.
+                for key, mine, theirs in zip(SCOPE_KEYS, scope, job.scope):
+                    if mine != theirs:
+                        raise fail(
+                            f"artifacts {scoped_by[table]!r} and {artifact_id!r} both write "
+                            f"{table}, but disagree on {key}: {theirs!r} and {mine!r}.\n"
+                            "  One table cannot be harvested under two filters. Give them "
+                            "the same setting, or a table each."
+                        )
+            else:
+                jobs[table] = Job(
+                    path=os.path.join(base, table) if not os.path.isabs(table) else table,
+                    rel=table,
+                    scope=scope,
+                    sources=[],
+                )
+                scoped_by[table] = artifact_id
+
+            sbom = ((artifact.get("input") or {}).get("path")) or ""
+            if not sbom:
+                raise fail(f"artifact {artifact_id!r}: the plan names no input path")
+            jobs[table].sources.append(
+                Source(artifact=artifact_id, path=os.path.join(base, sbom), rel=sbom)
+            )
+
+    if not jobs:
+        raise fail(
+            f"{manifest.get('path', 'the manifest')} declares no {REPAIR_PURL} with "
+            f"ecosystem {ECOSYSTEM}; nothing to build."
+        )
+    return list(jobs.values())
+
+
+# --------------------------------------------------------------------------
+# Reading and writing the table
+# --------------------------------------------------------------------------
+
+
+def load_table(path: str) -> dict:
+    """Read the table this run owns. A missing file is the bootstrap, not an error.
+
+    A table rio would refuse to load is refused here too, and refused BEFORE
+    any of it is rewritten. The alternative is spending a whole run producing a
+    file rio still will not load, having destroyed what was there in the
+    process. It is also what lets everything downstream -- the merge rules, the
+    built-in delta -- take an entry for a coordinate pair without re-checking.
+    """
+    if not os.path.exists(path):
+        return {}
+    doc = read_json_document(path, "mapping table")
+
+    if doc.get("schemaVersion") != SCHEMA_VERSION:
+        raise fail(
+            f"{path}: schemaVersion is {doc.get('schemaVersion')}, want {SCHEMA_VERSION}. "
+            "rio would refuse to load this table, so it will not be rewritten."
+        )
+
+    entries = doc.get("entries") or {}
+    if not isinstance(entries, dict):
+        raise fail(f"{path}: entries is not an object. rio would refuse this table.")
+    for bsn, entry in entries.items():
+        if not isinstance(entry, dict):
+            raise fail(f"{path}: entry {bsn!r} is not an object. rio would refuse this table.")
+        for key in ("groupId", "artifactId"):
+            # Half an entry is worse than no entry: it produces a purl with an
+            # empty segment that looks resolvable and is not, which is why rio
+            # rejects it rather than reading around it.
+            value = entry.get(key)
+            if not isinstance(value, str) or not value:
+                raise fail(
+                    f"{path}: entry {bsn!r} has no usable {key}. rio would refuse this "
+                    "table, so it will not be rewritten."
+                )
+    return entries
 
 
 def write_table(path: str, entries: dict) -> None:
@@ -937,19 +1279,212 @@ def write_table(path: str, entries: dict) -> None:
         "schemaVersion": SCHEMA_VERSION,
         "entries": {k: entries[k] for k in sorted(entries)},
     }
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(doc, fh, indent=2, ensure_ascii=False)
         fh.write("\n")
 
 
-def write_review(path: str, unresolved: list, inferred: list, ambiguous: dict, skipped: dict) -> None:
-    lines = [
-        "# p2 table build report",
+def is_derived(entry: dict) -> bool:
+    """An entry this run owns.
+
+    The confidence key is the whole rule. A derived entry records how it was
+    arrived at and may be corrected on the next run; an entry without one was
+    written by a human and is never touched. You pin an entry by DELETING its
+    confidence key.
+    """
+    return isinstance(entry, dict) and "confidence" in entry
+
+
+def same_coordinates(a: dict, b: dict) -> bool:
+    return a.get("groupId") == b.get("groupId") and a.get("artifactId") == b.get("artifactId")
+
+
+def merge_entries(existing: dict, resolved: dict, builtin: dict, overwrite: bool, prune: bool):
+    """Merge this run's answers into the table that is already there.
+
+    Four rules, each of which exists because its absence has a failure mode:
+
+    - **Pinned entries are untouchable.** A coordinate a human decided outranks
+      anything derived, and the confidence key is how the two are told apart.
+    - **Never delete.** An entry this run produced no answer for -- an offline
+      run against a thin cache, Central having a bad day, a --no-hash pass --
+      is carried over unchanged. Otherwise a flaky network quietly shrinks the
+      table and rio starts emitting unrepaired purls, which is the failure this
+      whole tool exists to prevent. --prune opts into the deliberate rebuild.
+    - **Never downgrade.** `inferred` is not proof and must not overwrite an
+      entry something actually corroborated.
+    - **Stay a delta over the built-in table.** An override always wins inside
+      rio, so an entry that redundantly repeats a built-in one silently shadows
+      every later fix rio makes to it. A derived entry identical to the built-in
+      is left out; one that contradicts it is kept, because that is a deliberate
+      local override, and flagged for review.
+
+    Every entry in `existing` is a coordinate pair, because load_table refused
+    the table otherwise. That is held at the boundary rather than re-checked
+    here, in redundant_pins and in contradicts_builtin.
+
+    Returns the new entries, the bucket each name landed in, and the coordinate
+    changes worth showing a human.
+    """
+    pinned = {} if overwrite else {b: e for b, e in existing.items() if not is_derived(e)}
+    derived = {b: e for b, e in existing.items() if b not in pinned}
+
+    entries: dict[str, dict] = {}
+    bucket: dict[str, str] = {}
+    changed: list[tuple[str, dict, dict]] = []
+
+    for bsn, entry in pinned.items():
+        entries[bsn] = entry
+        bucket[bsn] = "pinned"
+
+    for bsn in set(derived) | set(resolved):
+        if bsn in pinned:
+            # Decided by a human. A stage that answered for it anyway is
+            # ignored rather than allowed to win by arriving later.
+            continue
+        old = derived.get(bsn)
+        hit = resolved.get(bsn)
+
+        if hit is None:
+            if prune:
+                bucket[bsn] = "pruned"
+                continue
+            entries[bsn] = old
+            bucket[bsn] = "carried"
+            continue
+
+        group, artifact, confidence, evidence = hit
+        new = {
+            "groupId": group,
+            "artifactId": artifact,
+            "confidence": confidence,
+            "evidence": evidence,
+        }
+
+        if old is None:
+            entries[bsn] = new
+            bucket[bsn] = "new"
+        elif not overwrite and confidence == INFERRED and old.get("confidence") in PROVEN:
+            entries[bsn] = old
+            bucket[bsn] = "carried"
+        elif same_coordinates(old, new):
+            entries[bsn] = new
+            bucket[bsn] = "same"
+        else:
+            entries[bsn] = new
+            bucket[bsn] = "changed"
+            changed.append((bsn, old, new))
+
+    # The built-in delta, applied to every derived entry in the finished table
+    # and not only to this run's new ones, so a table that already carries
+    # redundant entries heals across runs.
+    for bsn in list(entries):
+        if bucket[bsn] == "pinned":
+            continue
+        shipped = builtin.get(bsn)
+        if shipped and same_coordinates(shipped, entries[bsn]):
+            del entries[bsn]
+            bucket[bsn] = "builtin"
+
+    changed = [c for c in changed if c[0] in entries]
+    return entries, bucket, changed
+
+
+def redundant_pins(entries: dict, bucket: dict, builtin: dict) -> list[str]:
+    """Pinned entries that merely repeat what rio already ships.
+
+    They are left alone -- a human wrote them, and this run does not decide
+    otherwise -- but they are worth pointing at: an override wins, so a pin
+    identical to a built-in entry shadows every later fix rio makes to it while
+    looking like it changes nothing.
+    """
+    return [
+        bsn
+        for bsn in sorted(entries)
+        if bucket.get(bsn) == "pinned"
+        and bsn in builtin
+        and same_coordinates(builtin[bsn], entries[bsn])
+    ]
+
+
+def contradicts_builtin(entries: dict, bucket: dict, builtin: dict) -> list[tuple]:
+    """Table entries that disagree with the asset rio ships.
+
+    A deliberate local override is legitimate -- it is why overrides win at all
+    -- but a client table disagreeing with the shipped one is exactly what a
+    human should look at before it goes in.
+    """
+    out = []
+    for bsn in sorted(entries):
+        shipped = builtin.get(bsn)
+        if shipped and not same_coordinates(shipped, entries[bsn]):
+            out.append((bsn, shipped, entries[bsn], bucket.get(bsn) == "pinned"))
+    return out
+
+
+# --------------------------------------------------------------------------
+# The review report
+# --------------------------------------------------------------------------
+
+
+def write_review(path, provenance, changed, contradicting, redundant, unresolved, inferred,
+                 ambiguous, skipped):
+    lines = ["# p2 table build report", ""]
+    lines += provenance
+    lines += [
         "",
-        f"unresolved: {len(unresolved)}   inferred (unproven): {len(inferred)}"
-        f"   ambiguous: {len(ambiguous)}",
+        f"changed: {len(changed)}   unresolved: {len(unresolved)}"
+        f"   inferred (unproven): {len(inferred)}   ambiguous: {len(ambiguous)}",
         "",
     ]
+    if changed:
+        lines += [
+            "## Changed since last run",
+            "",
+            "This run derived a different coordinate than the table recorded, and took it.",
+            "A coordinate flipping is the one thing worth looking at here. It is also what",
+            "surfaces an edit made to a derived entry in place: delete an entry's",
+            "`confidence` key to pin it, or the next run will move it back.",
+            "",
+        ]
+        for bsn, old, new in sorted(changed):
+            lines.append(
+                f"- `{bsn}`: `{old.get('groupId')}:{old.get('artifactId')}`"
+                f" ({old.get('confidence')}) -> `{new['groupId']}:{new['artifactId']}`"
+                f" ({new['confidence']})"
+            )
+        lines.append("")
+    if contradicting:
+        lines += [
+            "## Disagrees with rio's built-in table",
+            "",
+            "An override wins over the table compiled into rio, so these entries change what",
+            "rio does. That is what overrides are for; it is still worth a look.",
+            "",
+        ]
+        for bsn, shipped, ours, pinned in contradicting:
+            how = "pinned by hand" if pinned else ours.get("confidence")
+            lines.append(
+                f"- `{bsn}`: rio ships `{shipped['groupId']}:{shipped['artifactId']}`,"
+                f" this table says `{ours['groupId']}:{ours['artifactId']}` ({how})"
+            )
+        lines.append("")
+    if redundant:
+        lines += [
+            "## Already in rio's built-in table",
+            "",
+            "These entries are pinned -- they carry no `confidence` key, so nothing here",
+            "touches them -- and they say exactly what rio already ships. An override wins,",
+            "so each one quietly shadows any later fix rio makes to that entry. Deleting",
+            "them changes nothing today and lets those fixes through tomorrow.",
+            "",
+        ]
+        for bsn in redundant:
+            lines.append(f"- `{bsn}`")
+        lines.append("")
     if inferred:
         lines += [
             "## Emitted but only inferred",
@@ -989,92 +1524,12 @@ def write_review(path: str, unresolved: list, inferred: list, ambiguous: dict, s
 
 
 # --------------------------------------------------------------------------
+# Resolution
+# --------------------------------------------------------------------------
 
 
-def main() -> int:
-    p = argparse.ArgumentParser(
-        description="Build the p2 bundle-symbolic-name to Maven coordinate table.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__,
-    )
-    p.add_argument("sbom", nargs="+", help="CycloneDX JSON documents to take names from")
-    p.add_argument("-o", "--out", default="p2-maven.json", help="table to write")
-    p.add_argument(
-        "--existing",
-        help="table to merge onto; its entries are never overwritten unless --overwrite",
-    )
-    p.add_argument("--overwrite", action="store_true", help="let this run replace existing entries")
-    p.add_argument("--review", default=None, help="write a review report here (default: <out>.review.md)")
-    p.add_argument("--cache", default=".p2cache", help="HTTP cache directory")
-    p.add_argument("--offline", action="store_true", help="use only what is already cached")
-    p.add_argument("--p2-repo", action="append", dest="p2_repos", metavar="URL",
-                   help="p2 repository to harvest; repeatable, later wins. Defaults to SimRel + Orbit")
-    p.add_argument("--no-p2", action="store_true", help="skip the Eclipse metadata stage")
-    p.add_argument("--no-name-split", action="store_true", help="skip the name-split stage")
-    p.add_argument(
-        "--no-hash",
-        action="store_true",
-        help="skip the SHA-1 stage. It runs by default: it only asks about bundles "
-        "the earlier stages left unresolved, and only those whose hash is not shared "
-        "with another component, so it is usually a handful of requests",
-    )
-    p.add_argument(
-        "--search",
-        action="store_true",
-        help="also ask search.maven.org which groupIds publish an artifactId, for names "
-        "the repo1 stages could not settle. Off by default: on the estate this was built "
-        "for it added nothing they had not already found, and it is slow because each "
-        "answer costs a jar to verify. Unrelated to --no-hash, which has its own stage",
-    )
-    p.add_argument("--first-party-prefix", action="append", dest="first_party", default=[],
-                   metavar="PREFIX", help="never map bundles under this prefix; repeatable")
-    p.add_argument("--no-infer-first-party", action="store_true",
-                   help="do not guess the first-party prefix from metadata.component")
-    p.add_argument("--include-source-bundles", action="store_true",
-                   help="also try to map .source bundles")
-    p.add_argument("--synthetic-namespace", default=DEFAULT_SYNTHETIC_NAMESPACE)
-    p.add_argument("--group-prefix", default=DEFAULT_GROUP_PREFIX)
-    p.add_argument("--classifier", default=DEFAULT_CLASSIFIER)
-    p.add_argument("-j", "--jobs", type=int, default=6, help="concurrent Maven Central requests")
-    args = p.parse_args()
-
-    fetcher = Fetcher(args.cache, offline=args.offline)
-
-    # ---- work-list -------------------------------------------------------
-    bundles: dict[str, Bundle] = {}
-    inferred_prefixes: list[str] = []
-    for path in args.sbom:
-        found, prefix = read_sbom(path, args)
-        log(f"{path}: {len(found)} in-scope bundles")
-        if prefix and not args.no_infer_first_party:
-            inferred_prefixes.append(prefix)
-        for b in found:
-            bundles.setdefault(b.bsn, b)
-
-    first_party = list(args.first_party)
-    for prefix in inferred_prefixes:
-        if prefix not in first_party:
-            log(f"inferred first-party prefix from metadata.component: {prefix}")
-            first_party.append(prefix)
-
-    skipped: dict[str, list] = {}
-    work: dict[str, Bundle] = {}
-    for bsn, bundle in bundles.items():
-        if any(bsn == fp or bsn.startswith(fp + ".") for fp in first_party):
-            skipped.setdefault("first-party", []).append(bsn)
-        elif bsn.endswith(".source") and not args.include_source_bundles:
-            skipped.setdefault("source bundle", []).append(bsn)
-        else:
-            work[bsn] = bundle
-
-    log(f"{len(bundles)} distinct bundles, {len(work)} to resolve")
-    for reason, names in sorted(skipped.items()):
-        log(f"  excluded {len(names)} ({reason})")
-
-    existing = load_existing(args.existing)
-    if existing:
-        log(f"{len(existing)} entries in {args.existing}")
-
+def resolve_work(fetcher: Fetcher, args, work: dict[str, Bundle]):
+    """Run the three stages over one work-list. Hardest evidence first."""
     resolved: dict[str, tuple] = {}
 
     # Coordinates Eclipse asserts but Maven Central does not publish. Kept only
@@ -1264,40 +1719,194 @@ def main() -> int:
     for bsn, entry in deferred.items():
         resolved.setdefault(bsn, entry)
 
+    return resolved, ambiguous
+
+
+# --------------------------------------------------------------------------
+
+
+def run_job(fetcher: Fetcher, args, plan: dict, job: Job, review_override: Optional[str]) -> None:
+    """Build one table from the SBOMs the manifest points at it."""
+    builtin = plan_builtin(plan)
+
+    # ---- work-list -------------------------------------------------------
+    bundles: dict[str, Bundle] = {}
+    inferred_prefixes: list[str] = []
+    for source in job.sources:
+        found, prefix = read_sbom(source.path, job.scope)
+        log(f"  {source.artifact}  {source.rel}   {len(found)} in-scope bundles")
+        if prefix and not args.no_infer_first_party:
+            inferred_prefixes.append(prefix)
+        for b in found:
+            bundles.setdefault(b.bsn, b)
+
+    first_party = list(args.first_party)
+    for prefix in inferred_prefixes:
+        if prefix not in first_party:
+            log(f"inferred first-party prefix from metadata.component: {prefix}")
+            first_party.append(prefix)
+
+    existing = load_table(job.path)
+    if existing:
+        log(f"{len(existing)} entries already in {job.rel}")
+
+    # A pinned name costs no network: it is decided, and this run may not
+    # touch it whatever it finds.
+    pinned_names = set() if args.overwrite else {b for b, e in existing.items() if not is_derived(e)}
+
+    skipped: dict[str, list] = {}
+    work: dict[str, Bundle] = {}
+    for bsn, bundle in bundles.items():
+        if bsn in pinned_names:
+            skipped.setdefault("pinned by hand", []).append(bsn)
+        elif any(bsn == fp or bsn.startswith(fp + ".") for fp in first_party):
+            skipped.setdefault("first-party", []).append(bsn)
+        elif bsn.endswith(".source") and not args.include_source_bundles:
+            skipped.setdefault("source bundle", []).append(bsn)
+        else:
+            work[bsn] = bundle
+
+    log(f"{len(bundles)} distinct bundles, {len(work)} to resolve")
+    for reason, names in sorted(skipped.items()):
+        log(f"  excluded {len(names)} ({reason})")
+
+    resolved, ambiguous = resolve_work(fetcher, args, work)
+
     # ---- merge and emit --------------------------------------------------
-    entries = dict(existing)
-    kept = 0
-    for bsn, (group, artifact, confidence, evidence) in sorted(resolved.items()):
-        if bsn in existing and not args.overwrite:
-            kept += 1
-            continue
-        entries[bsn] = {
-            "groupId": group,
-            "artifactId": artifact,
-            "confidence": confidence,
-            "evidence": evidence,
-        }
-    if kept:
-        log(f"kept {kept} existing entries (use --overwrite to replace)")
+    entries, bucket, changed = merge_entries(
+        existing, resolved, builtin, args.overwrite, args.prune
+    )
+    contradicting = contradicts_builtin(entries, bucket, builtin)
+    redundant = redundant_pins(entries, bucket, builtin)
+    write_table(job.path, entries)
 
-    write_table(args.out, entries)
-
-    review_path = args.review or args.out + ".review.md"
+    review_path = review_override or job.path + ".review.md"
+    manifest = plan.get("manifest") or {}
+    tool = plan.get("tool") or {}
+    provenance = [
+        f"Built by `tools/build-p2-table.py` from `{manifest.get('path', '?')}`",
+        f"(sha256 `{manifest.get('sha256', '?')}`), as read by "
+        f"{tool.get('name', 'rio')} {tool.get('version', '?')}.",
+        "",
+        "SBOMs read:",
+        "",
+    ] + [f"- `{s.artifact}` — `{s.rel}`" for s in job.sources]
     write_review(
         review_path,
-        [(bsn, b.version) for bsn, b in sorted(work.items()) if bsn not in resolved and bsn not in existing and bsn not in ambiguous],
+        provenance,
+        changed,
+        contradicting,
+        redundant,
+        [
+            (bsn, b.version)
+            for bsn, b in sorted(work.items())
+            if bsn not in resolved and bsn not in entries and bsn not in ambiguous
+        ],
         [(bsn, v[0], v[1], v[3]) for bsn, v in resolved.items() if v[2] == INFERRED],
         ambiguous,
         skipped,
     )
 
-    by_confidence = Counter(v[2] for v in resolved.values())
+    counts = Counter(bucket.values())
     log("")
-    log(f"wrote {args.out}: {len(entries)} entries")
-    for tier in sorted(by_confidence, key=lambda t: CONFIDENCE_RANK.get(t, 9)):
-        log(f"  {tier:18s} {by_confidence[tier]}")
+    log(
+        f"wrote {job.rel}: {len(entries)} entries: "
+        f"{counts['new']} new, {counts['same']} re-derived unchanged, "
+        f"{counts['carried']} carried over, {counts['changed']} changed, "
+        f"{counts['pinned']} pinned"
+    )
+    if counts["builtin"]:
+        log(f"  {counts['builtin']} left out as identical to rio's built-in table")
+    if counts["pruned"]:
+        log(f"  {counts['pruned']} dropped (--prune)")
+    if contradicting:
+        log(f"  {len(contradicting)} disagree with rio's built-in table")
+    if redundant:
+        log(f"  {len(redundant)} pinned entries repeat rio's built-in table; see the report")
     log(f"unresolved: {len(work) - len(resolved)}")
     log(f"review report: {review_path}")
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(
+        description="Build the p2 bundle-symbolic-name to Maven coordinate table.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    p.add_argument("--manifest", default="rio.yaml", help="rio manifest to read the wiring from")
+    p.add_argument("--rio", default="rio", help="rio binary, if it is not on PATH")
+    p.add_argument(
+        "--plan",
+        help="read a pre-computed `rio plan --json` from this file, or - for standard "
+        "input, instead of running rio",
+    )
+    p.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="let this run replace hand-written entries too, and let an inferred "
+        "coordinate replace a proven one. Both rules exist for a reason; this lifts them",
+    )
+    p.add_argument(
+        "--prune",
+        action="store_true",
+        help="drop derived entries this run found no answer for, instead of carrying "
+        "them over. A deliberate rebuild, not something to run on a thin cache",
+    )
+    p.add_argument("--review", default=None, help="write the review report here (default: <table>.review.md)")
+    p.add_argument("--cache", default=".p2cache", help="HTTP cache directory")
+    p.add_argument("--offline", action="store_true", help="use only what is already cached")
+    p.add_argument("--p2-repo", action="append", dest="p2_repos", metavar="URL",
+                   help="p2 repository to harvest; repeatable, later wins. Defaults to SimRel + Orbit")
+    p.add_argument("--no-p2", action="store_true", help="skip the Eclipse metadata stage")
+    p.add_argument("--no-name-split", action="store_true", help="skip the name-split stage")
+    p.add_argument(
+        "--no-hash",
+        action="store_true",
+        help="skip the SHA-1 stage. It runs by default: it only asks about bundles "
+        "the earlier stages left unresolved, and only those whose hash is not shared "
+        "with another component, so it is usually a handful of requests",
+    )
+    p.add_argument(
+        "--search",
+        action="store_true",
+        help="also ask search.maven.org which groupIds publish an artifactId, for names "
+        "the repo1 stages could not settle. Off by default: on the estate this was built "
+        "for it added nothing they had not already found, and it is slow because each "
+        "answer costs a jar to verify. Unrelated to --no-hash, which has its own stage",
+    )
+    p.add_argument("--first-party-prefix", action="append", dest="first_party", default=[],
+                   metavar="PREFIX", help="never map bundles under this prefix; repeatable")
+    p.add_argument("--no-infer-first-party", action="store_true",
+                   help="do not guess the first-party prefix from metadata.component")
+    p.add_argument("--include-source-bundles", action="store_true",
+                   help="also try to map .source bundles")
+    p.add_argument("-j", "--jobs", type=int, default=6, help="concurrent Maven Central requests")
+    args = p.parse_args()
+
+    plan = load_plan(args)
+    manifest = plan.get("manifest") or {}
+    tool = plan.get("tool") or {}
+    log(
+        f"{manifest.get('path', '?')} (sha256 {str(manifest.get('sha256', ''))[:12]}...), "
+        f"{tool.get('name', 'rio')} {tool.get('version', '?')}"
+    )
+
+    jobs = plan_jobs(plan)
+    if args.review and len(jobs) > 1:
+        # --review names one file and the run writes several reports.
+        raise fail(
+            f"--review names one file, but this manifest builds {len(jobs)} tables "
+            f"({', '.join(sorted(j.rel for j in jobs))}). Drop --review and each table "
+            "gets its own <table>.review.md."
+        )
+
+    fetcher = Fetcher(args.cache, offline=args.offline)
+    for job in jobs:
+        if len(jobs) > 1:
+            log("")
+            log(f"--- {job.rel} ---")
+        run_job(fetcher, args, plan, job, args.review)
+
     log(f"cache: {fetcher.hits} hits, {fetcher.misses} fetches in {args.cache}")
     return 0
 

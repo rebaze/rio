@@ -63,19 +63,66 @@ type Config map[string]any
 // manifest's own directory, against which any path in the config resolves.
 type Factory func(cfg Config, baseDir string) (Transform, error)
 
-var registry = map[string]Factory{}
+// Describer reports what a transform's configuration resolves to WITHOUT
+// building the transform, for `rio plan`.
+//
+// The two are not the same call with the output thrown away. A factory is
+// free to touch the filesystem -- repair-purl/p2 reads its mapping table --
+// and that table is the very file the plan exists to help produce, so a
+// describe routed through New could never describe the run that bootstraps
+// it. A Describer therefore validates the configuration and nothing else: it
+// must reject exactly what its factory rejects, and read nothing.
+//
+// Options come back resolved, defaults filled in, in an order the transform
+// owns, so a plan is byte identical across runs (§7).
+type Describer func(cfg Config) ([]Option, error)
 
-// Register adds a transform factory under its manifest key. It panics on a
-// duplicate, which can only be a programming error at init time.
-func Register(name string, f Factory) {
+// Option is one resolved configuration key of a described transform.
+type Option struct {
+	// Key is the manifest key, spelled the way the manifest spells it.
+	Key string
+	// Value is what is in force once the defaults are applied. A consumer
+	// reads this rather than carrying its own copy of a default, which is the
+	// point of publishing a plan at all.
+	Value string
+	// IsDefault is true when Value is what would apply with the manifest
+	// silent. It is what lets a human readable plan show only the options a
+	// manifest actually changed, without the reader having to know which
+	// values are the standard ones.
+	IsDefault bool
+	// Path is true when Value names a file, resolved against the manifest's
+	// own directory like every other path in a transform's configuration.
+	// It is what lets `rio plan` report that a mapping table does not exist
+	// yet without knowing whose option it is looking at.
+	Path bool
+}
+
+// entry is one registered transform. The factory and the describer live in
+// one record rather than in two registries, because two could disagree about
+// which names exist and a transform that is buildable but not describable
+// would drop out of `rio plan` silently.
+type entry struct {
+	factory   Factory
+	describer Describer
+}
+
+var registry = map[string]entry{}
+
+// Register adds a transform under its manifest key. It panics on a duplicate,
+// or on a half-registration, which can only be a programming error at init
+// time.
+func Register(name string, f Factory, d Describer) {
 	if _, exists := registry[name]; exists {
 		panic("transform registered twice: " + name)
 	}
-	registry[name] = f
+	if f == nil || d == nil {
+		panic("transform " + name + " needs both a factory and a describer")
+	}
+	registry[name] = entry{factory: f, describer: d}
 }
 
-// Known lists every registered transform name, sorted.
-func Known() []string {
+// Names lists every registered transform name, sorted.
+func Names() []string {
 	out := make([]string, 0, len(registry))
 	for name := range registry {
 		out = append(out, name)
@@ -87,15 +134,33 @@ func Known() []string {
 // New builds a configured transform. An unknown name is a configuration error,
 // which the caller turns into exit 2 (§2).
 func New(name string, cfg Config, baseDir string) (Transform, error) {
-	factory, ok := registry[name]
+	e, ok := registry[name]
 	if !ok {
-		return nil, fmt.Errorf("unknown transform %q, known transforms are %s",
-			name, strings.Join(Known(), ", "))
+		return nil, unknownTransform(name)
 	}
 	if cfg == nil {
 		cfg = Config{}
 	}
-	return factory(cfg, baseDir)
+	return e.factory(cfg, baseDir)
+}
+
+// Describe resolves a transform's configuration without building it. It
+// reports the same unknown-name error New does, so a manifest `rio plan`
+// accepts is one `rio normalize` will also get past this point (§10).
+func Describe(name string, cfg Config) ([]Option, error) {
+	e, ok := registry[name]
+	if !ok {
+		return nil, unknownTransform(name)
+	}
+	if cfg == nil {
+		cfg = Config{}
+	}
+	return e.describer(cfg)
+}
+
+func unknownTransform(name string) error {
+	return fmt.Errorf("unknown transform %q, known transforms are %s",
+		name, strings.Join(Names(), ", "))
 }
 
 // String reads a string key. It reports an error when the key is present with

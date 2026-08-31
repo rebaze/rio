@@ -102,6 +102,13 @@ rio normalize [flags]
   --gate string       "warn" or "fail" (default "warn")
   --quiet             suppress per artifact progress on stdout
 
+rio plan [flags]
+
+  --manifest string   path to manifest (default "rio.yaml")
+  --out string        output directory (default "target/rio")
+  --json              print the plan as JSON
+  --quiet             suppress per artifact progress on stdout
+
 rio version
 ```
 
@@ -128,6 +135,79 @@ rcp-client  12 components   repaired 8    unmapped 1    gate ok
 server-war   2 components   repaired 0    unmapped 0    gate FAIL (1 component missing version)
 2 artifacts, 1 gate failure
 ```
+
+### `rio plan`
+
+`plan` prints what a `normalize` run would read, write and repair, and does none of it. It writes no
+files and, like everything else here, makes no network calls.
+
+```
+$ rio plan
+manifest  rio.yaml (sha256 a1b2c3d4e5f6...)
+
+rcp-client
+  read   target/bom.json
+  write  target/rio/rcp-client.cdx.json
+  repair-purl  ecosystem p2  table p2-maven.json
+
+gate  require name, version, purl
+```
+
+Only the options a manifest actually set are shown; `--json` carries every one of them, resolved.
+Exit 2 for the same manifest and glob problems `normalize` refuses, exit 0 otherwise — there is no
+exit 1, because no gate runs.
+
+A table that does not exist yet is reported on the line that names it, rather than being an error.
+That is the point of the command: the table is built *from* the plan, so the first run in a
+repository necessarily names one that is not there.
+
+#### The plan JSON
+
+`rio plan --json` is a machine contract. It is what `tools/build-p2-table.py` reads to learn which
+SBOMs to harvest, which table to write and under which scope filter, so that none of it has to be
+restated on a command line where it could disagree with the manifest.
+
+```json
+{
+  "planVersion": 1,
+  "tool": { "name": "rio", "version": "0.4.2" },
+  "manifest": { "path": "rio.yaml", "dir": "/abs/repo", "sha256": "a1b2c3..." },
+  "out": "target/rio",
+  "builtinTable": { "org.objectweb.asm": { "groupId": "org.ow2.asm", "artifactId": "asm" } },
+  "artifacts": [
+    {
+      "id": "rcp-client",
+      "input":  { "path": "target/bom.json" },
+      "output": { "path": "rcp-client.cdx.json" },
+      "transforms": [
+        { "name": "repair-purl", "ecosystem": "p2", "table": "p2-maven.json",
+          "groupPrefix": "p2.", "classifier": "osgi.bundle",
+          "syntheticNamespace": "p2.eclipse.plugin" }
+      ]
+    }
+  ],
+  "gate": { "require": ["name", "version", "purl"] }
+}
+```
+
+- `planVersion` is the compatibility lever, the role `version` plays in the manifest. A consumer
+  checks it before anything else and refuses a number it does not know.
+- Paths follow `index.json`'s convention: `input.path` is relative to the manifest's directory,
+  `output.path` to `out`, and `table` is exactly as the manifest wrote it, since that is how rio
+  resolves it.
+- Every transform option is reported **resolved**, defaults filled in, so a consumer never carries
+  its own copy of `p2.` or `osgi.bundle`.
+- `builtinTable` is the mapping table compiled into this binary. An override always wins over it, so
+  a generated table that repeats an entry verbatim would silently shadow any later fix rio makes to
+  it; publishing the asset is what lets a generator stay a delta over it.
+- `manifest.dir` is the one absolute path rio ever writes, and the one deliberate break from
+  `index.json`'s rules. The index refuses absolute paths because it is a committed artifact whose
+  digests are a contract; a plan is transient stdout that exists to be joined against, and making
+  the consumer guess the base directory is worse.
+
+This is not `index.json` with fewer fields. The index describes a run that happened, and a run needs
+the mapping table that the plan is read to produce — so the index can never describe the first run
+in a repository.
 
 ### Repaired, unmapped, skipped
 

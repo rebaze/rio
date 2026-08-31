@@ -9,6 +9,12 @@ Guidance for coding agents working in this repository. This file is the single s
 artifact's SBOM, levels the CycloneDX spec version, repairs p2 coordinates to Maven coordinates,
 checks a quality gate, and writes the results plus an `index.json`.
 
+`rio plan` describes that same run without performing it, and `--json` makes it a contract. It is how
+a tool learns the manifest's wiring without parsing YAML: `tools/build-p2-table.py` reads it to find
+the SBOMs to harvest and the table to write. A transform therefore has to be *describable* without
+being *built* — see `transform.Describer` — because building the p2 transform reads the very table
+the plan is used to produce.
+
 ## Repository Layout
 
 ```
