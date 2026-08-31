@@ -59,6 +59,7 @@ jobs:
           gh release upload "$TAG" "dist/rio-${TAG}-source.cdx.json" --clobber
 
       - name: Attest build provenance for release archives
+        id: attest-provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
@@ -67,6 +68,7 @@ jobs:
             dist/checksums.txt
 
       - name: Attest source SBOM (CycloneDX) against all archives
+        id: attest-sbom
         uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
         with:
           subject-path: |
@@ -117,6 +119,61 @@ jobs:
               --predicate-type https://cyclonedx.org/bom
           done
           echo "::endgroup::"
+
+      # The attestations above live in GitHub's attestation store, which is
+      # reachable only through `gh attestation verify`. Nothing reads them off
+      # the release itself: Scorecard's Signed-Releases check scores provenance
+      # purely by looking for a release asset whose name ends in .intoto.jsonl,
+      # and a user without the gh CLI has no other copy to check against.
+      # Publish the very bundles the gate above just verified.
+      - name: Publish attestation bundle as a release asset
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          PROVENANCE_BUNDLE: ${{ steps.attest-provenance.outputs.bundle-path }}
+          SBOM_BUNDLE: ${{ steps.attest-sbom.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          for bundle in "$PROVENANCE_BUNDLE" "$SBOM_BUNDLE"; do
+            if [[ ! -s "$bundle" ]]; then
+              echo "attestation bundle missing or empty: ${bundle:-<unset>}" >&2
+              exit 1
+            fi
+          done
+
+          BUNDLE="dist/rio-${TAG}.intoto.jsonl"
+
+          # Both inputs are JSON Lines. `awk 1` re-emits every record with a
+          # trailing newline, so an input that lacks one cannot fuse its last
+          # envelope onto the first line of the next.
+          awk 1 "$PROVENANCE_BUNDLE" "$SBOM_BUNDLE" > "$BUNDLE"
+
+          # Publishing an unverifiable bundle would be worse than publishing
+          # none, so check the assembled file itself rather than trusting that
+          # concatenating two verified inputs produced a verified output.
+          archives=( dist/*.tar.gz dist/*.zip )
+          if (( ${#archives[@]} == 0 )); then
+            echo "no release archives found in dist/ — refusing to publish a bundle" >&2
+            exit 1
+          fi
+          for f in "${archives[@]}"; do
+            gh attestation verify "$f" --bundle "$BUNDLE" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --predicate-type https://slsa.dev/provenance/v1
+            gh attestation verify "$f" --bundle "$BUNDLE" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --predicate-type https://cyclonedx.org/bom
+          done
+          # checksums.txt carries provenance only (see the attest-sbom
+          # subject-path above), so it gets the one pass.
+          gh attestation verify dist/checksums.txt --bundle "$BUNDLE" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --predicate-type https://slsa.dev/provenance/v1
+
+          gh release upload "$TAG" "$BUNDLE" --clobber
 
       - name: Upload dist/ for downstream jobs
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
