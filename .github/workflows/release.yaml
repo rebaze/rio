@@ -211,6 +211,17 @@ jobs:
 
             binary "rio"
 
+            postflight do
+              # The macOS binaries are ad-hoc signed by the Go toolchain, not
+              # Developer ID signed or notarized, and Homebrew tags every cask
+              # download with com.apple.quarantine. Gatekeeper SIGKILLs that
+              # combination, so without this "brew install rebaze/tap/rio"
+              # yields a binary that dies with signal 9 until the user approves
+              # it by hand in System Settings. Strip the tag at install time.
+              system_command "/usr/bin/xattr",
+                             args: ["-dr", "com.apple.quarantine", "#{staged_path}/rio"]
+            end
+
             # No zap stanza required
 
           end
