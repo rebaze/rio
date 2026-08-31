@@ -1,0 +1,654 @@
+{
+  "bomFormat" : "CycloneDX",
+  "specVersion" : "1.4",
+  "serialNumber" : "urn:uuid:2216b76c-674f-42a5-bc79-ee725e6c1025",
+  "version" : 1,
+  "metadata" : {
+    "timestamp" : "2026-08-30T17:40:15Z",
+    "tools" : [
+      {
+        "vendor" : "OWASP Foundation",
+        "name" : "CycloneDX Maven plugin",
+        "version" : "2.7.9",
+        "hashes" : [
+          {
+            "alg" : "MD5",
+            "content" : "8e595cdb67f17e4b41e046456970591d"
+          },
+          {
+            "alg" : "SHA-1",
+            "content" : "69e8ca804520d09ce4657e7235bae84d01cbffa6"
+          },
+          {
+            "alg" : "SHA-256",
+            "content" : "aa09074fe5aa403c008cd4fc7ef8ce41cd244489337f16b3e91a3914158a4db8"
+          },
+          {
+            "alg" : "SHA-512",
+            "content" : "1488a8112da8e675813d7585f57c5efb178aed32901118186ee12d0e4ae3d19c53774c7f860bf70d17d70f050119b69443a2637cf641675b4b5d9cdcdd69b89b"
+          },
+          {
+            "alg" : "SHA-384",
+            "content" : "b097295dfbf10887abc6eec58d4d0822cde5a73d1f5c1cf183a57bf569016ad5ced9d34efae3e574d82bb62837540c6c"
+          },
+          {
+            "alg" : "SHA3-384",
+            "content" : "289f9520bd73a2031276248a6ef8f0891c691062c2d1ea86a2bc9ea8db2c52377d92a53be9957179e71aee3deda26a8c"
+          },
+          {
+            "alg" : "SHA3-256",
+            "content" : "32b50a7efe5d491a4039c0017eca3cf49d98b55fc66d06b3dd06209487323474"
+          },
+          {
+            "alg" : "SHA3-512",
+            "content" : "1daf813da53e5d5cda4d0302ff3a5e388aa45d96ebe6dcbe240f35d33f14b1e6390f6bbe7f21f3ed8cf96ebd9f5516a08b18487b7339715109c81cebfc1563df"
+          }
+        ]
+      }
+    ],
+    "component" : {
+      "group" : "tycho-demo",
+      "name" : "example",
+      "version" : "1.0.0-SNAPSHOT",
+      "licenses" : [ ],
+      "purl" : "pkg:maven/tycho-demo/example@1.0.0-SNAPSHOT?type=eclipse-repository",
+      "type" : "library",
+      "bom-ref" : "pkg:maven/tycho-demo/example@1.0.0-SNAPSHOT?type=eclipse-repository"
+    },
+    "properties" : [
+      {
+        "name" : "maven.goal",
+        "value" : "makeBom"
+      },
+      {
+        "name" : "maven.scopes",
+        "value" : "compile,provided,runtime,system,test"
+      }
+    ]
+  },
+  "components" : [
+    {
+      "group" : "tycho-demo",
+      "name" : "example.plugin",
+      "version" : "1.0.0-SNAPSHOT",
+      "scope" : "required",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "ce7021ed6c667ae23f5b042a9ff0e65f"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "e68a076621ec5eae320b7b8e06ff616fa228444b"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "9225fe8339a9f7a8d3f02aa7aed6efa04d0a7cd238e3bc75007e9913bf9dcc6f"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "add32702e1cdeb92e83620b1d186b82f2c2826b7064cdf921b6e7bb3fd6b3e202251e9b9ad60bf13cd7434ef5fa23640f3d11e095908e8b22ac1873e89faa14d"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "16d36a5c65b111798c360ed5934a9121d94b8ed9726dba0ac4aedab4183c24e75fb111218b3e2d78bd9cbfe2379c9962"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "efa07114f873a611e8a59af0d5577c89bace6f0b6ba2e68aeb6d8d3373f1c3619d883c94da85e254f429728aa565c897"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "621b4c40321ed0221931e1fb9a0edba6d3560dec7b7845e6668109fbc67464a4"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "3688521a8d1d2b9b161d4c91d3c8babe83a3e515905cce4993ab4bfd4453590f3764a02ffa706835a5b8e5377f0df2cb1bbcd66a064e55ed3312143ec97f4c33"
+        }
+      ],
+      "purl" : "pkg:p2/example.plugin@1.0.0.today?classifier=osgi.bundle&location=https%3A%2F%2Fwww.example.p2.repo%2F",
+      "type" : "library",
+      "bom-ref" : "pkg:p2/example.plugin@1.0.0.today?classifier=osgi.bundle&location=https%3A%2F%2Fwww.example.p2.repo%2F"
+    },
+    {
+      "group" : "tycho-demo",
+      "name" : "example.feature",
+      "version" : "1.0.0-SNAPSHOT",
+      "scope" : "required",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "a3838300809a9c1f04a66d9befa1b81f"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "751ad1021e708dfcf86663175c9d5c63596c6199"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "2abfbf1474a6528874eaeccec0d137409edf0ccc7881abc7550b144411acd7d8"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "035e10652ffc6ee3a7b747a239a401ffa026e669d50b63b8748e8530dfd5c0207130b1e2eebb6bc12b0613350328ab2a31f53befc404c3370dc35bbc3a631773"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "558021e4287d297937b03b24fc36e5a8242e6be74a5a11de07631802a000c21c88e2a8a79cf0db828a5be97b0648474e"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "1ee8f15d5d0140ec36bf04a3364c037553be1fa29596fe10498abb06741c688c0cb502386d59e07947823649e19de26f"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "581406b15928d368adc923288f7a1838f87f5f10dd80fa68a8278df0d6f89312"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "9444d721b5cfafcaa2c9e8fa844da8cc1e63cff01e1950ac850e511909b458e788426b9d1843c7dac48d7a04a70c12b6a0e8b9b3082ae85ae037de7bfd2b2033"
+        }
+      ],
+      "purl" : "pkg:p2/example.feature@1.0.0.today?classifier=org.eclipse.update.feature&location=https%3A%2F%2Fwww.example.p2.repo%2F",
+      "type" : "library",
+      "bom-ref" : "pkg:p2/example.feature@1.0.0.today?classifier=org.eclipse.update.feature&location=https%3A%2F%2Fwww.example.p2.repo%2F"
+    },
+    {
+      "group" : "p2.eclipse.plugin",
+      "name" : "org.eclipse.core.databinding",
+      "version" : "1.13.100.v20230708-0916",
+      "scope" : "required",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "e89b947a6cf7dd0dd907a9d70a7baf48"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "bf2533b725441bf6aa6da46a29d16af9ef698ca1"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "2e9f512539d7705733de10b4905e80c404567073a54b02355bd5bb3047b35805"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "386532d0a9caed73246effd896127b8040ebc34157ede791fe047fedf13714174f1fa5b6ffa7ca6ee4189112f34c599fd45a1e60a1e9e85414f85ad1567af2a5"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "3381af56aca63a140e7c4654a60eec0e2896c343bc9e3cfe599e591dda8cc63e61d79e22140bb876439444641e98255d"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "f3a83a8eb7685f053d1eb901efa10b72310a43427a9a79352fe91f983b8d02bf998d202b8c4daa221ec33a6cdc663de9"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "b214522cb4df697925b78ff8aa90df14a21622d10d9080a6992e52d0b7a7004c"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "9ae8d636c385fd2a04824bcbaab96d00eaaf3f680d29fdb4eff47e80c6b0f9b369686e6b0708959d5197e9188636e5b4d7097bfae9dd9a72424fae2f59d867cf"
+        }
+      ],
+      "purl" : "pkg:p2/org.eclipse.core.databinding@1.13.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+      "type" : "library",
+      "bom-ref" : "pkg:p2/org.eclipse.core.databinding@1.13.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F"
+    },
+    {
+      "group" : "p2.eclipse.plugin",
+      "name" : "org.eclipse.core.databinding.beans",
+      "version" : "1.10.100.v20230708-0916",
+      "scope" : "required",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "e89b947a6cf7dd0dd907a9d70a7baf48"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "bf2533b725441bf6aa6da46a29d16af9ef698ca1"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "2e9f512539d7705733de10b4905e80c404567073a54b02355bd5bb3047b35805"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "386532d0a9caed73246effd896127b8040ebc34157ede791fe047fedf13714174f1fa5b6ffa7ca6ee4189112f34c599fd45a1e60a1e9e85414f85ad1567af2a5"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "3381af56aca63a140e7c4654a60eec0e2896c343bc9e3cfe599e591dda8cc63e61d79e22140bb876439444641e98255d"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "f3a83a8eb7685f053d1eb901efa10b72310a43427a9a79352fe91f983b8d02bf998d202b8c4daa221ec33a6cdc663de9"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "b214522cb4df697925b78ff8aa90df14a21622d10d9080a6992e52d0b7a7004c"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "9ae8d636c385fd2a04824bcbaab96d00eaaf3f680d29fdb4eff47e80c6b0f9b369686e6b0708959d5197e9188636e5b4d7097bfae9dd9a72424fae2f59d867cf"
+        }
+      ],
+      "purl" : "pkg:p2/org.eclipse.core.databinding.beans@1.10.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+      "type" : "library",
+      "bom-ref" : "pkg:p2/org.eclipse.core.databinding.beans@1.10.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F"
+    },
+    {
+      "group" : "p2.eclipse.plugin",
+      "name" : "org.eclipse.core.databinding.observable",
+      "version" : "1.13.100.v20230708-0916",
+      "scope" : "required",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "e89b947a6cf7dd0dd907a9d70a7baf48"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "bf2533b725441bf6aa6da46a29d16af9ef698ca1"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "2e9f512539d7705733de10b4905e80c404567073a54b02355bd5bb3047b35805"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "386532d0a9caed73246effd896127b8040ebc34157ede791fe047fedf13714174f1fa5b6ffa7ca6ee4189112f34c599fd45a1e60a1e9e85414f85ad1567af2a5"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "3381af56aca63a140e7c4654a60eec0e2896c343bc9e3cfe599e591dda8cc63e61d79e22140bb876439444641e98255d"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "f3a83a8eb7685f053d1eb901efa10b72310a43427a9a79352fe91f983b8d02bf998d202b8c4daa221ec33a6cdc663de9"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "b214522cb4df697925b78ff8aa90df14a21622d10d9080a6992e52d0b7a7004c"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "9ae8d636c385fd2a04824bcbaab96d00eaaf3f680d29fdb4eff47e80c6b0f9b369686e6b0708959d5197e9188636e5b4d7097bfae9dd9a72424fae2f59d867cf"
+        }
+      ],
+      "purl" : "pkg:p2/org.eclipse.core.databinding.observable@1.13.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+      "type" : "library",
+      "bom-ref" : "pkg:p2/org.eclipse.core.databinding.observable@1.13.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F"
+    },
+    {
+      "group" : "p2.eclipse.plugin",
+      "name" : "org.eclipse.core.databinding.property",
+      "version" : "1.10.100.v20230708-0916",
+      "scope" : "required",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "e89b947a6cf7dd0dd907a9d70a7baf48"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "bf2533b725441bf6aa6da46a29d16af9ef698ca1"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "2e9f512539d7705733de10b4905e80c404567073a54b02355bd5bb3047b35805"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "386532d0a9caed73246effd896127b8040ebc34157ede791fe047fedf13714174f1fa5b6ffa7ca6ee4189112f34c599fd45a1e60a1e9e85414f85ad1567af2a5"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "3381af56aca63a140e7c4654a60eec0e2896c343bc9e3cfe599e591dda8cc63e61d79e22140bb876439444641e98255d"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "f3a83a8eb7685f053d1eb901efa10b72310a43427a9a79352fe91f983b8d02bf998d202b8c4daa221ec33a6cdc663de9"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "b214522cb4df697925b78ff8aa90df14a21622d10d9080a6992e52d0b7a7004c"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "9ae8d636c385fd2a04824bcbaab96d00eaaf3f680d29fdb4eff47e80c6b0f9b369686e6b0708959d5197e9188636e5b4d7097bfae9dd9a72424fae2f59d867cf"
+        }
+      ],
+      "purl" : "pkg:p2/org.eclipse.core.databinding.property@1.10.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+      "type" : "library",
+      "bom-ref" : "pkg:p2/org.eclipse.core.databinding.property@1.10.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F"
+    },
+    {
+      "group" : "p2.eclipse.plugin",
+      "name" : "org.eclipse.equinox.common",
+      "version" : "3.18.200.v20231106-1826",
+      "scope" : "required",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "e89b947a6cf7dd0dd907a9d70a7baf48"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "bf2533b725441bf6aa6da46a29d16af9ef698ca1"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "2e9f512539d7705733de10b4905e80c404567073a54b02355bd5bb3047b35805"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "386532d0a9caed73246effd896127b8040ebc34157ede791fe047fedf13714174f1fa5b6ffa7ca6ee4189112f34c599fd45a1e60a1e9e85414f85ad1567af2a5"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "3381af56aca63a140e7c4654a60eec0e2896c343bc9e3cfe599e591dda8cc63e61d79e22140bb876439444641e98255d"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "f3a83a8eb7685f053d1eb901efa10b72310a43427a9a79352fe91f983b8d02bf998d202b8c4daa221ec33a6cdc663de9"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "b214522cb4df697925b78ff8aa90df14a21622d10d9080a6992e52d0b7a7004c"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "9ae8d636c385fd2a04824bcbaab96d00eaaf3f680d29fdb4eff47e80c6b0f9b369686e6b0708959d5197e9188636e5b4d7097bfae9dd9a72424fae2f59d867cf"
+        }
+      ],
+      "purl" : "pkg:p2/org.eclipse.equinox.common@3.18.200.v20231106-1826?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+      "type" : "library",
+      "bom-ref" : "pkg:p2/org.eclipse.equinox.common@3.18.200.v20231106-1826?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F"
+    },
+    {
+      "group" : "p2.eclipse.plugin",
+      "name" : "org.eclipse.osgi",
+      "version" : "3.18.600.v20231110-1900",
+      "scope" : "required",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "e89b947a6cf7dd0dd907a9d70a7baf48"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "bf2533b725441bf6aa6da46a29d16af9ef698ca1"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "2e9f512539d7705733de10b4905e80c404567073a54b02355bd5bb3047b35805"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "386532d0a9caed73246effd896127b8040ebc34157ede791fe047fedf13714174f1fa5b6ffa7ca6ee4189112f34c599fd45a1e60a1e9e85414f85ad1567af2a5"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "3381af56aca63a140e7c4654a60eec0e2896c343bc9e3cfe599e591dda8cc63e61d79e22140bb876439444641e98255d"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "f3a83a8eb7685f053d1eb901efa10b72310a43427a9a79352fe91f983b8d02bf998d202b8c4daa221ec33a6cdc663de9"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "b214522cb4df697925b78ff8aa90df14a21622d10d9080a6992e52d0b7a7004c"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "9ae8d636c385fd2a04824bcbaab96d00eaaf3f680d29fdb4eff47e80c6b0f9b369686e6b0708959d5197e9188636e5b4d7097bfae9dd9a72424fae2f59d867cf"
+        }
+      ],
+      "purl" : "pkg:p2/org.eclipse.osgi@3.18.600.v20231110-1900?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+      "type" : "library",
+      "bom-ref" : "pkg:p2/org.eclipse.osgi@3.18.600.v20231110-1900?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F"
+    },
+    {
+      "group" : "p2.eclipse.plugin",
+      "name" : "org.eclipse.equinox.launcher",
+      "version" : "1.6.600.v20231106-1826",
+      "scope" : "required",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "e89b947a6cf7dd0dd907a9d70a7baf48"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "bf2533b725441bf6aa6da46a29d16af9ef698ca1"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "2e9f512539d7705733de10b4905e80c404567073a54b02355bd5bb3047b35805"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "386532d0a9caed73246effd896127b8040ebc34157ede791fe047fedf13714174f1fa5b6ffa7ca6ee4189112f34c599fd45a1e60a1e9e85414f85ad1567af2a5"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "3381af56aca63a140e7c4654a60eec0e2896c343bc9e3cfe599e591dda8cc63e61d79e22140bb876439444641e98255d"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "f3a83a8eb7685f053d1eb901efa10b72310a43427a9a79352fe91f983b8d02bf998d202b8c4daa221ec33a6cdc663de9"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "b214522cb4df697925b78ff8aa90df14a21622d10d9080a6992e52d0b7a7004c"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "9ae8d636c385fd2a04824bcbaab96d00eaaf3f680d29fdb4eff47e80c6b0f9b369686e6b0708959d5197e9188636e5b4d7097bfae9dd9a72424fae2f59d867cf"
+        }
+      ],
+      "purl" : "pkg:p2/org.eclipse.equinox.launcher@1.6.600.v20231106-1826?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+      "type" : "library",
+      "bom-ref" : "pkg:p2/org.eclipse.equinox.launcher@1.6.600.v20231106-1826?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F"
+    },
+    {
+      "group" : "p2.eclipse.plugin",
+      "name" : "org.eclipse.equinox.launcher.gtk.linux.x86_64",
+      "version" : "1.2.800.v20231003-1442",
+      "scope" : "required",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "e89b947a6cf7dd0dd907a9d70a7baf48"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "bf2533b725441bf6aa6da46a29d16af9ef698ca1"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "2e9f512539d7705733de10b4905e80c404567073a54b02355bd5bb3047b35805"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "386532d0a9caed73246effd896127b8040ebc34157ede791fe047fedf13714174f1fa5b6ffa7ca6ee4189112f34c599fd45a1e60a1e9e85414f85ad1567af2a5"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "3381af56aca63a140e7c4654a60eec0e2896c343bc9e3cfe599e591dda8cc63e61d79e22140bb876439444641e98255d"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "f3a83a8eb7685f053d1eb901efa10b72310a43427a9a79352fe91f983b8d02bf998d202b8c4daa221ec33a6cdc663de9"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "b214522cb4df697925b78ff8aa90df14a21622d10d9080a6992e52d0b7a7004c"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "9ae8d636c385fd2a04824bcbaab96d00eaaf3f680d29fdb4eff47e80c6b0f9b369686e6b0708959d5197e9188636e5b4d7097bfae9dd9a72424fae2f59d867cf"
+        }
+      ],
+      "purl" : "pkg:p2/org.eclipse.equinox.launcher.gtk.linux.x86_64@1.2.800.v20231003-1442?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+      "type" : "library",
+      "bom-ref" : "pkg:p2/org.eclipse.equinox.launcher.gtk.linux.x86_64@1.2.800.v20231003-1442?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F"
+    },
+    {
+      "group" : "p2.eclipse.feature",
+      "name" : "org.eclipse.equinox.executable",
+      "version" : "3.8.2300.v20231106-1826",
+      "scope" : "required",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "e89b947a6cf7dd0dd907a9d70a7baf48"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "bf2533b725441bf6aa6da46a29d16af9ef698ca1"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "2e9f512539d7705733de10b4905e80c404567073a54b02355bd5bb3047b35805"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "386532d0a9caed73246effd896127b8040ebc34157ede791fe047fedf13714174f1fa5b6ffa7ca6ee4189112f34c599fd45a1e60a1e9e85414f85ad1567af2a5"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "3381af56aca63a140e7c4654a60eec0e2896c343bc9e3cfe599e591dda8cc63e61d79e22140bb876439444641e98255d"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "f3a83a8eb7685f053d1eb901efa10b72310a43427a9a79352fe91f983b8d02bf998d202b8c4daa221ec33a6cdc663de9"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "b214522cb4df697925b78ff8aa90df14a21622d10d9080a6992e52d0b7a7004c"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "9ae8d636c385fd2a04824bcbaab96d00eaaf3f680d29fdb4eff47e80c6b0f9b369686e6b0708959d5197e9188636e5b4d7097bfae9dd9a72424fae2f59d867cf"
+        }
+      ],
+      "purl" : "pkg:p2/org.eclipse.equinox.executable@3.8.2300.v20231106-1826?classifier=org.eclipse.update.feature&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+      "type" : "library",
+      "bom-ref" : "pkg:p2/org.eclipse.equinox.executable@3.8.2300.v20231106-1826?classifier=org.eclipse.update.feature&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F"
+    },
+    {
+      "group" : "p2.p2.installable.unit",
+      "name" : "org.eclipse.equinox.executable_root.gtk.linux.x86_64",
+      "version" : "3.8.2300.v20231106-1826",
+      "scope" : "required",
+      "hashes" : [
+        {
+          "alg" : "MD5",
+          "content" : "e89b947a6cf7dd0dd907a9d70a7baf48"
+        },
+        {
+          "alg" : "SHA-1",
+          "content" : "bf2533b725441bf6aa6da46a29d16af9ef698ca1"
+        },
+        {
+          "alg" : "SHA-256",
+          "content" : "2e9f512539d7705733de10b4905e80c404567073a54b02355bd5bb3047b35805"
+        },
+        {
+          "alg" : "SHA-512",
+          "content" : "386532d0a9caed73246effd896127b8040ebc34157ede791fe047fedf13714174f1fa5b6ffa7ca6ee4189112f34c599fd45a1e60a1e9e85414f85ad1567af2a5"
+        },
+        {
+          "alg" : "SHA-384",
+          "content" : "3381af56aca63a140e7c4654a60eec0e2896c343bc9e3cfe599e591dda8cc63e61d79e22140bb876439444641e98255d"
+        },
+        {
+          "alg" : "SHA3-384",
+          "content" : "f3a83a8eb7685f053d1eb901efa10b72310a43427a9a79352fe91f983b8d02bf998d202b8c4daa221ec33a6cdc663de9"
+        },
+        {
+          "alg" : "SHA3-256",
+          "content" : "b214522cb4df697925b78ff8aa90df14a21622d10d9080a6992e52d0b7a7004c"
+        },
+        {
+          "alg" : "SHA3-512",
+          "content" : "9ae8d636c385fd2a04824bcbaab96d00eaaf3f680d29fdb4eff47e80c6b0f9b369686e6b0708959d5197e9188636e5b4d7097bfae9dd9a72424fae2f59d867cf"
+        }
+      ],
+      "purl" : "pkg:maven/p2.p2.installable.unit/org.eclipse.equinox.executable_root.gtk.linux.x86_64@3.8.2300.v20231106-1826?type=p2-installable-unit",
+      "type" : "library",
+      "bom-ref" : "pkg:maven/p2.p2.installable.unit/org.eclipse.equinox.executable_root.gtk.linux.x86_64@3.8.2300.v20231106-1826?type=p2-installable-unit"
+    }
+  ],
+  "dependencies" : [
+    {
+      "ref" : "pkg:maven/tycho-demo/example@1.0.0-SNAPSHOT?type=eclipse-repository",
+      "dependsOn" : [
+        "pkg:p2/example.feature@1.0.0.today?classifier=org.eclipse.update.feature&location=https%3A%2F%2Fwww.example.p2.repo%2F",
+        "pkg:p2/example.plugin@1.0.0.today?classifier=osgi.bundle&location=https%3A%2F%2Fwww.example.p2.repo%2F",
+        "pkg:p2/org.eclipse.core.databinding@1.13.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+        "pkg:p2/org.eclipse.core.databinding.beans@1.10.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+        "pkg:p2/org.eclipse.core.databinding.observable@1.13.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+        "pkg:p2/org.eclipse.core.databinding.property@1.10.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+        "pkg:p2/org.eclipse.equinox.common@3.18.200.v20231106-1826?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+        "pkg:p2/org.eclipse.osgi@3.18.600.v20231110-1900?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F"
+      ]
+    },
+    {
+      "ref" : "pkg:p2/example.plugin@1.0.0.today?classifier=osgi.bundle&location=https%3A%2F%2Fwww.example.p2.repo%2F",
+      "dependsOn" : [ ]
+    },
+    {
+      "ref" : "pkg:p2/org.eclipse.core.databinding@1.13.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+      "dependsOn" : [ ]
+    },
+    {
+      "ref" : "pkg:p2/org.eclipse.core.databinding.beans@1.10.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+      "dependsOn" : [ ]
+    },
+    {
+      "ref" : "pkg:p2/org.eclipse.core.databinding.observable@1.13.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+      "dependsOn" : [ ]
+    },
+    {
+      "ref" : "pkg:p2/org.eclipse.core.databinding.property@1.10.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+      "dependsOn" : [ ]
+    },
+    {
+      "ref" : "pkg:p2/org.eclipse.equinox.common@3.18.200.v20231106-1826?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+      "dependsOn" : [ ]
+    },
+    {
+      "ref" : "pkg:p2/org.eclipse.osgi@3.18.600.v20231110-1900?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+      "dependsOn" : [ ]
+    },
+    {
+      "ref" : "pkg:p2/example.feature@1.0.0.today?classifier=org.eclipse.update.feature&location=https%3A%2F%2Fwww.example.p2.repo%2F",
+      "dependsOn" : [ ]
+    },
+    {
+      "ref" : "pkg:p2/org.eclipse.equinox.launcher@1.6.600.v20231106-1826?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+      "dependsOn" : [ ]
+    },
+    {
+      "ref" : "pkg:p2/org.eclipse.equinox.launcher.gtk.linux.x86_64@1.2.800.v20231003-1442?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+      "dependsOn" : [ ]
+    },
+    {
+      "ref" : "pkg:p2/org.eclipse.equinox.executable@3.8.2300.v20231106-1826?classifier=org.eclipse.update.feature&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+      "dependsOn" : [ ]
+    },
+    {
+      "ref" : "pkg:maven/p2.p2.installable.unit/org.eclipse.equinox.executable_root.gtk.linux.x86_64@3.8.2300.v20231106-1826?type=p2-installable-unit",
+      "dependsOn" : [ ]
+    },
+    {
+      "ref" : "pkg:p2/org.eclipse.equinox.executable_root.gtk.linux.x86_64@3.8.2300.v20231106-1826?classifier=binary&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+      "dependsOn" : [ ]
+    }
+  ]
+}

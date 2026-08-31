@@ -1,0 +1,17 @@
+version: 1                    
+
+artifacts:
+  - id: rcp-example
+    sbom: "*.cdx.json"
+    transforms:
+      - repair-purl:
+          ecosystem: p2
+          table: p2-maven.json
+  - id: rcp-example-unmapped
+    sbom: "*.cdx.json"
+
+output:
+  specVersionFloor: "1.6"
+
+gate:
+  require: [name, version, purl]
