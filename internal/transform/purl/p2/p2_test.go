@@ -85,8 +85,8 @@ func run(t *testing.T, cfg transform.Config, src []byte) (transform.Result, []st
 }
 
 // purlsOf reads every component purl back out of the serialized document,
-// which is what ships. sbom.Component.PURL reads the typed view and so does not
-// observe writes the transform made to the raw tree.
+// which is what ships, so a test cannot pass on a write that never reached the
+// bytes.
 func purlsOf(t *testing.T, doc *sbom.Document) []string {
 	t.Helper()
 	var tree struct {
@@ -905,5 +905,193 @@ func TestVersionRuleIsAppliedOnceToTheRawVersion(t *testing.T) {
 	}
 	if got := componentProperties(t, doc, 0)[p2.QualifierProperty]; got != "v1" {
 		t.Fatalf("%s = %q, want %q", p2.QualifierProperty, got, "v1")
+	}
+}
+
+// A generator may publish an OSGi bundle as a Maven-shaped purl under a
+// namespace it invented, rather than as pkg:p2. On the estate rio was built
+// for this is the whole product:
+//
+//	pkg:maven/p2.eclipse.plugin/org.apache.commons.commons-io@2.11.0?type=eclipse-plugin
+//
+// §6.3's "leave a valid pkg:maven purl alone" protects real coordinates. A
+// synthetic namespace is not one, and cannot resolve anywhere, so repairing it
+// destroys nothing.
+func TestSyntheticMavenNamespaceIsInScope(t *testing.T) {
+	const purl = "pkg:maven/p2.eclipse.plugin/com.google.gson@2.8.9?type=eclipse-plugin"
+
+	t.Run("a table hit becomes the real coordinate", func(t *testing.T) {
+		res, purls, _ := run(t, nil, source(component(
+			purl, "p2.eclipse.plugin", "com.google.gson", "2.8.9", purl, "")))
+
+		want := "pkg:maven/com.google.code.gson/gson@2.8.9"
+		if purls[0] != want {
+			t.Fatalf("purl = %q, want %q", purls[0], want)
+		}
+		// The Change is what the pipeline turns into the repair record and the
+		// identity evidence, so every field of it is load bearing (§4.3).
+		wantChange := transform.Change{ComponentIndex: 0, Field: "purl", From: purl, To: want}
+		if diff := cmp.Diff([]transform.Change{wantChange}, res.Changes); diff != "" {
+			t.Fatalf("Changes (-want +got):\n%s", diff)
+		}
+		if len(res.Notes) != 0 {
+			t.Fatalf("Notes = %+v, want none", res.Notes)
+		}
+	})
+
+	t.Run("an Eclipse qualifier is still stripped and preserved", func(t *testing.T) {
+		q := "pkg:maven/p2.eclipse.plugin/org.eclipse.osgi@3.18.600.v20231110-1900?type=eclipse-plugin"
+		_, purls, doc := run(t, nil, source(component(
+			q, "p2.eclipse.plugin", "org.eclipse.osgi", "3.18.600.v20231110-1900", q, "")))
+
+		want := "pkg:maven/org.eclipse.platform/org.eclipse.osgi@3.18.600"
+		if purls[0] != want {
+			t.Fatalf("purl = %q, want %q", purls[0], want)
+		}
+		if got := componentProperties(t, doc, 0)[p2.QualifierProperty]; got != "v20231110-1900" {
+			t.Fatalf("%s = %q, want %q", p2.QualifierProperty, got, "v20231110-1900")
+		}
+	})
+
+	// A miss leaves the purl exactly as found. A synthetic coordinate with a
+	// tidied version is still a coordinate that resolves to nothing, and
+	// correcting garbage into different garbage is what §6.3 warns against.
+	t.Run("a miss is reported unmapped and writes nothing", func(t *testing.T) {
+		q := "pkg:maven/p2.eclipse.plugin/org.apache.commons.commons-io@2.11.0.v1?type=eclipse-plugin"
+		res, purls, doc := run(t, nil, source(component(
+			q, "p2.eclipse.plugin", "org.apache.commons.commons-io", "2.11.0.v1", q, "")))
+
+		if purls[0] != q {
+			t.Fatalf("purl = %q, want it untouched at %q", purls[0], q)
+		}
+		if got := componentProperties(t, doc, 0)[p2.QualifierProperty]; got != "" {
+			t.Fatalf("%s = %q, want nothing written on a miss", p2.QualifierProperty, got)
+		}
+		if len(res.Changes) != 0 {
+			t.Fatalf("Changes = %+v, want none", res.Changes)
+		}
+		// The note carries the purl into the unmapped record, so a reader of
+		// the output document can see exactly what was not resolved (§4.3a).
+		wantNote := transform.Note{
+			ComponentIndex: 0, Kind: transform.NoteUnmapped, PURL: q, Reason: "no mapping entry",
+		}
+		if diff := cmp.Diff(wantNote, onlyNote(t, res)); diff != "" {
+			t.Fatalf("Note (-want +got):\n%s", diff)
+		}
+	})
+
+	// The prohibition in §6.2 is untouched: the symbolic name is not split.
+	t.Run("no groupId is inferred from the symbolic name", func(t *testing.T) {
+		q := "pkg:maven/p2.eclipse.plugin/org.apache.commons.commons-io@2.11.0?type=eclipse-plugin"
+		_, purls, _ := run(t, nil, source(component(
+			q, "p2.eclipse.plugin", "org.apache.commons.commons-io", "2.11.0", q, "")))
+
+		if strings.Contains(purls[0], "org.apache.commons/commons-io") {
+			t.Fatalf("purl = %q: a coordinate was inferred by splitting the symbolic name", purls[0])
+		}
+	})
+}
+
+// The rule still holds for coordinates that are real.
+func TestRealMavenNamespacesAreStillLeftAlone(t *testing.T) {
+	cases := []struct{ name, purl, group string }{
+		{"a real groupId", "pkg:maven/org.osgi/org.osgi.service.cm@1.6.0?type=eclipse-plugin", "org.osgi"},
+		{"an Eclipse feature's synthetic namespace", "pkg:maven/p2.eclipse.feature/some.feature@1.0.0?type=eclipse-feature", "p2.eclipse.feature"},
+		{"an installable unit", "pkg:maven/p2.p2.installable.unit/thing@1.0.0?type=p2-installable-unit", "p2.p2.installable.unit"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res, purls, _ := run(t, nil, source(component(
+				tc.purl, tc.group, "org.eclipse.osgi", "1.0.0", tc.purl, "")))
+
+			if purls[0] != tc.purl {
+				t.Fatalf("purl = %q, want it untouched", purls[0])
+			}
+			// Even though "org.eclipse.osgi" is in the built-in table, the
+			// scope filter must never let these reach it.
+			if n := onlyNote(t, res); n.Kind != transform.NoteSkipped {
+				t.Fatalf("note kind = %q, want %q", n.Kind, transform.NoteSkipped)
+			}
+		})
+	}
+}
+
+func TestSyntheticNamespaceIsConfigurable(t *testing.T) {
+	const purl = "pkg:maven/tycho.plugin/com.google.gson@2.8.9?type=eclipse-plugin"
+	cfg := transform.Config{"ecosystem": "p2", "syntheticNamespace": "tycho.plugin"}
+
+	_, purls, _ := run(t, cfg, source(component(
+		purl, "tycho.plugin", "com.google.gson", "2.8.9", purl, "")))
+
+	if want := "pkg:maven/com.google.code.gson/gson@2.8.9"; purls[0] != want {
+		t.Fatalf("purl = %q, want %q", purls[0], want)
+	}
+
+	// And the default namespace is then out of scope.
+	def := "pkg:maven/p2.eclipse.plugin/com.google.gson@2.8.9?type=eclipse-plugin"
+	_, purls, _ = run(t, cfg, source(component(def, "p2.eclipse.plugin", "com.google.gson", "2.8.9", def, "")))
+	if purls[0] != def {
+		t.Fatalf("purl = %q, want it untouched once the namespace is reconfigured", purls[0])
+	}
+}
+
+// A nested artefact carries a classifier and shares the enclosing bundle's
+// name and version. Resolving by name alone would give both the same
+// coordinate, so the jar inside a plugin would be asserted to BE the plugin
+// and the document would carry two identical purls.
+func TestSyntheticNestedArtefactIsSkipped(t *testing.T) {
+	const plugin = "pkg:maven/p2.eclipse.plugin/com.google.gson@2.8.9?type=eclipse-plugin"
+	const nested = "pkg:maven/p2.eclipse.plugin/com.google.gson@2.8.9?classifier=jdimodel.jar&type=eclipse-plugin"
+
+	res, purls, _ := run(t, nil, source(
+		component(plugin, "p2.eclipse.plugin", "com.google.gson", "2.8.9", plugin, ""),
+		component(nested, "p2.eclipse.plugin", "com.google.gson", "2.8.9", nested, ""),
+	))
+
+	if want := "pkg:maven/com.google.code.gson/gson@2.8.9"; purls[0] != want {
+		t.Fatalf("the bundle purl = %q, want %q", purls[0], want)
+	}
+	if purls[1] != nested {
+		t.Fatalf("the nested artefact purl = %q, want it untouched", purls[1])
+	}
+	if purls[0] == purls[1] {
+		t.Fatal("the nested artefact collapsed onto the bundle's identity")
+	}
+	if len(res.Changes) != 1 {
+		t.Fatalf("Changes = %+v, want only the bundle", res.Changes)
+	}
+	n := onlyNote(t, res)
+	if n.Kind != transform.NoteSkipped {
+		t.Fatalf("note kind = %q, want %q", n.Kind, transform.NoteSkipped)
+	}
+	if !strings.Contains(n.Reason, "jdimodel.jar") {
+		t.Fatalf("reason = %q, want it to name the classifier", n.Reason)
+	}
+}
+
+// §6.2 step 1 beats the table on the synthetic path too, exactly as it does on
+// the p2 path: a generator that already stated the coordinate is believed.
+func TestSyntheticPathHonoursPURLQualifiers(t *testing.T) {
+	const purl = "pkg:maven/p2.eclipse.plugin/com.google.gson@2.8.9?" +
+		"maven-groupId=com.example&maven-artifactId=widget&type=eclipse-plugin"
+
+	_, purls, _ := run(t, nil, source(component(
+		purl, "p2.eclipse.plugin", "com.google.gson", "2.8.9", purl, "")))
+
+	// The built-in table would say com.google.code.gson:gson; the purl wins.
+	if want := "pkg:maven/com.example/widget@2.8.9"; purls[0] != want {
+		t.Fatalf("purl = %q, want %q", purls[0], want)
+	}
+}
+
+// An empty syntheticNamespace would match every purl with no namespace, which
+// is §6.3 switched off by typo.
+func TestEmptySyntheticNamespaceIsRejected(t *testing.T) {
+	_, err := p2.New(transform.Config{"ecosystem": "p2", "syntheticNamespace": "  "}, t.TempDir())
+	if err == nil {
+		t.Fatal("New() = nil error, want an empty syntheticNamespace refused")
+	}
+	if !strings.Contains(err.Error(), "syntheticNamespace") {
+		t.Fatalf("error = %q, want it to name the offending key", err)
 	}
 }

@@ -36,10 +36,14 @@ const ID = "repair-purl/p2"
 // rather than discarded.
 const QualifierProperty = sbom.PropertyPrefix + "p2-qualifier"
 
-// Defaults for the scope filter, both configurable from the manifest (§6.2).
+// Defaults for the scope filter, all configurable from the manifest (§6.2).
 const (
 	DefaultGroupPrefix = "p2."
 	DefaultClassifier  = "osgi.bundle"
+	// DefaultSyntheticNamespace is the purl namespace Tycho invents for an
+	// OSGi bundle it publishes as a Maven-shaped coordinate. See
+	// applyToSyntheticMaven.
+	DefaultSyntheticNamespace = "p2.eclipse.plugin"
 )
 
 // unmappedReason is the wording §4.3a shows in an unmapped record.
@@ -64,15 +68,16 @@ const (
 )
 
 type repairer struct {
-	groupPrefix string
-	classifier  string
-	table       table
+	groupPrefix        string
+	classifier         string
+	syntheticNamespace string
+	table              table
 }
 
 // New builds the p2 repairer. Every path in cfg resolves against baseDir, the
 // manifest's own directory.
 func New(cfg transform.Config, baseDir string) (transform.Transform, error) {
-	if err := cfg.Reject("ecosystem", "table", "groupPrefix", "classifier"); err != nil {
+	if err := cfg.Reject("ecosystem", "table", "groupPrefix", "classifier", "syntheticNamespace"); err != nil {
 		return nil, err
 	}
 
@@ -84,6 +89,16 @@ func New(cfg transform.Config, baseDir string) (transform.Transform, error) {
 	if err != nil {
 		return nil, err
 	}
+	syntheticNamespace, err := cfg.String("syntheticNamespace", DefaultSyntheticNamespace)
+	if err != nil {
+		return nil, err
+	}
+	// Empty would match every purl that has no namespace at all, putting the
+	// whole Maven ecosystem in scope and turning §6.3 off by typo.
+	if strings.TrimSpace(syntheticNamespace) == "" {
+		return nil, fmt.Errorf("syntheticNamespace must not be empty; " +
+			"omit it to use the default " + DefaultSyntheticNamespace)
+	}
 	tablePath, err := cfg.String("table", "")
 	if err != nil {
 		return nil, err
@@ -93,7 +108,12 @@ func New(cfg transform.Config, baseDir string) (transform.Transform, error) {
 		return nil, err
 	}
 
-	return &repairer{groupPrefix: groupPrefix, classifier: classifier, table: tbl}, nil
+	return &repairer{
+		groupPrefix:        groupPrefix,
+		classifier:         classifier,
+		syntheticNamespace: syntheticNamespace,
+		table:              tbl,
+	}, nil
 }
 
 func (r *repairer) ID() string { return ID }
@@ -111,12 +131,13 @@ func (r *repairer) Apply(doc *sbom.Document) (transform.Result, error) {
 func (r *repairer) applyTo(c *sbom.Component, res *transform.Result) {
 	original := c.PURL()
 
-	// Scope filter step 1 (§6.3). The transform touches a component whose purl
-	// type is p2, or one whose purl is absent but which carries an OSGi bundle
-	// symbolic name. A component with a valid pkg:maven purl is left alone
-	// unconditionally — including the installable unit carrying a synthetic
-	// groupId that will never resolve. Garbage in stays garbage, visibly,
-	// rather than being silently "corrected" into different garbage.
+	// Scope filter step 1. Three shapes are in scope, because Tycho emits
+	// three: a pkg:p2 purl, a Maven-shaped purl under the namespace Tycho
+	// invents for a bundle it has no coordinate for, and no purl at all
+	// beside an OSGi bundle symbolic name (§6.3, and applyToSyntheticMaven
+	// for why the second is here at all). A component carrying any other
+	// Maven namespace is left alone unconditionally: garbage in stays
+	// garbage, visibly, rather than being "corrected" into different garbage.
 	if original == "" {
 		r.applyToBundleWithoutPURL(c, res)
 		return
@@ -124,6 +145,10 @@ func (r *repairer) applyTo(c *sbom.Component, res *transform.Result) {
 	parsed, err := packageurl.FromString(original)
 	if err != nil {
 		r.skip(res, c.Index, original, fmt.Sprintf("purl does not parse: %v", err))
+		return
+	}
+	if parsed.Type == packageurl.TypeMaven && parsed.Namespace == r.syntheticNamespace {
+		r.applyToSyntheticMaven(c, res, original, parsed)
 		return
 	}
 	if parsed.Type != packageurl.TypeP2 {
@@ -188,6 +213,90 @@ func (r *repairer) applyTo(c *sbom.Component, res *transform.Result) {
 
 	// One Change per component even when both operations fired: the purl has
 	// one before and one after.
+	if repaired == original {
+		return
+	}
+	c.SetPURL(repaired)
+	res.Changes = append(res.Changes, transform.Change{
+		ComponentIndex: c.Index,
+		Field:          "purl",
+		From:           original,
+		To:             repaired,
+	})
+}
+
+// applyToSyntheticMaven handles an OSGi bundle that the generator published as
+// a Maven-shaped purl under a namespace it invented:
+//
+//	pkg:maven/p2.eclipse.plugin/org.apache.commons.commons-io@2.11.0?type=eclipse-plugin
+//
+// This is a deliberate override of §6.3, which says a component with a valid
+// pkg:maven purl is left alone unconditionally and gives the example of an
+// installable unit whose synthetic groupId "will never resolve to anything".
+// The spec's reason is visibility: garbage in stays garbage rather than being
+// corrected into different garbage. That reasoning was written around one
+// stray component. On the estate rio was built for this shape is 605 of 688
+// — the entire product — and leaving it alone means the tool declines to do
+// the one job it exists for, silently.
+//
+// What makes the override safe is not that §6.3 does not apply. It is that
+// p2.eclipse.plugin is a placeholder rather than a groupId, so no such purl
+// resolves in any public registry or vulnerability database, and that the
+// replacement is looked up rather than derived.
+//
+// What does NOT change is §6.2's prohibition: the coordinate still comes from
+// the table or from the component's own properties, never from splitting the
+// symbolic name. "org.apache.commons.commons-io" is only
+// org.apache.commons:commons-io because a curated entry says so.
+//
+// Unlike the p2-purl path, the version fix in §6.1 is not applied on its own
+// here, and the reason is not symmetry but what the two shapes look like to a
+// consumer. An unmapped pkg:p2 purl announces its own unusability through its
+// type, so tidying its version is harmless. An unmapped synthetic purl already
+// looks like Maven; strip the Eclipse qualifier off
+// pkg:maven/p2.eclipse.plugin/com.google.guava@30.1.0.v1 and it becomes
+// indistinguishable from a well-formed coordinate that a lenient matcher will
+// act on, against a groupId that does not exist. A miss therefore leaves the
+// purl byte-identical.
+func (r *repairer) applyToSyntheticMaven(c *sbom.Component, res *transform.Result, original string, parsed packageurl.PackageURL) {
+	// A plugin carries no classifier here; a nested artefact does, and it
+	// shares the plugin's name and version. In the estate this was built for,
+	// org.eclipse.jdt.debug appears twice — once as the bundle and once as
+	// classifier=jdimodel.jar, a jar shipped inside it. Resolving by name
+	// alone would give both the same coordinate, asserting that the nested jar
+	// IS the plugin and putting two identical purls in a document rio calls
+	// valid. The p2 path is guarded by classifier=osgi.bundle; this is the
+	// same guard, stated the way this shape states it.
+	if classifier := qualifier(&parsed, "classifier"); classifier != "" {
+		r.skip(res, c.Index, original, fmt.Sprintf(
+			"purl carries classifier %q, so it is an artefact inside a bundle rather than the bundle",
+			classifier))
+		return
+	}
+
+	// §6.2's full resolution order, step 1 included: a generator that already
+	// put maven-groupId on the purl should be believed over the table, exactly
+	// as it is on the p2 path.
+	coords, found := r.resolve(c, &parsed)
+	if !found {
+		r.unmapped(res, c.Index, original, unmappedReason)
+		return
+	}
+	if reason, ok := coords.valid(); !ok {
+		r.unmapped(res, c.Index, original, reason)
+		return
+	}
+
+	// The version may still carry an Eclipse build qualifier even here, so
+	// §6.1 applies once the coordinate is known.
+	version, dropped := splitVersionQualifier(parsed.Version)
+	if dropped != "" {
+		c.AddProperty(QualifierProperty, dropped)
+	}
+
+	// type=eclipse-plugin describes the p2 packaging, not the Maven artifact,
+	// so it goes the way the p2 qualifiers do.
+	repaired := mavenPURL(coords, version)
 	if repaired == original {
 		return
 	}

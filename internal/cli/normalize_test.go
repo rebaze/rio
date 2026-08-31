@@ -170,9 +170,9 @@ func TestTwoRunsAreByteIdentical(t *testing.T) {
 // member for member (§4.3, cross-cutting acceptance).
 func TestComponentMembershipNeverChanges(t *testing.T) {
 	fixtures := []string{
-		"tycho-rcp.cdx.json", "plain-maven.cdx.json", "gate-missing-version.cdx.json",
-		"uplift-1.4.cdx.json", "evidence-1.5-object.cdx.json", "future-1.9.cdx.json",
-		"unmodelled-fields.cdx.json",
+		"tycho-rcp.cdx.json", "tycho-synthetic-maven.cdx.json", "plain-maven.cdx.json",
+		"gate-missing-version.cdx.json", "uplift-1.4.cdx.json", "evidence-1.5-object.cdx.json",
+		"future-1.9.cdx.json", "unmodelled-fields.cdx.json",
 	}
 	for _, name := range fixtures {
 		t.Run(name, func(t *testing.T) {
@@ -447,4 +447,82 @@ func TestNoTimestampsAreAddedAndTheGeneratorsIsPreserved(t *testing.T) {
 			t.Fatalf("index.json contains %q; the index carries no run timestamp (§7)", forbidden)
 		}
 	}
+}
+
+// §11 fixture 9: the shape a real Tycho product actually emits. The generator
+// publishes an OSGi bundle as a Maven-shaped purl under a namespace it
+// invents, rather than as pkg:p2, and on the estate rio was built for that is
+// 605 of 688 components. None of the other fixtures carries it.
+func TestSyntheticMavenNamespaceEndToEnd(t *testing.T) {
+	manifest := "version: 1\nartifacts:\n  - id: rcp-product\n" +
+		"    sbom: \"in/tycho-synthetic-maven.cdx.json\"\n" +
+		"    transforms:\n      - repair-purl:\n          ecosystem: p2\n"
+	dir := project(t, manifest, "tycho-synthetic-maven.cdx.json")
+	requireExit(t, rio(t, dir, "normalize", "--gate", "fail"), ExitOK)
+
+	in := decode(t, readFile(t, dir, "in", "tycho-synthetic-maven.cdx.json"))
+	out := decode(t, readFile(t, dir, "target", "rio", "rcp-product.cdx.json"))
+	got := purls(t, out)
+
+	cases := []struct {
+		clause string
+		index  int
+		want   string
+	}{
+		{"a synthetic namespace in the table becomes the real coordinate", 0,
+			"pkg:maven/com.google.code.gson/gson@2.8.9"},
+		{"a miss is left byte-identical, qualifier and all", 1,
+			"pkg:maven/p2.eclipse.plugin/org.apache.commons.commons-io@2.11.0.v20220101?type=eclipse-plugin"},
+		{"a second table hit", 2,
+			"pkg:maven/org.eclipse.platform/org.eclipse.osgi@3.18.600"},
+		{"an artefact nested inside a bundle keeps its own identity", 3,
+			"pkg:maven/p2.eclipse.plugin/org.eclipse.osgi@3.18.600.v20231110-1900?classifier=nested.jar&type=eclipse-plugin"},
+		{"a feature's placeholder namespace is not a mapping candidate", 4,
+			"pkg:maven/p2.eclipse.feature/com.example.product.feature@26.2.0?type=eclipse-feature"},
+		{"a real Maven coordinate is untouched", 5,
+			"pkg:maven/org.apache.commons/commons-lang3@3.12.0?type=jar"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.clause, func(t *testing.T) {
+			if got[tc.index] != tc.want {
+				t.Fatalf("components[%d].purl =\n  %s\nwant\n  %s", tc.index, got[tc.index], tc.want)
+			}
+		})
+	}
+
+	t.Run("the nested artefact did not collapse onto the bundle", func(t *testing.T) {
+		if got[2] == got[3] {
+			t.Fatalf("components 2 and 3 both carry %q", got[2])
+		}
+	})
+
+	t.Run("bom-refs and membership survive", func(t *testing.T) {
+		if diff := cmp.Diff(bomRefs(t, in), bomRefs(t, out)); diff != "" {
+			t.Fatalf("component identity changed (-input +output):\n%s", diff)
+		}
+	})
+
+	t.Run("the index counts each outcome", func(t *testing.T) {
+		entry := indexArtifact(t, dir, "target/rio", 0)
+		transforms, _ := entry["transforms"].([]any)
+		stat, _ := transforms[0].(map[string]any)
+		for field, want := range map[string]string{"applied": "2", "unmapped": "1", "skipped": "3"} {
+			if got := stat[field].(json.Number).String(); got != want {
+				t.Errorf("%s = %v, want %v", field, got, want)
+			}
+		}
+	})
+
+	t.Run("the dropped qualifier is preserved on the repaired component", func(t *testing.T) {
+		components, _ := out["components"].([]any)
+		component, _ := components[0].(map[string]any)
+		props, _ := component["properties"].([]any)
+		if len(props) != 1 {
+			t.Fatalf("properties = %v, want the qualifier", props)
+		}
+		p, _ := props[0].(map[string]any)
+		if p["name"] != "rebaze:normalize:p2-qualifier" || p["value"] != "v20220111-1409" {
+			t.Fatalf("property = %v", p)
+		}
+	})
 }

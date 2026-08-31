@@ -129,17 +129,47 @@ A transform leaves each component in one of three states, and `index.json` count
 ```
 
 - **repaired**, `applied` in the index: rio rewrote the purl.
-- **unmapped**: the component was in scope and rio found no Maven coordinates for it. It keeps its
-  p2 purl.
+- **unmapped**: the component was in scope and rio found no Maven coordinates for it. Its purl is
+  left exactly as the generator wrote it.
 - **skipped**: the component was out of scope for the transform, so rio never looked for
-  coordinates. Out of scope is a different outcome from a miss. The p2 transform is in scope for a
-  purl carrying `classifier=osgi.bundle` under a group starting with `p2.`, and for a component
-  with no purl at all that carries a bundle symbolic name under the same group prefix. Everything
-  else is skipped, because a first-party reactor module is not published to Maven Central and an
-  Eclipse feature is not a Maven artifact at all, so a mapping table hit against either would be a
-  confident false positive. A component that already carries a valid `pkg:maven` purl is left alone
-  unconditionally, even when that purl will never resolve: garbage in stays garbage, visibly,
-  rather than being corrected into different garbage.
+  coordinates. Out of scope is a different outcome from a miss.
+
+The p2 transform is in scope for three shapes, because Tycho emits more than one:
+
+| shape | example |
+|---|---|
+| a p2 purl for an OSGi bundle | `pkg:p2/com.google.gson@2.8.9.v20220111-1409?classifier=osgi.bundle` |
+| a Maven-shaped purl under a synthetic namespace | `pkg:maven/p2.eclipse.plugin/com.google.gson@2.8.9?type=eclipse-plugin` |
+| no purl at all, but a bundle symbolic name | `group: p2.eclipse.plugin`, `name: com.google.gson` |
+
+The second is the common one on a real product: `p2.eclipse.plugin` is not a groupId, it is a
+placeholder Tycho invents for a bundle it has no Maven coordinate for, so the purl cannot resolve
+anywhere and repairing it destroys nothing. The namespace it looks for is `syntheticNamespace` in
+the manifest, defaulting to `p2.eclipse.plugin`.
+
+Everything else is skipped, and the list is a whitelist rather than a judgement about which
+coordinates look real:
+
+- Any Maven namespace other than `syntheticNamespace` — including the other placeholders
+  `p2.eclipse.feature` and `p2.p2.installable.unit`. Those are features and installable units, not
+  Maven artifacts, so a table hit against one would be a confident false positive.
+- A synthetic purl carrying a `classifier`. That is an artefact shipped *inside* a bundle, and it
+  repeats the bundle's own name and version — `org.eclipse.jdt.debug` appears both as the plugin
+  and as `classifier=jdimodel.jar`. Resolving by name alone would assert that the jar is the plugin
+  and put the same purl on two components.
+- A `pkg:p2` purl whose group falls outside the `p2.` prefix, which is how a first-party reactor
+  module is recognised.
+
+That last guard only works on the p2 shape. Under `syntheticNamespace` every component has the same
+group, so there is no field left to tell a first-party bundle from a third-party one, and
+first-party bundles are reported as unmapped rather than skipped. On the estate rio was built for
+that is 227 of 594 unmapped components, 111 of them `.source` bundles. Expect the honest table
+backlog to be smaller than the unmapped count.
+
+The coordinate always comes from the purl's own `maven-groupId` qualifier, the component's
+properties, or the mapping table, in that order. rio never splits a symbolic name to guess one:
+`org.apache.commons.commons-io` becomes `org.apache.commons:commons-io` only because a curated
+entry says so.
 
 The three do not partition the components. `skipped` never appears on stdout, and the two halves of
 the p2 transform are independent: dropping the Eclipse version qualifier can succeed while the
@@ -252,10 +282,16 @@ Misses are recorded the same way, so they are as visible as hits:
 ```
 
 Here `purl=` is the purl as it was found in the input and `reason=` says why no coordinate was
-written. An unmapped component keeps its p2 purl, with any Eclipse version qualifier stripped from
-it, because that half of the transform runs whether or not the coordinates resolve. It still passes
-the gate: `pkg:p2/...` is a valid package URL. Unmapped is a count, not a failure. rio never guesses
-a groupId from a symbolic name, because a wrong coordinate is worse than a missing one.
+written. An unmapped component still passes the gate — both shapes are valid package URLs — so
+unmapped is a count, not a failure. rio never guesses a groupId from a symbolic name, because a
+wrong coordinate is worse than a missing one.
+
+What happens to the version on a miss differs by shape, and deliberately. An unmapped `pkg:p2` purl
+keeps its type, which announces that it resolves nowhere, so the Eclipse qualifier is stripped and
+preserved as a property; the two halves of the transform are independent. An unmapped synthetic
+purl is left byte-identical, because stripping the qualifier off
+`pkg:maven/p2.eclipse.plugin/com.google.guava@30.1.0.v1` would make it indistinguishable from a
+well-formed Maven coordinate, and a lenient consumer would act on a groupId that does not exist.
 
 The same repair is also recorded on the component itself, as an `evidence.identity` entry:
 
