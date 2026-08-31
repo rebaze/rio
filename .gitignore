@@ -1,4 +1,8 @@
-.DS_Store
-.idea/
-rio
-dist/
+/rio
+/dist/
+/target/
+DS_Store/
+
+.env
+
+__pycache__/

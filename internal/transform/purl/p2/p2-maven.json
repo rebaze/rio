@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "entries": {
+    "org.eclipse.osgi":                        { "groupId": "org.eclipse.platform", "artifactId": "org.eclipse.osgi" },
+    "org.eclipse.equinox.common":              { "groupId": "org.eclipse.platform", "artifactId": "org.eclipse.equinox.common" },
+    "org.eclipse.equinox.launcher":            { "groupId": "org.eclipse.platform", "artifactId": "org.eclipse.equinox.launcher" },
+    "org.eclipse.core.databinding":            { "groupId": "org.eclipse.platform", "artifactId": "org.eclipse.core.databinding" },
+    "org.eclipse.core.databinding.beans":      { "groupId": "org.eclipse.platform", "artifactId": "org.eclipse.core.databinding.beans" },
+    "org.eclipse.core.databinding.observable": { "groupId": "org.eclipse.platform", "artifactId": "org.eclipse.core.databinding.observable" },
+    "org.eclipse.core.databinding.property":   { "groupId": "org.eclipse.platform", "artifactId": "org.eclipse.core.databinding.property" },
+    "org.apache.commons.lang3":                { "groupId": "org.apache.commons",   "artifactId": "commons-lang3" },
+    "com.google.gson":                         { "groupId": "com.google.code.gson", "artifactId": "gson" }
+  }
+}

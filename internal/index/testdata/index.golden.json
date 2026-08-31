@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "tool": {
+    "name": "rio",
+    "version": "0.1.0"
+  },
+  "manifest": {
+    "path": "rio.yaml",
+    "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+  },
+  "artifacts": [
+    {
+      "id": "rcp-client",
+      "input": {
+        "path": "com.example.product.client/target/products/bom.json",
+        "sha256": "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+      },
+      "output": {
+        "path": "rcp-client.cdx.json",
+        "sha256": "cf80cd8aed482d5d1527d7dc72fceff84e6326592848447d2dc0b0e87dfc9a90"
+      },
+      "specVersion": {
+        "input": "1.5",
+        "output": "1.6"
+      },
+      "schemaValidated": true,
+      "components": 1284,
+      "transforms": [
+        {
+          "id": "repair-purl/p2",
+          "applied": 947,
+          "unmapped": 12,
+          "skipped": 31
+        }
+      ],
+      "gate": "ok",
+      "gateFindings": []
+    },
+    {
+      "id": "server-war",
+      "input": {
+        "path": "com.example.server.web/target/bom.json",
+        "sha256": "3f79bb7b435b05321651daefd374cdc681dc06faa65e374e38337b88ca046dea"
+      },
+      "output": {
+        "path": "server-war.cdx.json",
+        "sha256": "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"
+      },
+      "specVersion": {
+        "input": "1.6",
+        "output": "1.6"
+      },
+      "schemaValidated": true,
+      "components": 412,
+      "transforms": [],
+      "gate": "fail",
+      "gateFindings": [
+        {
+          "subject": true,
+          "missing": [
+            "version"
+          ]
+        },
+        {
+          "component": "pkg:maven/com.example/legacy-adapter",
+          "missing": [
+            "version"
+          ]
+        }
+      ],
+      "integrityFindings": [
+        {
+          "ref": "pkg:maven/com.example/ghost@1.0.0",
+          "kind": "dependsOn",
+          "from": "pkg:maven/com.example/app@2.0.0"
+        }
+      ]
+    }
+  ]
+}

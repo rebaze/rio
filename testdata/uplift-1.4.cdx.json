@@ -1,0 +1,30 @@
+{
+  "bomFormat" : "CycloneDX",
+  "specVersion" : "1.4",
+  "serialNumber" : "urn:uuid:44e0b2ac-9d31-4f5a-8b62-0c1d7f3a5e88",
+  "version" : 1,
+  "metadata" : {
+    "timestamp" : "2023-09-19T07:45:10Z",
+    "tools" : [ {
+      "vendor" : "OWASP Foundation",
+      "name" : "CycloneDX Maven plugin",
+      "version" : "2.7.9"
+    } ],
+    "component" : {
+      "group" : "com.example.product",
+      "name" : "client",
+      "version" : "2.1.0",
+      "purl" : "pkg:maven/com.example.product/client@2.1.0?type=jar",
+      "type" : "application",
+      "bom-ref" : "pkg:maven/com.example.product/client@2.1.0?type=jar"
+    }
+  },
+  "components" : [ {
+    "group" : "org.apache.commons",
+    "name" : "commons-lang3",
+    "version" : "3.12.0",
+    "purl" : "pkg:maven/org.apache.commons/commons-lang3@3.12.0?type=jar",
+    "type" : "library",
+    "bom-ref" : "pkg:maven/org.apache.commons/commons-lang3@3.12.0?type=jar"
+  } ]
+}

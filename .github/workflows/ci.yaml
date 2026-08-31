@@ -42,11 +42,17 @@ jobs:
           echo "$CHANGED"
           go=false
           goreleaser=false
-          if grep -E '(\.go$|^go\.(mod|sum)$)' <<<"$CHANGED" >/dev/null; then go=true; fi
+          shell=false
+          # Fixtures, golden files and the embedded CycloneDX schemas are
+          # inputs to the test suite, so a change to any of them has to run it.
+          # Missing that is how a stale golden file reaches main.
+          if grep -E '(\.go$|^go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$)' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.goreleaser\.yaml$' <<<"$CHANGED" >/dev/null; then goreleaser=true; fi
-          if grep -E '^\.github/workflows/ci\.yaml$' <<<"$CHANGED" >/dev/null; then go=true; goreleaser=true; fi
+          if grep -E '\.sh$' <<<"$CHANGED" >/dev/null; then shell=true; fi
+          if grep -E '^\.github/workflows/ci\.yaml$' <<<"$CHANGED" >/dev/null; then go=true; goreleaser=true; shell=true; fi
           echo "go=$go" >> "$GITHUB_OUTPUT"
           echo "goreleaser=$goreleaser" >> "$GITHUB_OUTPUT"
+          echo "shell=$shell" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         if: steps.changes.outputs.go == 'true' || steps.changes.outputs.goreleaser == 'true'
@@ -54,6 +60,26 @@ jobs:
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
+
+      - name: Check formatting
+        if: steps.changes.outputs.go == 'true'
+        run: |
+          set -euo pipefail
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-clean:" >&2
+            echo "$unformatted" >&2
+            gofmt -d $unformatted >&2
+            exit 1
+          fi
+
+      # go.mod carried six direct dependencies marked // indirect, which nothing
+      # caught because CI never ran tidy. The dependency list is a review
+      # surface here: §8 fixes the shipped set at six and says a seventh needs
+      # justification in the PR, so it has to stay honest.
+      - name: Check go.mod is tidy
+        if: steps.changes.outputs.go == 'true'
+        run: go mod tidy -diff
 
       - name: Build
         if: steps.changes.outputs.go == 'true'
@@ -65,7 +91,41 @@ jobs:
 
       - name: Test
         if: steps.changes.outputs.go == 'true'
-        run: go test ./...
+        run: go test -race ./...
+
+      # rio must stay a self-contained static binary with no runtime
+      # dependency on external tools, and it must make no network calls
+      # (§8, and the "no network access anywhere in the binary" acceptance
+      # criterion). Building with CGO off is the part CI can enforce.
+      - name: Build the release binary the way GoReleaser does
+        if: steps.changes.outputs.go == 'true'
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          go build -trimpath -o rio ./cmd/rio
+          ./rio version
+          ./rio normalize --help > /dev/null
+
+      - name: Lint shell scripts
+        if: steps.changes.outputs.shell == 'true'
+        run: |
+          set -euo pipefail
+          # Preinstalled on the GitHub-hosted ubuntu images; installed here so
+          # the job also runs on a bare container or under act.
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          fi
+          shellcheck --version
+          shellcheck -s sh install.sh
+          shellcheck tools/rio-dtrack-upload.sh install_test.sh tools/rio-dtrack-upload_test.sh
+
+      - name: Test the shell scripts offline
+        if: steps.changes.outputs.shell == 'true'
+        run: |
+          set -euo pipefail
+          ./install_test.sh
+          ./tools/rio-dtrack-upload_test.sh
 
       - name: Install GoReleaser
         if: steps.changes.outputs.goreleaser == 'true'

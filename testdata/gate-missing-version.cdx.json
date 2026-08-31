@@ -1,0 +1,31 @@
+{
+  "bomFormat" : "CycloneDX",
+  "specVersion" : "1.6",
+  "serialNumber" : "urn:uuid:1c9b7d55-3e21-4a8f-b0c6-77aa2e5d4411",
+  "version" : 1,
+  "metadata" : {
+    "timestamp" : "2024-05-02T14:03:00Z",
+    "component" : {
+      "group" : "com.example.server",
+      "name" : "legacy",
+      "version" : "9.0.0",
+      "purl" : "pkg:maven/com.example.server/legacy@9.0.0?type=war",
+      "type" : "application",
+      "bom-ref" : "root"
+    }
+  },
+  "components" : [ {
+    "group" : "com.example",
+    "name" : "legacy-adapter",
+    "purl" : "pkg:maven/com.example/legacy-adapter",
+    "type" : "library",
+    "bom-ref" : "adapter"
+  }, {
+    "group" : "org.apache.commons",
+    "name" : "commons-lang3",
+    "version" : "3.14.0",
+    "purl" : "pkg:maven/org.apache.commons/commons-lang3@3.14.0?type=jar",
+    "type" : "library",
+    "bom-ref" : "lang3"
+  } ]
+}

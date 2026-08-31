@@ -1,0 +1,24 @@
+{
+  "bomFormat" : "CycloneDX",
+  "specVersion" : "1.6",
+  "serialNumber" : "urn:uuid:2f8c6b10-77d3-4a51-9e0f-3c4b8d1a6e29",
+  "version" : 1,
+  "metadata" : {
+    "timestamp" : "2024-07-30T08:15:00Z",
+    "component" : {
+      "group" : "com.example.product",
+      "name" : "broken",
+      "version" : "1.0.0",
+      "type" : "application",
+      "bom-ref" : "root"
+    }
+  },
+  "components" : [ {
+    "group" : "org.apache.commons",
+    "name" : "commons-lang3",
+    "version" : "3.14.0",
+    "purl" : "pkg:maven/org.apache.commons/commons-lang3@3.14.0?type=jar",
+    "type" : "not-a-cyclonedx-component-type",
+    "bom-ref" : "lang3"
+  } ]
+}

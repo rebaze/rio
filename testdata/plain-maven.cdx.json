@@ -1,0 +1,72 @@
+{
+  "bomFormat" : "CycloneDX",
+  "specVersion" : "1.6",
+  "serialNumber" : "urn:uuid:8f1d3c2e-5a44-4f0e-9d1b-2b7c6a0e91aa",
+  "version" : 1,
+  "metadata" : {
+    "timestamp" : "2024-03-11T09:12:44Z",
+    "tools" : {
+      "components" : [ {
+        "type" : "application",
+        "group" : "org.cyclonedx",
+        "name" : "cyclonedx-maven-plugin",
+        "version" : "2.8.0"
+      } ]
+    },
+    "component" : {
+      "group" : "com.example.server",
+      "name" : "web",
+      "version" : "3.4.1",
+      "purl" : "pkg:maven/com.example.server/web@3.4.1?type=war",
+      "type" : "application",
+      "bom-ref" : "pkg:maven/com.example.server/web@3.4.1?type=war"
+    },
+    "properties" : [ {
+      "name" : "maven.goal",
+      "value" : "makeBom"
+    } ]
+  },
+  "components" : [ {
+    "publisher" : "The Apache Software Foundation",
+    "group" : "org.apache.commons",
+    "name" : "commons-lang3",
+    "version" : "3.14.0",
+    "description" : "Apache Commons Lang",
+    "scope" : "required",
+    "hashes" : [ {
+      "alg" : "SHA-256",
+      "content" : "0a3d8e0a2f8f1a1c3e2d4b5a6978869504132435566778899aabbccddeeff001"
+    } ],
+    "licenses" : [ {
+      "license" : {
+        "id" : "Apache-2.0"
+      }
+    } ],
+    "purl" : "pkg:maven/org.apache.commons/commons-lang3@3.14.0?type=jar",
+    "type" : "library",
+    "bom-ref" : "pkg:maven/org.apache.commons/commons-lang3@3.14.0?type=jar"
+  }, {
+    "group" : "com.google.code.gson",
+    "name" : "gson",
+    "version" : "2.10.1",
+    "scope" : "required",
+    "licenses" : [ {
+      "license" : {
+        "id" : "Apache-2.0"
+      }
+    } ],
+    "purl" : "pkg:maven/com.google.code.gson/gson@2.10.1?type=jar",
+    "type" : "library",
+    "bom-ref" : "pkg:maven/com.google.code.gson/gson@2.10.1?type=jar"
+  } ],
+  "dependencies" : [ {
+    "ref" : "pkg:maven/com.example.server/web@3.4.1?type=war",
+    "dependsOn" : [ "pkg:maven/org.apache.commons/commons-lang3@3.14.0?type=jar", "pkg:maven/com.google.code.gson/gson@2.10.1?type=jar" ]
+  }, {
+    "ref" : "pkg:maven/org.apache.commons/commons-lang3@3.14.0?type=jar",
+    "dependsOn" : [ ]
+  }, {
+    "ref" : "pkg:maven/com.google.code.gson/gson@2.10.1?type=jar",
+    "dependsOn" : [ ]
+  } ]
+}
