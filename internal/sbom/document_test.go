@@ -107,7 +107,7 @@ func TestRoundTripDoesNotInjectFieldsTheTypedModelWouldAdd(t *testing.T) {
 	if bytes.Contains(out, []byte(`"description": ""`)) {
 		t.Fatal(`output contains an injected empty "description"; the typed model leaked into the output`)
 	}
-	if !bytes.Contains(out, []byte("TKSE-4711")) {
+	if !bytes.Contains(out, []byte("DEFECT-4711")) {
 		t.Fatal("pedigree patch resolves entry did not survive the round trip")
 	}
 }

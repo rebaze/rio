@@ -8,7 +8,7 @@
 #   ./rio-dtrack-upload.sh [path/to/index.json]
 #
 # Optional:
-#   DTRACK_PROJECT_PREFIX   prepended to the artifact id, e.g. "tkse/"
+#   DTRACK_PROJECT_PREFIX   prepended to the artifact id, e.g. "acme/"
 #   DTRACK_POLL             1 to wait for processing to finish (default 1)
 #   DTRACK_POLL_TIMEOUT     seconds to wait per upload (default 120)
 #   DTRACK_UPLOAD_FAILED    1 to upload artifacts that failed the rio gate

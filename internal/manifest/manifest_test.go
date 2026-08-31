@@ -31,9 +31,9 @@ const fullManifest = `version: 1
 
 artifacts:
   - id: rcp-client
-    sbom: "com.tkse.product.client/target/**/bom.json"
+    sbom: "com.example.product.client/target/**/bom.json"
     subject:
-      name: TKSE RCP Client
+      name: Example RCP Client
       version: 4.2.1
     transforms:
       - repair-purl:
@@ -42,7 +42,7 @@ artifacts:
       - repair-purl:
 
   - id: server-war
-    sbom: "com.tkse.server.web/target/bom.json"
+    sbom: "com.example.server.web/target/bom.json"
 
 output:
   specVersionFloor: "1.5"
@@ -88,13 +88,13 @@ func TestLoadFullManifest(t *testing.T) {
 	if a.ID != "rcp-client" {
 		t.Errorf("Artifacts[0].ID = %q", a.ID)
 	}
-	if a.SBOM != "com.tkse.product.client/target/**/bom.json" {
+	if a.SBOM != "com.example.product.client/target/**/bom.json" {
 		t.Errorf("Artifacts[0].SBOM = %q", a.SBOM)
 	}
 	if a.Subject == nil {
 		t.Fatal("Artifacts[0].Subject is nil, want an override")
 	}
-	if a.Subject.Name != "TKSE RCP Client" || a.Subject.Version != "4.2.1" {
+	if a.Subject.Name != "Example RCP Client" || a.Subject.Version != "4.2.1" {
 		t.Errorf("Artifacts[0].Subject = %+v", *a.Subject)
 	}
 

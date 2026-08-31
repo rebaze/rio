@@ -153,7 +153,7 @@ version: 1                        # must be 1; anything else is exit 2
 artifacts:
   - id: rcp-client                # ^[a-z0-9][a-z0-9._-]*$, unique; used as the output
                                   # filename and as the DependencyTrack project name
-    sbom: "com.tkse.product.client/target/**/bom.json"
+    sbom: "com.example.product.client/target/**/bom.json"
                                   # glob relative to this file's directory;
                                   # must match exactly one file, or exit 2
     transforms:                   # ordered; each entry is one transform name plus its config
@@ -162,9 +162,9 @@ artifacts:
           # table: mappings/p2-maven.json   # merged over the built-in mapping table
 
   - id: server-war
-    sbom: "com.tkse.server.web/target/bom.json"
+    sbom: "com.example.server.web/target/bom.json"
     # subject:                    # override metadata.component when the generator describes
-    #   name: tkse-server         # the building module rather than the shipped artifact
+    #   name: example-server         # the building module rather than the shipped artifact
     #   version: 3.2.0
 
 output:

@@ -6,7 +6,7 @@
   "metadata" : {
     "timestamp" : "2024-07-30T08:15:00Z",
     "component" : {
-      "group" : "com.tkse.product",
+      "group" : "com.example.product",
       "name" : "broken",
       "version" : "1.0.0",
       "type" : "application",

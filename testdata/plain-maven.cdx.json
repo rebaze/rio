@@ -14,12 +14,12 @@
       } ]
     },
     "component" : {
-      "group" : "com.tkse.server",
+      "group" : "com.example.server",
       "name" : "web",
       "version" : "3.4.1",
-      "purl" : "pkg:maven/com.tkse.server/web@3.4.1?type=war",
+      "purl" : "pkg:maven/com.example.server/web@3.4.1?type=war",
       "type" : "application",
-      "bom-ref" : "pkg:maven/com.tkse.server/web@3.4.1?type=war"
+      "bom-ref" : "pkg:maven/com.example.server/web@3.4.1?type=war"
     },
     "properties" : [ {
       "name" : "maven.goal",
@@ -60,7 +60,7 @@
     "bom-ref" : "pkg:maven/com.google.code.gson/gson@2.10.1?type=jar"
   } ],
   "dependencies" : [ {
-    "ref" : "pkg:maven/com.tkse.server/web@3.4.1?type=war",
+    "ref" : "pkg:maven/com.example.server/web@3.4.1?type=war",
     "dependsOn" : [ "pkg:maven/org.apache.commons/commons-lang3@3.14.0?type=jar", "pkg:maven/com.google.code.gson/gson@2.10.1?type=jar" ]
   }, {
     "ref" : "pkg:maven/org.apache.commons/commons-lang3@3.14.0?type=jar",

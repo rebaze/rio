@@ -40,9 +40,9 @@ func docWith(subject string, components ...string) string {
 
 const (
 	compGson    = `{"type": "library", "name": "gson", "group": "com.google.code.gson", "version": "2.8.9", "purl": "pkg:maven/com.google.code.gson/gson@2.8.9"}`
-	compNoVer   = `{"type": "library", "name": "legacy-adapter", "group": "com.tkse", "purl": "pkg:maven/com.tkse/legacy-adapter"}`
-	compNoName  = `{"type": "library", "version": "1.0.0", "purl": "pkg:maven/com.tkse/nameless@1.0.0"}`
-	compNoPURL  = `{"type": "library", "name": "internal-tool", "group": "com.tkse", "version": "3.1.0"}`
+	compNoVer   = `{"type": "library", "name": "legacy-adapter", "group": "com.example", "purl": "pkg:maven/com.example/legacy-adapter"}`
+	compNoName  = `{"type": "library", "version": "1.0.0", "purl": "pkg:maven/com.example/nameless@1.0.0"}`
+	compNoPURL  = `{"type": "library", "name": "internal-tool", "group": "com.example", "version": "3.1.0"}`
 	compBadPURL = `{"type": "library", "name": "broken", "version": "1.0.0", "purl": "definitely not a purl"}`
 	compP2      = `{"type": "library", "name": "com.example.internal", "version": "1.0.0", "purl": "pkg:p2/com.example.internal@1.0.0.v20240101?classifier=osgi.bundle"}`
 	compBare    = `{"type": "library"}`
@@ -134,7 +134,7 @@ func TestComponentMissingVersion(t *testing.T) {
 	got := gate.Check(load(t, docWith(goodSubject, compGson, compNoVer)), all())
 
 	want := []gate.Finding{{
-		Component: "pkg:maven/com.tkse/legacy-adapter",
+		Component: "pkg:maven/com.example/legacy-adapter",
 		Missing:   []string{"version"},
 	}}
 	if diff := cmp.Diff(want, got.Findings); diff != "" {
@@ -146,7 +146,7 @@ func TestComponentMissingName(t *testing.T) {
 	got := gate.Check(load(t, docWith(goodSubject, compNoName)), all())
 
 	want := []gate.Finding{{
-		Component: "pkg:maven/com.tkse/nameless@1.0.0",
+		Component: "pkg:maven/com.example/nameless@1.0.0",
 		Missing:   []string{"name"},
 	}}
 	if diff := cmp.Diff(want, got.Findings); diff != "" {
@@ -159,7 +159,7 @@ func TestComponentMissingPURL(t *testing.T) {
 
 	// No purl to name it by, so the human readable group:name@version form.
 	want := []gate.Finding{{
-		Component: "com.tkse:internal-tool@3.1.0",
+		Component: "com.example:internal-tool@3.1.0",
 		Missing:   []string{"purl"},
 	}}
 	if diff := cmp.Diff(want, got.Findings); diff != "" {
@@ -184,8 +184,8 @@ func TestUnparseablePURLVariants(t *testing.T) {
 		"not-a-purl",
 		"pkg:",
 		"pkg:maven",
-		"maven/com.tkse/thing@1.0.0",
-		"pkg:2bad/com.tkse/thing@1.0.0",
+		"maven/com.example/thing@1.0.0",
+		"pkg:2bad/com.example/thing@1.0.0",
 	} {
 		comp := `{"type": "library", "name": "n", "version": "1.0.0", "purl": ` + mustJSON(t, purl) + `}`
 		got := gate.Check(load(t, docWith(goodSubject, comp)), []gate.Requirement{gate.RequirePURL})
@@ -210,7 +210,7 @@ func TestRequireSubsetOnlyName(t *testing.T) {
 	got := gate.Check(load(t, docWith(goodSubject, compNoVer, compNoPURL, compNoName)), []gate.Requirement{gate.RequireName})
 
 	want := []gate.Finding{{
-		Component: "pkg:maven/com.tkse/nameless@1.0.0",
+		Component: "pkg:maven/com.example/nameless@1.0.0",
 		Missing:   []string{"name"},
 	}}
 	if diff := cmp.Diff(want, got.Findings); diff != "" {
@@ -263,8 +263,8 @@ func TestFindingOrderSubjectFirstThenDocumentOrder(t *testing.T) {
 
 	want := []gate.Finding{
 		{Subject: true, Missing: []string{"version"}},
-		{Component: "pkg:maven/com.tkse/legacy-adapter", Missing: []string{"version"}},
-		{Component: "com.tkse:internal-tool@3.1.0", Missing: []string{"purl"}},
+		{Component: "pkg:maven/com.example/legacy-adapter", Missing: []string{"version"}},
+		{Component: "com.example:internal-tool@3.1.0", Missing: []string{"purl"}},
 	}
 	if diff := cmp.Diff(want, got.Findings); diff != "" {
 		t.Errorf("Findings mismatch (-want +got):\n%s", diff)
@@ -331,8 +331,8 @@ func TestFindingJSONShape(t *testing.T) {
 		finding gate.Finding
 		want    string
 	}{
-		{gate.Finding{Component: "pkg:maven/com.tkse/legacy-adapter", Missing: []string{"version"}},
-			`{"component":"pkg:maven/com.tkse/legacy-adapter","missing":["version"]}`},
+		{gate.Finding{Component: "pkg:maven/com.example/legacy-adapter", Missing: []string{"version"}},
+			`{"component":"pkg:maven/com.example/legacy-adapter","missing":["version"]}`},
 		{gate.Finding{Subject: true, Missing: []string{"name", "version"}},
 			`{"subject":true,"missing":["name","version"]}`},
 	}

@@ -29,7 +29,7 @@ func fullIndex() *index.Index {
 			{
 				ID: "rcp-client",
 				Input: index.FileRef{
-					Path:   "com.tkse.product.client/target/products/bom.json",
+					Path:   "com.example.product.client/target/products/bom.json",
 					SHA256: "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
 				},
 				Output: index.FileRef{
@@ -48,7 +48,7 @@ func fullIndex() *index.Index {
 			{
 				ID: "server-war",
 				Input: index.FileRef{
-					Path:   "com.tkse.server.web/target/bom.json",
+					Path:   "com.example.server.web/target/bom.json",
 					SHA256: "3f79bb7b435b05321651daefd374cdc681dc06faa65e374e38337b88ca046dea",
 				},
 				Output: index.FileRef{
@@ -62,10 +62,10 @@ func fullIndex() *index.Index {
 				Gate:            index.GateFail,
 				GateFindings: []index.GateFinding{
 					{Subject: true, Missing: []string{"version"}},
-					{Component: "pkg:maven/com.tkse/legacy-adapter", Missing: []string{"version"}},
+					{Component: "pkg:maven/com.example/legacy-adapter", Missing: []string{"version"}},
 				},
 				IntegrityFindings: []sbom.IntegrityFinding{
-					{Ref: "pkg:maven/com.tkse/ghost@1.0.0", Kind: "dependsOn", From: "pkg:maven/com.tkse/app@2.0.0"},
+					{Ref: "pkg:maven/com.example/ghost@1.0.0", Kind: "dependsOn", From: "pkg:maven/com.example/app@2.0.0"},
 				},
 			},
 		},

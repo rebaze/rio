@@ -179,7 +179,7 @@ func TestGateFailWritesEverythingAndExitsOne(t *testing.T) {
 		t.Fatalf("gateFindings = %v, want one", findings)
 	}
 	finding, _ := findings[0].(map[string]any)
-	if finding["component"] != "pkg:maven/com.tkse/legacy-adapter" {
+	if finding["component"] != "pkg:maven/com.example/legacy-adapter" {
 		t.Fatalf("gateFindings[0].component = %v", finding["component"])
 	}
 	missing, _ := finding["missing"].([]any)
@@ -251,14 +251,14 @@ func TestSubjectFailureFailsRegardlessOfGateRequire(t *testing.T) {
 // which is the normal case for a Tycho aggregator (§4.3d).
 func TestSubjectOverride(t *testing.T) {
 	manifest := "version: 1\nartifacts:\n  - id: rcp-client\n    sbom: \"in/tycho-rcp.cdx.json\"\n" +
-		"    subject:\n      name: TKSE RCP Client\n      version: \"2026.1.0\"\n"
+		"    subject:\n      name: Example RCP Client\n      version: \"2026.1.0\"\n"
 	dir := project(t, manifest, "tycho-rcp.cdx.json")
 	requireExit(t, rio(t, dir, "normalize", "--gate", "fail"), ExitOK)
 
 	out := decode(t, readFile(t, dir, "target", "rio", "rcp-client.cdx.json"))
 	meta, _ := out["metadata"].(map[string]any)
 	component, _ := meta["component"].(map[string]any)
-	if component["name"] != "TKSE RCP Client" || component["version"] != "2026.1.0" {
+	if component["name"] != "Example RCP Client" || component["version"] != "2026.1.0" {
 		t.Fatalf("metadata.component = %v", component)
 	}
 	// The purl and bom-ref of metadata.component are not part of the override.
@@ -268,7 +268,7 @@ func TestSubjectOverride(t *testing.T) {
 
 	got := properties(t, out)["rebaze:normalize:subject-override"]
 	if len(got) != 1 || !strings.Contains(got[0], "from=example@1.0.0-SNAPSHOT") ||
-		!strings.Contains(got[0], "to=TKSE RCP Client@2026.1.0") {
+		!strings.Contains(got[0], "to=Example RCP Client@2026.1.0") {
 		t.Fatalf("subject-override = %v", got)
 	}
 }

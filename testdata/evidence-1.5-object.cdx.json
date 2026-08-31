@@ -7,10 +7,10 @@
   "metadata" : {
     "timestamp" : "2024-01-08T11:22:33Z",
     "component" : {
-      "group" : "com.tkse.product",
+      "group" : "com.example.product",
       "name" : "scanner-output",
       "version" : "0.9.0",
-      "purl" : "pkg:maven/com.tkse.product/scanner-output@0.9.0?type=jar",
+      "purl" : "pkg:maven/com.example.product/scanner-output@0.9.0?type=jar",
       "type" : "application",
       "bom-ref" : "root"
     }
