@@ -381,6 +381,60 @@ class SchemaVersionTest(Base):
         self.assertEqual(self.read_json("p2-maven.json")["schemaVersion"], 2)
 
 
+class CandidateTest(unittest.TestCase):
+    """Which coordinates the name-split stage is even willing to consider.
+
+    Nothing here is trusted -- every candidate still has to survive the jar
+    check -- but a coordinate that is never proposed can never be found, and
+    that is a silent miss rather than a reported one.
+    """
+
+    def test_the_group_can_be_the_whole_symbolic_name(self):
+        # The commonest Java convention there is: the groupId is the package
+        # root and the artifactId repeats its last label. Splitting only
+        # BETWEEN labels can never reach it, so com.thoughtworks.xstream and
+        # com.google.guava came back unresolved while sitting on Central under
+        # a coordinate nobody had asked about.
+        for bsn, want in (
+            ("com.thoughtworks.xstream", ("com.thoughtworks.xstream", "xstream")),
+            ("com.google.guava", ("com.google.guava", "guava")),
+        ):
+            with self.subTest(bsn=bsn):
+                self.assertIn(want, tool.coordinate_candidates(bsn))
+
+    def test_the_longest_group_is_still_offered_first(self):
+        self.assertEqual(
+            tool.coordinate_candidates("com.thoughtworks.xstream")[0],
+            ("com.thoughtworks.xstream", "xstream"),
+        )
+
+    def test_the_splits_that_already_worked_still_come(self):
+        candidates = tool.coordinate_candidates("org.glassfish.jersey.core.jersey-client")
+        self.assertIn(("org.glassfish.jersey.core", "jersey-client"), candidates)
+        # Note this one is the split's honest limit rather than the answer:
+        # org.apache.commons.lang3 really is org.apache.commons:commons-lang3,
+        # which no split proposes. That is what the curated table is for.
+        self.assertIn(("org.apache.commons", "lang3"),
+                      tool.coordinate_candidates("org.apache.commons.lang3"))
+
+    def test_an_embedded_version_is_stripped_before_splitting(self):
+        candidates = tool.coordinate_candidates(
+            "com.fasterxml.jackson.core.jackson-annotations_2.10.2")
+        self.assertIn(
+            ("com.fasterxml.jackson.core.jackson-annotations", "jackson-annotations"),
+            candidates)
+        self.assertIn(("com.fasterxml.jackson.core", "jackson-annotations"), candidates)
+
+    def test_a_one_label_name_still_yields_one_candidate(self):
+        self.assertEqual(tool.coordinate_candidates("javassist"), [("javassist", "javassist")])
+
+    def test_no_candidate_is_offered_twice(self):
+        for bsn in ("com.thoughtworks.xstream", "javassist", "org.apache.commons.lang3"):
+            with self.subTest(bsn=bsn):
+                candidates = tool.coordinate_candidates(bsn)
+                self.assertEqual(len(candidates), len(set(candidates)))
+
+
 class MalformedInputTest(Base):
     """Nothing a person can mistype should reach a traceback.
 

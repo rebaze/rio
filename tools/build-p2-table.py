@@ -599,13 +599,18 @@ def coordinate_candidates(bsn: str, limit: int = 12) -> list[tuple[str, str]]:
     dotted and the dashed artifactId are offered, since Eclipse writes
     org.apache.commons.lang3 for what Maven calls commons-lang3.
 
+    The longest groupId of all is the whole symbolic name, with the artifactId
+    repeating its last label -- com.thoughtworks.xstream:xstream,
+    com.google.guava:guava. Splitting only BETWEEN labels can never reach that
+    shape, and it is one of the commonest conventions in Java, so both of those
+    came back unresolved while sitting on Central under a coordinate no stage
+    had asked about.
+
     Nothing here is trusted. These are hypotheses for the manifest check.
     """
     stem = strip_embedded_version(bsn)
     parts = stem.split(".")
-    out: list[tuple[str, str]] = []
-    if len(parts) == 1:
-        out.append((stem, stem))
+    out: list[tuple[str, str]] = [(stem, parts[-1])]
     for i in range(len(parts) - 1, 0, -1):
         group = ".".join(parts[:i])
         out.append((group, ".".join(parts[i:])))

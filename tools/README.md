@@ -128,6 +128,11 @@ Hardest evidence first. Each stage only sees what the ones before it could not s
    the guess and the next candidate is tried. Only the first 32 KB of each jar is fetched, since the
    manifest is a jar's first entry.
 
+   The longest groupId is tried first, and the longest of all is the whole symbolic name with the
+   artifactId repeating its last label — `com.thoughtworks.xstream:xstream`,
+   `com.google.guava:guava`. That shape is not a split at all, and it is one of the commonest
+   conventions in Java.
+
 4. **Maven Central by exact SHA-1.** Exact when it hits, where the SBOM's hashes are usable at all.
    It asks only about what the stages above could not settle and skips any hash shared by more than
    one component, so it is normally a handful of requests. `--no-hash` turns it off.
