@@ -19,9 +19,9 @@ var builtinTable []byte
 // every override file in the wild.
 const tableSchemaVersion = 1
 
-// coordinates are the Maven groupId and artifactId a bundle symbolic name
+// Coordinates are the Maven groupId and artifactId a bundle symbolic name
 // resolves to.
-type coordinates struct {
+type Coordinates struct {
 	GroupID    string `json:"groupId"`
 	ArtifactID string `json:"artifactId"`
 }
@@ -31,12 +31,12 @@ type coordinates struct {
 //	{"schemaVersion":1,"entries":{"<bsn>":{"groupId":...,"artifactId":...}}}
 type tableFile struct {
 	SchemaVersion int                    `json:"schemaVersion"`
-	Entries       map[string]coordinates `json:"entries"`
+	Entries       map[string]Coordinates `json:"entries"`
 }
 
 // table maps a bundle symbolic name to Maven coordinates. Lookups only; it is
 // never iterated, so no map order ever reaches the output (§7).
-type table map[string]coordinates
+type table map[string]Coordinates
 
 // loadTable parses one table document. source names the file in every error,
 // because a broken table is a configuration error the operator has to find (§10).
@@ -62,6 +62,25 @@ func loadTable(data []byte, source string) (table, error) {
 		out[bsn] = coords
 	}
 	return out, nil
+}
+
+// BuiltinEntries returns the table shipped in the binary.
+//
+// `rio plan` publishes it so that a tool building an override table can leave
+// out an entry the binary already has. That matters more than it sounds: an
+// override always wins in loadTables, so a generated table that redundantly
+// repeats a built-in entry silently shadows every later fix rio makes to it.
+//
+// The map is built fresh on each call, so a caller cannot edit the asset out
+// from under the transform.
+func BuiltinEntries() (map[string]Coordinates, error) {
+	tbl, err := loadTable(builtinTable, "built in")
+	if err != nil {
+		// Unreachable in a released binary: the table is compiled in and
+		// covered by the tests.
+		return nil, err
+	}
+	return tbl, nil
 }
 
 // loadTables returns the built-in table with the file at path merged over it:

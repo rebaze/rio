@@ -21,20 +21,68 @@ Produces the mapping table rio consumes. It reads the SBOMs you already have, ta
 symbolic names rio could not map, and resolves them against Eclipse's and Maven Central's published
 metadata. Python 3.9+, standard library only.
 
+Run it from your repository root. It needs no arguments:
+
 ```sh
-python3 tools/build-p2-table.py path/to/bom.cdx.json \
-    --out   mappings/p2-maven.json \
-    --cache .p2cache
+cd my-product
+python3 tools/build-p2-table.py
 ```
 
-Point your manifest's `table:` at the result and rio picks it up:
+```
+rio.yaml (sha256 a1b2c3d4e5f6...), rio 0.4.2
+  sample.product  com.example.sample.withrules.product/target/bom.json   412 in-scope bundles
+  sample.server   com.example.sample.standort.server/target/bom.json      38 in-scope bundles
+...
+wrote p2-maven.json: 431 entries: 12 new, 400 re-derived unchanged, 19 carried over, 3 changed, 7 pinned
+```
+
+### It reads rio.yaml, through rio
+
+`rio.yaml` already says which SBOMs to read, which table to write and under which scope filter:
 
 ```yaml
-transforms:
-  - repair-purl:
-      ecosystem: p2
-      table: mappings/p2-maven.json
+version: 1
+artifacts:
+  - id: sample.product
+    sbom: "com.example.sample.withrules.product/target/bom.json"
+    transforms:
+      - repair-purl:
+          ecosystem: p2
+          table: p2-maven.json
 ```
+
+So this tool asks for none of it. It execs `rio plan --json`, which describes what a `rio normalize`
+run would read and repair, and works its way back from that. Nothing here can disagree with rio
+about which files were read or which table was meant, because there is only one statement of it.
+
+That matters most for the scope filter. `repair-purl` takes `groupPrefix`, `classifier` and
+`syntheticNamespace`, and a manifest that overrides one of them used to leave this tool building a
+table under a *different* filter than rio would read it back with — silently, and with no way to
+notice. Now those values arrive in the plan, resolved, and this tool holds no copy of them.
+
+| flag | replaced by |
+|---|---|
+| the `sbom...` positionals | `artifacts[].sbom` |
+| `--out` | `transforms[].repair-purl.table` |
+| `--existing` | the same file as `table`, read and rewritten in place |
+| `--synthetic-namespace`, `--group-prefix`, `--classifier` | the same keys on `repair-purl` |
+
+`--manifest` points at a manifest other than `rio.yaml`. `--rio` points at the binary when it is not
+on `PATH`. `--plan FILE` (or `-`) takes a plan you already have and skips the exec, which is how the
+tests run with no rio binary in sight:
+
+```sh
+rio plan --json > plan.json
+python3 tools/build-p2-table.py --plan plan.json
+```
+
+Artifacts are bucketed by the table their `repair-purl` names: two artifacts pointing at one table
+are one pass over both their SBOMs. An artifact with no `repair-purl`/`ecosystem: p2` is skipped
+with a line saying so. Two artifacts sharing a table but disagreeing on a scope key is an error, not
+a first-wins.
+
+**Someone with a loose SBOM and no manifest now needs a four-line `rio.yaml`.** That is a real
+cost of this design and it is deliberate: nothing here should be sayable in two places.
 
 ### Why it exists
 
@@ -47,7 +95,7 @@ exactly the ones that matter:
 | `com.ibm.icu` | `com.ibm.icu:icu4j` | `com.ibm:icu` |
 | `com.sun.jna.platform` | `net.java.dev.jna:jna-platform` | nothing resembling it |
 | `org.apache.commons.cli` | `commons-cli:commons-cli` | `org.apache.commons:cli` |
-| `org.apache.httpcomponents.httpclient` | `…:httpclient-osgi` | `…:httpclient` |
+| `org.apache.httpcomponents.httpclient` | `...:httpclient-osgi` | `...:httpclient` |
 | `org.objectweb.asm` | `org.ow2.asm:asm` | `org.objectweb:asm` |
 
 So the name is never split first, and a split is never trusted on its own. rio's rule is that a
@@ -91,7 +139,7 @@ verify. It is also the only rate-limited dependency here.
 
 ### What it refuses to answer
 
-Two outcomes are reported rather than guessed at, both in `<out>.review.md`:
+Two outcomes are reported rather than guessed at, both in `<table>.review.md`:
 
 - **Ambiguity.** When several groupIds publish a jar declaring the same symbolic name, one of them
   is a re-publisher and the manifest cannot say which. `org.junit` is claimed by both `junit` and
@@ -124,21 +172,53 @@ predates OSGi and carries no `Bundle-SymbolicName`, so nothing corroborates it �
 silent gap, and marked because a wrong coordinate is worse than a missing one. Read them before you
 ship them.
 
-### Curated entries and reruns
+### One table, kept across runs
 
-`--existing` entries are **never** overwritten, on the principle that a coordinate a human decided
-outranks anything derived. That makes the intended layout two files rather than one:
+The `table:` your manifest names is read and rewritten in place. There is no second file.
 
-```sh
-python3 tools/build-p2-table.py bom.cdx.json \
-    --existing curated.json \
-    --out      p2-maven.json \
-    --cache    .p2cache
+> **To pin an entry, delete its `confidence` key.**
+>
+> That is the whole rule. An entry carrying a `confidence` key is derived and this run owns it. An
+> entry without one was written by a human and is never touched — not corrected, not re-evidenced,
+> not even looked up, so a decided name costs no network. Editing a derived entry *in place* and
+> leaving its `confidence` key behind does not pin it; the next run will move it back, and say so
+> under "Changed since last run".
+
+Four more rules follow from the same principle, each because its absence has a failure mode:
+
+- **Never delete.** A derived entry this run produced no answer for — an `--offline` run against a
+  thin cache, Central having a bad day, a `--no-hash` pass — is carried over unchanged. Otherwise a
+  flaky network quietly shrinks the table and rio starts emitting unrepaired purls, which is the
+  failure this tool exists to prevent. `--prune` opts into the deliberate rebuild that drops what no
+  longer resolves.
+- **Never downgrade.** `inferred` is not proof and never overwrites an entry something actually
+  corroborated. The three proven tiers are not ranked against each other: they are different *kinds*
+  of evidence, not different strengths, and ranking them would invent a hierarchy nothing supports.
+- **Changes are taken, and shown.** A run that derives different coordinates than the table records
+  replaces them and lists them under **Changed since last run** in the review file. A coordinate
+  flipping is the single thing a reviewer most needs to see.
+- **Stay a delta over the built-in table.** rio ships a small table of its own, and an override
+  always wins over it — so an entry that redundantly repeats a built-in one silently shadows every
+  later fix rio makes to it. A derived entry identical to a built-in one is left out, and an
+  existing redundant entry is dropped on the next run. One that *contradicts* the built-in is kept,
+  because that is a deliberate local override, and flagged in the review file.
+
+A table whose `schemaVersion` is not 1 is refused rather than rewritten: rio would not load it, and
+rewriting it would produce a file rio still refuses with the old contents gone.
+
+`--overwrite` lifts the pin rule and the no-downgrade rule together. Both exist for a reason; this
+is the escape hatch, not the normal path.
+
+The run summary says what happened rather than giving one total:
+
+```
+wrote p2-maven.json: 431 entries: 12 new, 400 re-derived unchanged, 19 carried over, 3 changed, 7 pinned
 ```
 
-`curated.json` holds only what you settled by hand; the rest is regenerated on every run and your
-entries always win. Pointing `--existing` at the *generated* file instead is a silent no-op — every
-entry in it is preserved, so nothing ever updates. `--overwrite` lifts the rule entirely.
+`<table>.review.md` is written beside the table (`--review` names it instead, and is an error when
+the manifest builds more than one table). It opens with what it was built from — the rio version,
+the manifest path and sha256, and every SBOM read — because it is the artifact a human is asked to
+trust.
 
 ### First-party bundles
 
@@ -156,6 +236,17 @@ and Orbit `content.xml` documents are re-parsed each time.
 
 `--offline` uses only what is cached. A cache miss offline is reported as unknown rather than as a
 negative answer, so an incomplete cache can never quietly cost the table an entry.
+
+### Tests
+
+`build-p2-table_test.py` covers the tool offline — no network, and no rio binary, because every test
+drives it through `--plan`:
+
+```sh
+python3 tools/build-p2-table_test.py
+```
+
+CI runs it on Python 3.9, the version the tool advertises, whenever a `.py` file changes.
 
 ---
 

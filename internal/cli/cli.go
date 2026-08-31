@@ -87,6 +87,7 @@ func newRootCommand(opts *globalOptions, stdout, stderr io.Writer) *cobra.Comman
 	flags.BoolVar(&opts.quiet, "quiet", false, "suppress per artifact progress on stdout")
 
 	root.AddCommand(newNormalizeCommand(opts, stdout, stderr))
+	root.AddCommand(newPlanCommand(opts, stdout))
 	root.AddCommand(newVersionCommand(stdout))
 	return root
 }

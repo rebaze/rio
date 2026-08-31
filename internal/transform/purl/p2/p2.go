@@ -74,44 +74,134 @@ type repairer struct {
 	table              table
 }
 
-// New builds the p2 repairer. Every path in cfg resolves against baseDir, the
-// manifest's own directory.
-func New(cfg transform.Config, baseDir string) (transform.Transform, error) {
-	if err := cfg.Reject("ecosystem", "table", "groupPrefix", "classifier", "syntheticNamespace"); err != nil {
-		return nil, err
+// The manifest keys this ecosystem accepts, beside the ecosystem key itself
+// which belongs to the dispatch above.
+const (
+	OptionTable              = "table"
+	OptionGroupPrefix        = "groupPrefix"
+	OptionClassifier         = "classifier"
+	OptionSyntheticNamespace = "syntheticNamespace"
+)
+
+// optionKeys is the one copy of the key list, in the order `rio plan` reports
+// them. Describe rejects everything outside it and Scope.Options emits exactly
+// it, so a key the transform starts honouring cannot stay invisible in a plan,
+// and a key the plan advertises cannot be one the transform ignores.
+var optionKeys = []string{
+	OptionTable,
+	OptionGroupPrefix,
+	OptionClassifier,
+	OptionSyntheticNamespace,
+}
+
+// Scope is what a manifest's p2 configuration resolves to: the three keys of
+// the scope filter with their defaults filled in, plus the override table.
+//
+// It is the whole of what New needs besides the table's contents, and it is
+// what `rio plan` publishes, so tools that have to filter an SBOM the same way
+// rio does -- tools/build-p2-table.py is the one -- read the values in force
+// rather than carrying their own copy of "p2." and "osgi.bundle".
+type Scope struct {
+	// Table is the manifest's table path exactly as written, because that is
+	// how loadTables resolves it: against the manifest's own directory. Empty
+	// when the manifest names no override.
+	Table              string
+	GroupPrefix        string
+	Classifier         string
+	SyntheticNamespace string
+}
+
+// Describe validates cfg and resolves it, without reading anything.
+//
+// It is deliberately the half of New that does not touch the filesystem. New
+// loads the mapping table, and the mapping table is the file
+// tools/build-p2-table.py exists to produce, so the first run in a repository
+// has none: a describe that went through New could not describe the run that
+// creates it.
+func Describe(cfg transform.Config) (Scope, error) {
+	if err := cfg.Reject(append([]string{"ecosystem"}, optionKeys...)...); err != nil {
+		return Scope{}, err
 	}
 
-	groupPrefix, err := cfg.String("groupPrefix", DefaultGroupPrefix)
+	tablePath, err := cfg.String(OptionTable, "")
 	if err != nil {
-		return nil, err
+		return Scope{}, err
 	}
-	classifier, err := cfg.String("classifier", DefaultClassifier)
+	groupPrefix, err := cfg.String(OptionGroupPrefix, DefaultGroupPrefix)
 	if err != nil {
-		return nil, err
+		return Scope{}, err
 	}
-	syntheticNamespace, err := cfg.String("syntheticNamespace", DefaultSyntheticNamespace)
+	classifier, err := cfg.String(OptionClassifier, DefaultClassifier)
 	if err != nil {
-		return nil, err
+		return Scope{}, err
+	}
+	syntheticNamespace, err := cfg.String(OptionSyntheticNamespace, DefaultSyntheticNamespace)
+	if err != nil {
+		return Scope{}, err
 	}
 	// Empty would match every purl that has no namespace at all, putting the
 	// whole Maven ecosystem in scope and turning §6.3 off by typo.
 	if strings.TrimSpace(syntheticNamespace) == "" {
-		return nil, fmt.Errorf("syntheticNamespace must not be empty; " +
+		return Scope{}, fmt.Errorf("syntheticNamespace must not be empty; " +
 			"omit it to use the default " + DefaultSyntheticNamespace)
 	}
-	tablePath, err := cfg.String("table", "")
+
+	return Scope{
+		Table:              tablePath,
+		GroupPrefix:        groupPrefix,
+		Classifier:         classifier,
+		SyntheticNamespace: syntheticNamespace,
+	}, nil
+}
+
+// defaultValues is what each option means with the manifest silent. The table
+// has no default: no override table is a legal configuration, and the built-in
+// table alone is what it resolves to.
+var defaultValues = map[string]string{
+	OptionTable:              "",
+	OptionGroupPrefix:        DefaultGroupPrefix,
+	OptionClassifier:         DefaultClassifier,
+	OptionSyntheticNamespace: DefaultSyntheticNamespace,
+}
+
+// Options renders the scope as the ordered key/value pairs `rio plan` prints.
+// The order is this package's, not the caller's: the plan says what this
+// transform will do, so this package says in what terms.
+func (s Scope) Options() []transform.Option {
+	values := map[string]string{
+		OptionTable:              s.Table,
+		OptionGroupPrefix:        s.GroupPrefix,
+		OptionClassifier:         s.Classifier,
+		OptionSyntheticNamespace: s.SyntheticNamespace,
+	}
+	out := make([]transform.Option, 0, len(optionKeys))
+	for _, key := range optionKeys {
+		out = append(out, transform.Option{
+			Key:       key,
+			Value:     values[key],
+			IsDefault: values[key] == defaultValues[key],
+			Path:      key == OptionTable,
+		})
+	}
+	return out
+}
+
+// New builds the p2 repairer. Every path in cfg resolves against baseDir, the
+// manifest's own directory.
+func New(cfg transform.Config, baseDir string) (transform.Transform, error) {
+	scope, err := Describe(cfg)
 	if err != nil {
 		return nil, err
 	}
-	tbl, err := loadTables(tablePath, baseDir)
+	tbl, err := loadTables(scope.Table, baseDir)
 	if err != nil {
 		return nil, err
 	}
 
 	return &repairer{
-		groupPrefix:        groupPrefix,
-		classifier:         classifier,
-		syntheticNamespace: syntheticNamespace,
+		groupPrefix:        scope.GroupPrefix,
+		classifier:         scope.Classifier,
+		syntheticNamespace: scope.SyntheticNamespace,
 		table:              tbl,
 	}, nil
 }
@@ -358,7 +448,7 @@ func (r *repairer) applyToBundleWithoutPURL(c *sbom.Component, res *transform.Re
 
 // mavenPURL builds the repaired coordinate. Rebuilding through packageurl-go
 // rather than by hand keeps percent-encoding and qualifier ordering correct.
-func mavenPURL(coords coordinates, version string) string {
+func mavenPURL(coords Coordinates, version string) string {
 	p := packageurl.PackageURL{
 		Type:      packageurl.TypeMaven,
 		Namespace: coords.GroupID,
@@ -376,7 +466,7 @@ func mavenPURL(coords coordinates, version string) string {
 // pkg:maven/com/example/artifact, which resolves to nothing while looking
 // entirely plausible. Steps 1 and 2 of §6.2 read these values out of the SBOM,
 // so they are as untrusted as the document itself.
-func (c coordinates) valid() (reason string, ok bool) {
+func (c Coordinates) valid() (reason string, ok bool) {
 	for _, f := range []struct{ what, value string }{
 		{"groupId", c.GroupID},
 		{"artifactId", c.ArtifactID},
@@ -438,10 +528,10 @@ func (r *repairer) inScope(c *sbom.Component, parsed packageurl.PackageURL) (rea
 }
 
 // resolve runs §6.2's resolution order, first hit wins.
-func (r *repairer) resolve(c *sbom.Component, parsed *packageurl.PackageURL) (coordinates, bool) {
+func (r *repairer) resolve(c *sbom.Component, parsed *packageurl.PackageURL) (Coordinates, bool) {
 	// 1. Qualifiers already on the purl. Free, exact, no table needed.
 	if g, a := qualifier(parsed, qualifierGroupID), qualifier(parsed, qualifierArtifactID); g != "" && a != "" {
-		return coordinates{GroupID: g, ArtifactID: a}, true
+		return Coordinates{GroupID: g, ArtifactID: a}, true
 	}
 
 	// Steps 2 and 3 are keyed by the bundle symbolic name, which is the purl's
@@ -453,14 +543,14 @@ func (r *repairer) resolve(c *sbom.Component, parsed *packageurl.PackageURL) (co
 
 // resolveByName runs steps 2 and 3 of §6.2's resolution order. Step 1 needs
 // purl qualifiers and is therefore unavailable to a component with no purl.
-func (r *repairer) resolveByName(c *sbom.Component, name string) (coordinates, bool) {
+func (r *repairer) resolveByName(c *sbom.Component, name string) (Coordinates, bool) {
 	// 2. The component's own properties, for generators that carry Maven
 	//    coordinates there.
 	props := c.Properties()
 	for _, pair := range propertyKeyPairs {
 		g, a := property(props, pair[0]), property(props, pair[1])
 		if g != "" && a != "" {
-			return coordinates{GroupID: g, ArtifactID: a}, true
+			return Coordinates{GroupID: g, ArtifactID: a}, true
 		}
 	}
 
@@ -470,7 +560,7 @@ func (r *repairer) resolveByName(c *sbom.Component, name string) (coordinates, b
 	}
 
 	// 4. No hit.
-	return coordinates{}, false
+	return Coordinates{}, false
 }
 
 // qualifier reads one purl qualifier. Keys are compared case-insensitively

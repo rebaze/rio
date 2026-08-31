@@ -112,7 +112,7 @@ func FuzzCoordinatesValid(f *testing.F) {
 	f.Add("", "", "")
 
 	f.Fuzz(func(t *testing.T, group, artifact, version string) {
-		c := coordinates{GroupID: group, ArtifactID: artifact}
+		c := Coordinates{GroupID: group, ArtifactID: artifact}
 		reason, ok := c.valid()
 		if !ok {
 			if reason == "" {
