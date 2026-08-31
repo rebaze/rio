@@ -88,7 +88,27 @@ DTRACK_URL=https://dtrack.example.com DTRACK_API_KEY=... \
 `rio-dtrack-upload.sh` ships in this repository as an example. It is not part of rio, because rio
 does not upload anywhere. It needs `DTRACK_URL` and `DTRACK_API_KEY` and stops immediately without
 either; the API key needs the `BOM_UPLOAD`, `PROJECT_CREATION_UPLOAD` and `VIEW_PORTFOLIO`
-permissions.
+permissions. The comment block at the top of the script lists every variable it reads.
+
+To nest every artifact under one project, so a product and its parts hang together in the portfolio,
+name the parent:
+
+```sh
+DTRACK_URL=https://dtrack.example.com DTRACK_API_KEY=... \
+DTRACK_PARENT_NAME="RCP Product" DTRACK_PARENT_VERSION=2026.1 \
+  ./rio-dtrack-upload.sh target/rio/index.json
+```
+
+`DTRACK_PARENT_UUID` addresses the parent directly and is unambiguous; set one or the other, not
+both, since DependencyTrack ignores the name when a uuid is present. Two things about parents are
+DependencyTrack's behaviour rather than the script's, and the script reports both rather than
+letting them pass as silence:
+
+- **The parent must already exist.** DependencyTrack looks it up and answers 404 rather than
+  creating it.
+- **The parent is applied only when the child is created.** Re-uploading a project that already
+  exists leaves its place in the hierarchy alone, whatever the parent settings say. The script
+  checks first and warns when that is about to happen.
 
 One line per artifact on stdout, then a summary. Machine detail belongs in `index.json`, not here.
 Errors and warnings go to stderr. A run over the committed fixtures `testdata/tycho-rcp.cdx.json`
