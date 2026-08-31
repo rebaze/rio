@@ -118,14 +118,14 @@ jobs:
           fi
           shellcheck --version
           shellcheck -s sh install.sh
-          shellcheck rio-dtrack-upload.sh install_test.sh rio-dtrack-upload_test.sh
+          shellcheck tools/rio-dtrack-upload.sh install_test.sh tools/rio-dtrack-upload_test.sh
 
       - name: Test the shell scripts offline
         if: steps.changes.outputs.shell == 'true'
         run: |
           set -euo pipefail
           ./install_test.sh
-          ./rio-dtrack-upload_test.sh
+          ./tools/rio-dtrack-upload_test.sh
 
       - name: Install GoReleaser
         if: steps.changes.outputs.goreleaser == 'true'

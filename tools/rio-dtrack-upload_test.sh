@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# Offline tests for rio-dtrack-upload.sh.
+# Offline tests for tools/rio-dtrack-upload.sh.
 #
 # No network: a curl shim on PATH records every invocation and replies from a
 # canned script. Run it from the repository root:
 #
-#   ./rio-dtrack-upload_test.sh
+#   ./tools/rio-dtrack-upload_test.sh
 #
 # The four cases that matter most are regressions this suite exists to pin:
 # curl -F reading an SBOM-supplied value as a local file, the poll endpoint

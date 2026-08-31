@@ -82,33 +82,13 @@ The three-command pipeline:
 mvn -B verify
 rio normalize --gate fail
 DTRACK_URL=https://dtrack.example.com DTRACK_API_KEY=... \
-  ./rio-dtrack-upload.sh target/rio/index.json
+  ./tools/rio-dtrack-upload.sh target/rio/index.json
 ```
 
-`rio-dtrack-upload.sh` ships in this repository as an example. It is not part of rio, because rio
-does not upload anywhere. It needs `DTRACK_URL` and `DTRACK_API_KEY` and stops immediately without
-either; the API key needs the `BOM_UPLOAD`, `PROJECT_CREATION_UPLOAD` and `VIEW_PORTFOLIO`
-permissions. The comment block at the top of the script lists every variable it reads.
-
-To nest every artifact under one project, so a product and its parts hang together in the portfolio,
-name the parent:
-
-```sh
-DTRACK_URL=https://dtrack.example.com DTRACK_API_KEY=... \
-DTRACK_PARENT_NAME="RCP Product" DTRACK_PARENT_VERSION=2026.1 \
-  ./rio-dtrack-upload.sh target/rio/index.json
-```
-
-`DTRACK_PARENT_UUID` addresses the parent directly and is unambiguous; set one or the other, not
-both, since DependencyTrack ignores the name when a uuid is present. Two things about parents are
-DependencyTrack's behaviour rather than the script's, and the script reports both rather than
-letting them pass as silence:
-
-- **The parent must already exist.** DependencyTrack looks it up and answers 404 rather than
-  creating it.
-- **The parent is applied only when the child is created.** Re-uploading a project that already
-  exists leaves its place in the hierarchy alone, whatever the parent settings say. The script
-  checks first and warns when that is about to happen.
+That third step is not rio. rio does not upload anywhere; `tools/rio-dtrack-upload.sh` ships as an
+example of what to do with `index.json` afterwards. Its environment variables, the DependencyTrack
+permissions it needs, and how to nest artifacts under a parent project are documented in
+[tools/README.md](tools/README.md).
 
 One line per artifact on stdout, then a summary. Machine detail belongs in `index.json`, not here.
 Errors and warnings go to stderr. A run over the committed fixtures `testdata/tycho-rcp.cdx.json`
@@ -334,77 +314,8 @@ The binary is static, `CGO_ENABLED=0`, and runs the same on a build agent with n
 laptop.
 
 That is exactly why building the mapping table is a separate job, done ahead of time on a
-workstation. See below.
-
-## Building the mapping table
-
-`tools/build-p2-table.py` produces the table rio consumes. It reads the SBOMs you already have,
-takes the bundle symbolic names rio could not map, and resolves them. Python 3.9+, no dependencies.
-
-```sh
-python3 tools/build-p2-table.py path/to/bom.cdx.json \
-    --existing mappings/p2-maven.json \
-    --out      mappings/p2-maven.json
-```
-
-Existing entries are never overwritten — a coordinate a human curated outranks anything the script
-derives — so the normal loop is to rerun it, read the review report, and hand-add what it could not
-settle. Pass `--overwrite` to let a rerun replace them. Everything fetched is cached under
-`.p2cache`, so a second run costs almost nothing; `--offline` uses only the cache.
-
-It resolves in stages, hardest evidence first, and each stage only sees what the ones before it
-could not settle:
-
-1. **Eclipse's own p2 metadata.** SimRel and Orbit publish a `content.xml` in which installable
-   units carry `maven-groupId` and `maven-artifactId` properties. That is Eclipse stating the
-   coordinate. Point `--p2-repo` at the release your product is built against; it defaults to
-   SimRel 2021-06 plus three Orbit aggregations, and later repositories win. The claim is still
-   confirmed against Central, version included — `org.eclipse.core.contenttype` is published by
-   both a maintained `org.eclipse.platform` and an `org.eclipse.core` last touched in 2010, and
-   only one of them ships the build you have.
-2. **The same claim, with the groupId looked up again.** A p2 repository records the coordinate a
-   bundle was *built* under, which for Eclipse's own projects is an unpublished Tycho reactor
-   groupId — `org.eclipse.core.databinding` claims `eclipse.platform.ui`, a git repository name.
-   The artifactId survives that; only the groupId has to be found again. This is the stage that
-   resolves most of an RCP product, and no name-splitting could: `org.eclipse.platform` appears
-   nowhere in the symbolic name.
-3. **Maven Central, proven against the jar.** A coordinate is guessed by splitting the symbolic
-   name, then the jar is fetched and its `Bundle-SymbolicName` header read back. A mismatch
-   rejects the guess and the next candidate is tried. Only the first 32 KB of each jar is
-   fetched, since the manifest is the first entry.
-4. **Maven Central by exact SHA-1**, where the SBOM's hashes are usable at all. Exact when it
-   hits. It asks only about what the stages above could not settle, and skips any hash shared by
-   more than one component, so it is normally a handful of requests — on the estate this was built
-   for, eleven. `--no-hash` turns it off.
-
-`--search` is separate, and off by default. It lets stages 1b and 2 ask `search.maven.org` which
-groupIds publish a given artifactId, for names the repo1 stages could not settle. On the estate
-this was built for it found nothing they had not already found, and it is slow, because every
-answer it offers still costs a jar to verify.
-
-Two things are reported rather than guessed at. **Ambiguity**: when several groupIds publish a jar
-declaring the same symbolic name, one is a re-publisher and the manifest cannot say which, so no
-entry is written. **Absence**: a coordinate no stage could settle.
-
-Every entry carries how it was arrived at, which rio ignores and a reviewer does not:
-
-```json
-"org.apache.commons.lang3": {
-  "groupId": "org.apache.commons", "artifactId": "commons-lang3",
-  "confidence": "manifest-proven", "evidence": "org.apache.commons:commons-lang3:3.12.0"
-}
-```
-
-`eclipse-asserted` and `manifest-proven` are proof. `inferred` is not: the coordinate resolves to a
-real artifact at the right version, but that artifact predates OSGi and carries no
-`Bundle-SymbolicName`, so nothing corroborates it — `commons-logging`, `wsdl4j` and the Oracle JDBC
-bundles land here. They are emitted because a reviewable guess beats a silent gap, and marked
-because a wrong coordinate is worse than a missing one. Read them before shipping them.
-
-First-party bundles are never mapped. Under `syntheticNamespace` nothing on a component
-distinguishes them, so the prefix is inferred from `metadata.component`'s own group — a product
-under `com.example.acme.product` excludes everything under `com.example`. Override with
-`--first-party-prefix`, and check the count it reports.
+workstation by `tools/build-p2-table.py`, and why uploading is a separate script. Both are
+documented in [tools/README.md](tools/README.md); neither is part of the binary.
 
 ## Build from source
 

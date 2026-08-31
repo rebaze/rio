@@ -5,7 +5,7 @@
 # Usage:
 #   DTRACK_URL=https://dtrack.example.com \
 #   DTRACK_API_KEY=... \
-#   ./rio-dtrack-upload.sh [path/to/index.json]
+#   ./tools/rio-dtrack-upload.sh [path/to/index.json]
 #
 # Optional:
 #   DTRACK_PROJECT_PREFIX   prepended to the artifact id, e.g. "acme/"
