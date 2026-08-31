@@ -333,6 +333,75 @@ and their `$ref`s resolve against each other locally. The p2 mapping table is em
 The binary is static, `CGO_ENABLED=0`, and runs the same on a build agent with no egress as on a
 laptop.
 
+That is exactly why building the mapping table is a separate job, done ahead of time on a
+workstation. See below.
+
+## Building the mapping table
+
+`tools/build-p2-table.py` produces the table rio consumes. It reads the SBOMs you already have,
+takes the bundle symbolic names rio could not map, and resolves them. Python 3.9+, no dependencies.
+
+```sh
+python3 tools/build-p2-table.py path/to/bom.cdx.json \
+    --existing mappings/p2-maven.json \
+    --out      mappings/p2-maven.json
+```
+
+Existing entries are never overwritten — a coordinate a human curated outranks anything the script
+derives — so the normal loop is to rerun it, read the review report, and hand-add what it could not
+settle. Pass `--overwrite` to let a rerun replace them. Everything fetched is cached under
+`.p2cache`, so a second run costs almost nothing; `--offline` uses only the cache.
+
+It resolves in stages, hardest evidence first, and each stage only sees what the ones before it
+could not settle:
+
+1. **Eclipse's own p2 metadata.** SimRel and Orbit publish a `content.xml` in which installable
+   units carry `maven-groupId` and `maven-artifactId` properties. That is Eclipse stating the
+   coordinate. Point `--p2-repo` at the release your product is built against; it defaults to
+   SimRel 2021-06 plus three Orbit aggregations, and later repositories win. The claim is still
+   confirmed against Central, version included — `org.eclipse.core.contenttype` is published by
+   both a maintained `org.eclipse.platform` and an `org.eclipse.core` last touched in 2010, and
+   only one of them ships the build you have.
+2. **The same claim, with the groupId looked up again.** A p2 repository records the coordinate a
+   bundle was *built* under, which for Eclipse's own projects is an unpublished Tycho reactor
+   groupId — `org.eclipse.core.databinding` claims `eclipse.platform.ui`, a git repository name.
+   The artifactId survives that; only the groupId has to be found again. This is the stage that
+   resolves most of an RCP product, and no name-splitting could: `org.eclipse.platform` appears
+   nowhere in the symbolic name.
+3. **Maven Central, proven against the jar.** A coordinate is guessed by splitting the symbolic
+   name, then the jar is fetched and its `Bundle-SymbolicName` header read back. A mismatch
+   rejects the guess and the next candidate is tried. Only the first 32 KB of each jar is
+   fetched, since the manifest is the first entry.
+4. **Maven Central by exact SHA-1**, where the SBOM's hashes are usable at all. Needs `--search`.
+
+`--search` also lets stages 2 and 3 ask `search.maven.org` which groupIds publish an artifactId.
+It is off by default: it is the only rate-limited dependency here, and on the estate this was
+built for it added nothing the repo1-only stages had not already found.
+
+Two things are reported rather than guessed at. **Ambiguity**: when several groupIds publish a jar
+declaring the same symbolic name, one is a re-publisher and the manifest cannot say which, so no
+entry is written. **Absence**: a coordinate no stage could settle.
+
+Every entry carries how it was arrived at, which rio ignores and a reviewer does not:
+
+```json
+"org.apache.commons.lang3": {
+  "groupId": "org.apache.commons", "artifactId": "commons-lang3",
+  "confidence": "manifest-proven", "evidence": "org.apache.commons:commons-lang3:3.12.0"
+}
+```
+
+`eclipse-asserted` and `manifest-proven` are proof. `inferred` is not: the coordinate resolves to a
+real artifact at the right version, but that artifact predates OSGi and carries no
+`Bundle-SymbolicName`, so nothing corroborates it — `commons-logging`, `wsdl4j` and the Oracle JDBC
+bundles land here. They are emitted because a reviewable guess beats a silent gap, and marked
+because a wrong coordinate is worse than a missing one. Read them before shipping them.
+
+First-party bundles are never mapped. Under `syntheticNamespace` nothing on a component
+distinguishes them, so the prefix is inferred from `metadata.component`'s own group — a product
+under `com.example.acme.product` excludes everything under `com.example`. Override with
+`--first-party-prefix`, and check the count it reports.
+
 ## Build from source
 
 ```sh
