@@ -275,7 +275,8 @@ dropped, but the table has no entry for it, so it stays `pkg:p2/...`.
 - **0** All artifacts processed. No gate failure, or `--gate warn`.
 - **1** At least one artifact failed the gate, under `--gate fail`.
 - **2** Usage or configuration error: missing manifest, invalid manifest, glob matched zero or
-  several files, unreadable or schema-invalid SBOM.
+  several files, glob matched one file over a tree rio could not fully search, unreadable or
+  schema-invalid SBOM.
 - **3** Internal error.
 
 Exit code 1 still writes every output file and the index: a human has to be able to see why the gate
@@ -316,6 +317,13 @@ gate:
 The "exactly one file" rule is deliberate. A glob resolving to several files is the merge case, and
 merge is v2. An empty match is the most dangerous silent failure in this tool, because a run that
 processed nothing looks identical to a clean run.
+
+The rule is only worth as much as the search behind it, so rio will not assert it over a tree it
+could not fully read. A directory under the glob that rio cannot open may hold a second SBOM, and
+proceeding on the one file it could see would make the same repository answer differently depending
+on nothing but a permission bit — with the wrong answer being the clean looking one, because the
+gate passes and the index records a valid digest. When that happens the run stops with exit 2 and
+names the directory that blocked it.
 
 ## Out of scope
 

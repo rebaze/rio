@@ -222,20 +222,28 @@ func TestResolveDescendsThroughASymlinkedDirectory(t *testing.T) {
 	}
 }
 
-func TestResolveUnreadableSiblingDoesNotAbortAnUnambiguousMatch(t *testing.T) {
+func TestResolveUnreadableSiblingStopsTheRun(t *testing.T) {
 	base := t.TempDir()
-	want := writeFile(t, base, "target/classes/bom.json")
-	makeUnreadable(t, base, "target/secret")
+	writeFile(t, base, "target/classes/bom.json")
+	secret := makeUnreadable(t, base, "target/secret")
 
-	// The glob already resolved to exactly one file. A directory rio may not
-	// open, that is not this artifact's SBOM, is not a reason to abort the
-	// whole run: exit 2 is for the manifest's own problems (§10).
-	got, err := discover.Resolve(base, "rcp-client", "target/**/bom.json")
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
+	// This reverses a364947 deliberately, and the reversal is the whole of
+	// #12. That commit let an unreadable sibling through once the glob had
+	// resolved to one file, on the grounds that a mode-0000 directory which
+	// is not this artifact's SBOM should not fail somebody's build. The hole
+	// is that rio cannot know it is not the SBOM without opening it, so the
+	// case below and TestResolveIncompleteSearchDoesNotAssertExactlyOne are
+	// indistinguishable from the inside — and one of them is a wrong answer
+	// that looks perfectly clean. Paying exit 2 on the harmless case is the
+	// cost of never paying a silent success on the other one.
+	_, err := discover.Resolve(base, "rcp-client", "target/**/bom.json")
+
+	var ise *discover.IncompleteSearchError
+	if !errors.As(err, &ise) {
+		t.Fatalf("Resolve error is %T, want *discover.IncompleteSearchError", err)
 	}
-	if got != want {
-		t.Errorf("Resolve = %q, want %q", got, want)
+	if !strings.Contains(ise.Error(), secret) {
+		t.Errorf("message does not name %q:\n%s", secret, ise.Error())
 	}
 }
 
@@ -263,5 +271,82 @@ func TestResolveUnreadableDirectoryIsReportedWhenNothingMatched(t *testing.T) {
 	}
 	if !strings.Contains(msg, `"rcp-client"`) {
 		t.Errorf("message does not name the artifact:\n%s", msg)
+	}
+}
+
+// #12: the one-match case must not assert "exactly one" on a tree rio could
+// not fully search. The unreadable directory here holds a second bom.json, so
+// the honest answer is that rio does not know whether the rule holds — and the
+// same repository must not give a different answer depending only on a
+// permission bit.
+func TestResolveIncompleteSearchDoesNotAssertExactlyOne(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: permission bits do not deny anything")
+	}
+	base := t.TempDir()
+	writeFile(t, base, "target/classes/bom.json")
+	// The second SBOM goes in before the directory is closed, so this is the
+	// case the exactly-one rule exists to catch and rio genuinely cannot see
+	// it. Written by hand rather than through makeUnreadable, which creates
+	// the directory empty.
+	hidden := writeFile(t, base, "target/secret/bom.json")
+	secret := filepath.Dir(hidden)
+	if err := os.Chmod(secret, 0o000); err != nil {
+		t.Fatalf("chmod %s: %v", secret, err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(secret, 0o755) })
+
+	got, err := discover.Resolve(base, "rcp-client", "target/**/bom.json")
+	if err == nil {
+		t.Fatalf("Resolve = %q, want an error: %s is a second match rio could not see", got, hidden)
+	}
+
+	var ise *discover.IncompleteSearchError
+	if !errors.As(err, &ise) {
+		t.Fatalf("Resolve error is %T, want *discover.IncompleteSearchError", err)
+	}
+
+	msg := ise.Error()
+	// §10: the reader has to be told which directory to go and look at, as a
+	// path they can paste into a shell, and what rio would otherwise have used.
+	if !strings.Contains(msg, secret) {
+		t.Errorf("message does not name the unreadable directory %q:\n%s", secret, msg)
+	}
+	if !strings.Contains(msg, filepath.Join(base, "target", "classes", "bom.json")) {
+		t.Errorf("message does not name the match it found:\n%s", msg)
+	}
+	if !strings.Contains(msg, `"rcp-client"`) {
+		t.Errorf("message does not name the artifact:\n%s", msg)
+	}
+}
+
+// The completeness check has to see the same tree the match walk saw. The
+// match walk follows symlinked directories on purpose (see Resolve), so a
+// check that stops at the link would report "fully searched" over a subtree it
+// never entered — the #12 bug again, one indirection further down.
+func TestResolveIncompleteSearchLooksThroughASymlinkedDirectory(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: permission bits do not deny anything")
+	}
+	base := t.TempDir()
+	writeFile(t, base, "target/classes/bom.json")
+
+	hidden := writeFile(t, base, "real/secret/bom.json")
+	secret := filepath.Dir(hidden)
+	if err := os.Symlink(filepath.Join(base, "real"), filepath.Join(base, "target", "products")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	if err := os.Chmod(secret, 0o000); err != nil {
+		t.Fatalf("chmod %s: %v", secret, err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(secret, 0o755) })
+
+	got, err := discover.Resolve(base, "rcp-client", "target/**/bom.json")
+	if err == nil {
+		t.Fatalf("Resolve = %q, want an error: %s is reachable through the symlink and unreadable", got, hidden)
+	}
+	var ise *discover.IncompleteSearchError
+	if !errors.As(err, &ise) {
+		t.Fatalf("Resolve error is %T, want *discover.IncompleteSearchError", err)
 	}
 }
