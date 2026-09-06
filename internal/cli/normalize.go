@@ -30,6 +30,7 @@ const (
 
 func newNormalizeCommand(opts *globalOptions, stdout, stderr io.Writer) *cobra.Command {
 	var gateMode string
+	var attest bool
 
 	cmd := &cobra.Command{
 		Use:   "normalize",
@@ -37,14 +38,16 @@ func newNormalizeCommand(opts *globalOptions, stdout, stderr io.Writer) *cobra.C
 		Long: "normalize reads the manifest, resolves each artifact's SBOM, raises it to\n" +
 			"the spec version floor, applies the configured transforms, checks the gate,\n" +
 			"and writes one normalized document per artifact plus index.json.\n\n" +
+			"With --attest, also write one unsigned in-toto Statement per artifact.\n\n" +
 			"Run it from the repository root, after the build has produced SBOMs.",
 		Args: cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error {
-			return runNormalize(opts, gateMode, stdout, stderr)
+			return runNormalize(opts, gateMode, attest, stdout, stderr)
 		},
 	}
 	// Local to normalize; the persistent flags live on the root (§8).
 	cmd.Flags().StringVar(&gateMode, "gate", gateWarn, `"warn" or "fail"`)
+	cmd.Flags().BoolVar(&attest, "attest", false, "write an unsigned in-toto Statement per artifact")
 	return cmd
 }
 
@@ -68,7 +71,7 @@ type artifact struct {
 	output          []byte
 }
 
-func runNormalize(opts *globalOptions, gateMode string, stdout, stderr io.Writer) error {
+func runNormalize(opts *globalOptions, gateMode string, attest bool, stdout, stderr io.Writer) error {
 	if gateMode != gateWarn && gateMode != gateFail {
 		return usageErrorf("--gate must be %q or %q, got %q", gateWarn, gateFail, gateMode)
 	}
@@ -96,7 +99,7 @@ func runNormalize(opts *globalOptions, gateMode string, stdout, stderr io.Writer
 	if err != nil {
 		return internalErrorf("resolving --out %q: %w", opts.out, err)
 	}
-	if err := writeAll(man, artifacts, outDir); err != nil {
+	if err := writeAll(man, artifacts, outDir, attest); err != nil {
 		return err
 	}
 
@@ -302,7 +305,7 @@ func sameFingerprint(a, b []string) bool {
 
 // writeAll is step 5. Nothing is written until every artifact has passed steps
 // 1 to 4, so an exit 2 leaves the output directory as it found it (§1).
-func writeAll(man *manifest.Manifest, artifacts []*artifact, outDir string) error {
+func writeAll(man *manifest.Manifest, artifacts []*artifact, outDir string, attest bool) error {
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return internalErrorf("creating output directory %s: %w", outDir, err)
 	}
@@ -346,7 +349,20 @@ func writeAll(man *manifest.Manifest, artifacts []*artifact, outDir string) erro
 		})
 	}
 
-	// index.json is written last, after every artifact (§4.2).
+	if attest {
+		statements, err := index.MarshalStatements(idx)
+		if err != nil {
+			return internalErrorf("%w", err)
+		}
+		for i, data := range statements {
+			id := idx.Artifacts[i].ID
+			if err := sbom.WriteFile(filepath.Join(outDir, id+".intoto.json"), data); err != nil {
+				return internalErrorf("artifact %q: writing attestation: %w", id, err)
+			}
+		}
+	}
+
+	// index.json is written last, after every artifact and optional statement (§4.2).
 	if _, err := index.Write(outDir, idx); err != nil {
 		return internalErrorf("%w", err)
 	}
