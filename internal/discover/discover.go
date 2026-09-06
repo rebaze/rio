@@ -2,10 +2,12 @@
 // names.
 //
 // The manifest declares one glob per artifact and it must resolve to exactly
-// one file (§2). Both failure modes abort the whole run with exit 2 before any
-// output is written: zero matches is the silent failure this tool exists to
-// prevent, because a run that processed nothing looks identical to a clean
-// run, and several matches is the merge case, which is out of scope for v1.
+// one file (§2). Every failure mode aborts the whole run with exit 2 before
+// any output is written: zero matches is the silent failure this tool exists
+// to prevent, because a run that processed nothing looks identical to a clean
+// run; several matches is the merge case, which is out of scope for v1; and
+// one match over a tree that could not be fully read is not an answer at all,
+// because the directory rio could not open may hold the second match (#12).
 //
 // Globbing goes through doublestar rather than path/filepath, which has no
 // `**`. Tycho writes a product SBOM under target/products/<id>/<os>/<ws>/<arch>
@@ -178,6 +180,30 @@ func Resolve(baseDir, artifactID, pattern string) (string, error) {
 
 	switch len(files) {
 	case 1:
+		// §2's "exactly one file" rule cannot be asserted over a tree rio
+		// could not fully read. An unreadable directory may hold a second
+		// match, and then the same repository answers differently depending
+		// only on a permission bit: the run looks completely clean, the gate
+		// passes, and index.json records one artifact with a valid digest
+		// (#12). Refusing to answer is the only honest option, and it is what
+		// §2 means by calling the rule deliberate.
+		//
+		// This costs a second walk on the successful path, which the
+		// zero-match case never paid. That is the price of the guarantee: the
+		// first walk cannot both collect matches and stop at the first IO
+		// error, and there is nothing cheaper that distinguishes "one match"
+		// from "one match that rio could see".
+		if err := searchError(fsys, glob, root); err != nil {
+			return "", &IncompleteSearchError{
+				ArtifactID: artifactID,
+				Pattern:    pattern,
+				BaseDir:    reportedBase,
+				Resolved:   resolved,
+				Dir:        root,
+				Match:      files[0],
+				Err:        err,
+			}
+		}
 		return files[0], nil
 	case 0:
 		// Nothing to return, so an unreadable directory could be the reason
@@ -220,15 +246,21 @@ func Resolve(baseDir, artifactID, pattern string) (string, error) {
 // searchError repeats the walk with IO errors enabled and returns the first
 // one doublestar hit, or nil when the search was complete.
 //
+// It must see exactly the tree the match walk saw, so it follows symlinked
+// directories the way that walk does. WithNoFollow here would stop at the link
+// and then report a subtree it never entered as fully searched, which is the
+// #12 bug one indirection further down: an unreadable directory behind a
+// symlinked build directory would go unmentioned on both the zero-match path
+// and the one-match path. A symlink cycle is not a hang either way, because
+// the kernel returns ELOOP and doublestar treats it as an ordinary IO error —
+// which is the honest answer here, since a cycle does truncate the search.
+//
 // The error is re-rooted at root before it is returned. doublestar reports
 // paths as os.DirFS sees them, so the raw message reads "open secret:
 // permission denied" for a path the reader cannot find and cannot paste into a
 // shell (§10).
 func searchError(fsys fs.FS, glob, root string) error {
-	_, err := doublestar.Glob(fsys, glob,
-		doublestar.WithNoFollow(),
-		doublestar.WithFailOnIOErrors(),
-	)
+	_, err := doublestar.Glob(fsys, glob, doublestar.WithFailOnIOErrors())
 	if err == nil {
 		return nil
 	}

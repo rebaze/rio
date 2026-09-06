@@ -155,3 +155,50 @@ func writeExcluded(b *strings.Builder, paths []string, why string) {
 		fmt.Fprintf(b, "\n    %s", p)
 	}
 }
+
+// IncompleteSearchError reports a glob that matched exactly one file over a
+// tree rio could not fully read.
+//
+// This is not "matched one file" with a warning attached. §2 makes the
+// exactly-one rule the thing that keeps a run honest, and a directory rio
+// cannot open may hold the second match that would have failed it. Returning
+// the one visible file would make the same repository answer differently
+// depending only on a permission bit, and the wrong answer is the clean
+// looking one: the gate passes and index.json records a valid digest for an
+// artifact that was never the whole story (#12).
+//
+// It is a configuration problem like the other two: exit 2, before anything is
+// written (§10).
+type IncompleteSearchError struct {
+	ArtifactID string
+	// Pattern is the glob exactly as the manifest spelled it.
+	Pattern string
+	// BaseDir is the absolute manifest directory the glob was resolved
+	// against. Empty when Pattern was already absolute.
+	BaseDir string
+	// Resolved is the absolute form of Pattern, meta characters intact.
+	Resolved string
+	// Dir is the absolute directory the search was rooted at.
+	Dir string
+	// Match is the one file that did match, absolute. It is named so the
+	// reader can see what rio would have used, and judge whether the
+	// unreadable directory is plausibly hiding a rival.
+	Match string
+	// Err is the IO error that stopped the search, its path already made
+	// absolute. doublestar aborts at the first one, so this names one
+	// directory even when several are unreadable.
+	Err error
+}
+
+func (e *IncompleteSearchError) Error() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "artifact %q: sbom glob matched 1 file, but %s could not be fully searched", e.ArtifactID, e.Dir)
+	writeLocation(&b, e.Pattern, e.BaseDir, e.Resolved)
+	fmt.Fprintf(&b, "\n  blocked:  %s", e.Err)
+	fmt.Fprintf(&b, "\n  match:    %s", e.Match)
+	b.WriteString("\n  a directory rio cannot read may hold a second SBOM, so \"exactly one file\"" +
+		" cannot be asserted. Make it readable, or narrow the glob so it does not descend into it.")
+	return b.String()
+}
+
+func (e *IncompleteSearchError) Unwrap() error { return e.Err }
