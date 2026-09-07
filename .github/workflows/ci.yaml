@@ -122,7 +122,7 @@ jobs:
           fi
           shellcheck --version
           shellcheck -s sh install.sh
-          shellcheck tools/rio-dtrack-upload.sh install_test.sh tools/rio-dtrack-upload_test.sh
+          shellcheck tools/rio-dtrack-upload.sh install_test.sh tools/rio-dtrack-upload_test.sh tools/rio-attest-sign.sh tools/rio-attest-sign_test.sh
 
       - name: Test the shell scripts offline
         if: steps.changes.outputs.shell == 'true'
@@ -130,6 +130,7 @@ jobs:
           set -euo pipefail
           ./install_test.sh
           ./tools/rio-dtrack-upload_test.sh
+          ./tools/rio-attest-sign_test.sh
 
       # build-p2-table.py advertises "Python 3.9+ and nothing else", and that
       # is a promise about the interpreter a client already has rather than a

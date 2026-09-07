@@ -175,7 +175,7 @@ Without the flag, rio writes no statements and preserves its existing output byt
 
 rio does not sign statements or make network calls. An unsigned statement records a claim; it
 is not cryptographic proof of who made it. Signing and verification belong to the surrounding
-pipeline; see [the planned signing tools](tools/README.md#signing-and-verifying-normalization-attestations).
+pipeline; see [the signing tools](tools/README.md#signing-and-verifying-normalization-attestations).
 
 ### `rio plan`
 
