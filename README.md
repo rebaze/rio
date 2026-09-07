@@ -100,6 +100,7 @@ rio normalize [flags]
   --manifest string   path to manifest (default "rio.yaml")
   --out string        output directory (default "target/rio")
   --gate string       "warn" or "fail" (default "warn")
+  --attest            write an unsigned in-toto statement per artifact
   --quiet             suppress per artifact progress on stdout
 
 rio plan [flags]
@@ -135,6 +136,46 @@ rcp-client  12 components   repaired 8    unmapped 1    gate ok
 server-war   2 components   repaired 0    unmapped 0    gate FAIL (1 component missing version)
 2 artifacts, 1 gate failure
 ```
+
+### Normalization attestations
+
+`rio normalize --attest` writes one unsigned, pretty-printed JSON statement named
+`<artifact-id>.intoto.json` beside each normalized SBOM. It records the normalized file's digest
+and the evidence for that normalization. The format is
+[in-toto Statement v1](https://github.com/in-toto/attestation/blob/main/spec/v1/statement.md), with
+this contract for each `index.artifacts[i]`:
+
+| field | value |
+|---|---|
+| `_type` | `"https://in-toto.io/Statement/v1"` |
+| `subject` | One-element array: `[{"name": artifact.output.path, "digest": {"sha256": artifact.output.sha256}}]` |
+| `predicateType` | `"https://rebaze.com/attestation/sbom-normalization/v1"` |
+| `predicate.tool` | The complete `index.tool` object: `name` and `version` |
+| `predicate.manifest` | The complete `index.manifest` object: `path` and `sha256` |
+| `predicate.artifact` | The complete `index.artifacts[i]` object |
+
+The references in the table mean the actual JSON values from the same run's `index.json`.
+`predicate.artifact` preserves every field: `id`, `input`, `output`, `specVersion`,
+`schemaValidated`, `components`, `transforms`, `gate`, `gateFindings`, and `integrityFindings`
+when present. Arrays retain the index's order and empty-array representation; absent optional
+fields stay absent. There is no additional `schemaVersion` field in the statement or predicate;
+the two type URIs identify their versions.
+
+The subject is the normalized SBOM, identified by the lowercase SHA-256 digest of its bytes on
+disk. `subject[0].name` and `predicate.artifact.output.path` are relative to the statement's
+directory. Input paths are relative to the manifest's directory, as in the index. These paths
+are local file references, not download URIs; independently checking an input digest requires
+the original input file.
+
+Statements are deterministic for the same inputs, manifest and rio version. rio writes all
+SBOMs and statements before writing `index.json` last. `--attest` leaves the SBOM and index bytes
+unchanged and does not change the gate: a gate failure still writes every statement, with exit 0
+under `--gate warn` and exit 1 under `--gate fail`. Usage or input errors (exit 2) write nothing.
+Without the flag, rio writes no statements and preserves its existing output bytes.
+
+rio does not sign statements or make network calls. An unsigned statement records a claim; it
+is not cryptographic proof of who made it. Signing and verification belong to the surrounding
+pipeline; see [the planned signing tools](tools/README.md#signing-and-verifying-normalization-attestations).
 
 ### `rio plan`
 

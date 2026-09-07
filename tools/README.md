@@ -312,3 +312,17 @@ reports both rather than letting them pass as silence:
 ```
 
 CI runs it, along with `shellcheck`, whenever a `.sh` file changes.
+
+---
+
+## Signing and verifying normalization attestations
+
+`rio normalize --attest` writes unsigned `<artifact-id>.intoto.json` statements beside the
+normalized SBOMs. The [statement contract](../README.md#normalization-attestations) describes
+their subjects, digests and normalization evidence. rio produces these files locally; signing
+and verification belong to the surrounding pipeline.
+
+Signing and verification tooling is planned in [issue #14](https://github.com/rebaze/rio/issues/14).
+No signing or verification script ships here yet. An unsigned statement is a claim, not
+cryptographic proof of its origin. Its paths are local references, not download URIs, and
+independently verifying the recorded input digests requires retaining the original files.
