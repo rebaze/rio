@@ -7,55 +7,103 @@
 [![Go](https://img.shields.io/github/go-mod/go-version/rebaze/rio)](go.mod)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rebaze/rio/badge)](https://scorecard.dev/viewer/?uri=github.com/rebaze/rio)
 
-The open supply chain governance CLI: it collects the evidence your build already produces,
-normalizes it into a shape the rest of the world can actually resolve, and holds it to a standard
-you declared before it leaves the pipeline.
+rio is an open-source evidence compiler. It turns engineering evidence into structured,
+customer-owned records against an explicit output contract.
+
+Today, rio compiles **SBOM normalization records**: it reads local CycloneDX SBOMs, applies
+manifest-defined transformations, checks declared requirements, and writes normalized documents
+plus an `index.json`. A pipeline or engineer can inspect what changed, identify gaps, and hand the
+SBOMs to a downstream tool such as DependencyTrack.
 
 ## Why it exists
 
-Every build emits supply chain evidence, and everything downstream — advisory databases, policy
-engines, dashboards, auditors — expects that evidence in a shape nobody produced. SBOMs land in a
-dozen target directories, at different spec versions, describing the module that built the artifact
-rather than the artifact, carrying identities that resolve nowhere. Between "the build wrote
-something" and "a downstream tool can answer a question with it" sits a step nobody owns, and it is
-usually a pile of pipeline glue nobody wants to maintain.
+Software changes faster than teams can manually reconstruct and verify what happened. Evidence
+assembled by hand for each release depends on someone remembering where the inputs came from,
+which checks ran, and what their results meant. Work produced by AI agents increases the volume
+of changes, but the problem also applies to work done by humans and conventional automation.
 
-rio is the missing piece there. One manifest, committed next to the code and reviewed like code,
-declares which artifacts a repository ships and what their evidence has to look like. One run
-collects each artifact's SBOM, levels the spec version, repairs identity, checks the result against
-the quality you asked for, and writes the normalized documents plus an `index.json` that says what
-happened. It is a single static binary that makes no network calls, so it behaves the same on an
-air-gapped build agent as on a laptop.
+rio makes evidence production a repeatable part of engineering. A manifest committed next to the
+code declares the inputs and requirements. Explicit rules transform supported evidence into
+inspectable records that remain usable after the pipeline run ends. The people using those records
+may develop software themselves or integrate and consume upstream software.
 
-Nothing is guessed and nothing is silent. Every change rio makes is recorded in the document that
-carries it, so a normalized SBOM can be read on its own and still say what was rewritten, by which
-rule, and what it used to be. Every miss is recorded the same way, because a gap you can see is
-worth more than a coordinate that might be wrong.
+The starting point is practical: SBOMs arrive at different spec versions, describe build modules
+instead of intended subjects, or carry package identities downstream tools cannot resolve. rio
+normalizes those documents and records its changes and unresolved mappings. It runs in
+customer-controlled infrastructure as a single static binary with no network calls.
 
 ### The case it was built for
 
-An Eclipse RCP product's SBOM uploads to DependencyTrack today with almost no findings, because
-nothing in the vulnerability world understands p2 coordinates. A component identified as
-`pkg:p2/com.google.gson@2.8.9.v20220111-1409` matches nothing in any advisory database, so the
-project comes back clean and the clean result is meaningless.
+In an Eclipse RCP workflow, p2 package identities prevented DependencyTrack from matching
+components to vulnerability findings. Normalizing those identities to Maven coordinates made
+findings visible in the downstream system.
 
-After normalization the same component reads `pkg:maven/com.google.code.gson/gson@2.8.9`, and the
-CVEs that were there the whole time appear. That before-and-after difference is the acceptance
-criterion for this tool. p2 is the first ecosystem rio repairs, not the reason it exists: the seam
-it plugs into is a transform seam, and the next broken identity scheme lands next to it.
+For example, rio can rewrite `pkg:p2/com.google.gson@2.8.9.v20220111-1409` to
+`pkg:maven/com.google.code.gson/gson@2.8.9` using its mapping rules. The original identity and
+rewrite remain recorded in the output. This makes the SBOM more useful for downstream matching;
+it does not independently prove that the component is equivalent to the Maven artifact. The
+absence of scanner findings does not establish that a component is safe.
 
-## What `rio normalize` does
+## What works today
 
-- **Levels the spec version.** Documents below the configured floor are uplifted to it; documents at
-  or above it pass through unchanged.
-- **Repairs identity.** p2 purls are rewritten to Maven purls via an embedded, extendable mapping
-  table, and Eclipse version qualifiers are stripped from the purl version.
-- **Checks quality.** A gate asserts the document's subject and the required fields on every
-  component, and either warns or fails the build.
-- **Records what it did.** Every repair and every miss is written into the output document itself.
-  `index.json` carries the counts, the out-of-scope ones included, and the run parameters.
+`rio normalize`:
 
-The full specification lives in issue #4.
+- **Levels the spec version.** Documents below the configured floor are uplifted to it. Documents
+  at or above the floor keep their spec version; other configured processing still applies.
+- **Repairs package identities.** Supported p2 and synthetic Maven purls are rewritten using
+  supplied coordinates or an embedded, extendable mapping table. Applicable Eclipse version
+  qualifiers are preserved as properties when removed from purl versions.
+- **Checks declared SBOM requirements.** The gate checks subject name and version, and the
+  configured component fields: name, version and parseable purl. Gate failures are recorded;
+  `--gate` controls whether they also cause a nonzero exit.
+- **Records the run.** Normalized SBOMs carry repairs and unresolved mappings. `index.json`
+  records input and output digests, tool version, manifest reference, transform counts, schema
+  validation status and findings. `--attest` also emits an unsigned statement per normalized SBOM.
+
+`rio plan` describes the inputs, outputs and resolved transform configuration without normalizing
+anything. Both commands run offline. The command and format documentation below describes current
+behavior; [issue #4](https://github.com/rebaze/rio/issues/4) is the historical v1 implementation spec.
+
+### What a record establishes
+
+A consumer can check an output file against its recorded digest, inspect the reported gate result,
+and see repairs and gaps. A structurally valid record can report failed checks. The gate covers
+SBOM fields, not software acceptance, vulnerability absence or compliance.
+
+Unmapped components and dangling dependency references can coexist with `gate: "ok"`. A schema
+version beyond the embedded schemas produces `schemaValidated: false`, even if the gate passes.
+Missing or invalid inputs stop compilation with exit 2 and produce no new record.
+
+The attestation subject is the normalized SBOM, not a built binary or deployment. Source assertions
+and mapping entries are inputs to normalization, not independently verified facts. Retain the
+original SBOM, manifest and any external mapping table alongside the outputs if later inspection
+or reproduction is required; rio does not package those inputs automatically. The index references
+the manifest by digest but does not embed its requirements or identify the external table by digest.
+
+## Direction
+
+Planned work starts with a [verifiable SBOM handoff](https://github.com/rebaze/rio/issues/43),
+followed by [repair provenance](https://github.com/rebaze/rio/issues/44),
+[inspectable requirements](https://github.com/rebaze/rio/issues/45) and
+[portable retention](https://github.com/rebaze/rio/issues/46). These are planned improvements,
+not capabilities claimed by the current release.
+
+The longer-term direction is engineering history that stays useful after the pipeline has ended
+and the original participants have moved on. Additional evidence types and record boundaries will
+be chosen through [concrete consumer workflows](https://github.com/rebaze/rio/issues/47).
+rio does not yet compile build
+provenance, test results, acceptance events or deployment records. A build record alone would not
+establish what is currently running.
+
+## rio and rebaze
+
+[rebaze](https://rebaze.com) delivers scoped technical work that improves a customer's evidence
+path and leaves repeatable machinery behind: configurations, adapters, identity rules, contract
+profiles and pipeline integrations. rio provides the reusable open-source compiler at the center
+of that work.
+
+You can use rio independently of rebaze services, without a hosted account. Records belong to the
+customer; humans and downstream systems use them to verify claims and make decisions.
 
 ## Install
 
@@ -167,15 +215,16 @@ directory. Input paths are relative to the manifest's directory, as in the index
 are local file references, not download URIs; independently checking an input digest requires
 the original input file.
 
-Statements are deterministic for the same inputs, manifest and rio version. rio writes all
-SBOMs and statements before writing `index.json` last. `--attest` leaves the SBOM and index bytes
+Statements are deterministic for the same input SBOMs, manifest, mapping tables and rio version.
+rio writes all SBOMs and statements before writing `index.json` last. `--attest` leaves the SBOM and index bytes
 unchanged and does not change the gate: a gate failure still writes every statement, with exit 0
 under `--gate warn` and exit 1 under `--gate fail`. Usage or input errors (exit 2) write nothing.
 Without the flag, rio writes no statements and preserves its existing output bytes.
 
 rio does not sign statements or make network calls. An unsigned statement records a claim; it
 is not cryptographic proof of who made it. Signing and verification belong to the surrounding
-pipeline; see [the planned signing tools](tools/README.md#signing-and-verifying-normalization-attestations).
+pipeline. A signature can authenticate a statement without proving its assertions true; see
+[the planned signing tools](tools/README.md#signing-and-verifying-normalization-attestations).
 
 ### `rio plan`
 
@@ -195,7 +244,7 @@ gate  require name, version, purl
 ```
 
 Only the options a manifest actually set are shown; `--json` carries every one of them, resolved.
-Exit 2 for the same manifest and glob problems `normalize` refuses, exit 0 otherwise — there is no
+Exit 2 for the same manifest and glob problems `normalize` refuses, exit 0 otherwise. There is no
 exit 1, because no gate runs.
 
 A table that does not exist yet is reported on the line that names it, rather than being an error.
@@ -247,12 +296,12 @@ restated on a command line where it could disagree with the manifest.
   the consumer guess the base directory is worse.
 
 This is not `index.json` with fewer fields. The index describes a run that happened, and a run needs
-the mapping table that the plan is read to produce — so the index can never describe the first run
+the mapping table that the plan is read to produce, so the index can never describe the first run
 in a repository.
 
 ### Repaired, unmapped, skipped
 
-A transform leaves each component in one of three states, and `index.json` counts all three:
+A transform reports changes, unresolved mappings and exclusions. `index.json` counts these outcomes:
 
 ```json
 { "id": "repair-purl/p2", "applied": 8, "unmapped": 1, "skipped": 4 }
@@ -260,7 +309,7 @@ A transform leaves each component in one of three states, and `index.json` count
 
 - **repaired**, `applied` in the index: rio rewrote the purl.
 - **unmapped**: the component was in scope and rio found no Maven coordinates for it. Its purl is
-  left exactly as the generator wrote it.
+  not converted to Maven coordinates; version-qualifier processing may still apply, as described below.
 - **skipped**: the component was out of scope for the transform, so rio never looked for
   coordinates. Out of scope is a different outcome from a miss.
 
@@ -280,11 +329,11 @@ the manifest, defaulting to `p2.eclipse.plugin`.
 Everything else is skipped, and the list is a whitelist rather than a judgement about which
 coordinates look real:
 
-- Any Maven namespace other than `syntheticNamespace` — including the other placeholders
+- Any Maven namespace other than `syntheticNamespace`, including the other placeholders
   `p2.eclipse.feature` and `p2.p2.installable.unit`. Those are features and installable units, not
   Maven artifacts, so a table hit against one would be a confident false positive.
 - A synthetic purl carrying a `classifier`. That is an artefact shipped *inside* a bundle, and it
-  repeats the bundle's own name and version — `org.eclipse.jdt.debug` appears both as the plugin
+  repeats the bundle's own name and version. `org.eclipse.jdt.debug` appears both as the plugin
   and as `classifier=jdimodel.jar`. Resolving by name alone would assert that the jar is the plugin
   and put the same purl on two components.
 - A `pkg:p2` purl whose group falls outside the `p2.` prefix, which is how a first-party reactor
@@ -355,22 +404,25 @@ gate:
   require: [name, version, purl]  # subset of these three; defaults to all three
 ```
 
-The "exactly one file" rule is deliberate. A glob resolving to several files is the merge case, and
-merge is v2. An empty match is the most dangerous silent failure in this tool, because a run that
-processed nothing looks identical to a clean run.
+The "exactly one file" rule is deliberate. Merging multiple matches is unsupported. An empty match
+is the most dangerous silent failure in this tool, because a run that processed nothing looks
+identical to a clean run.
 
 The rule is only worth as much as the search behind it, so rio will not assert it over a tree it
 could not fully read. A directory under the glob that rio cannot open may hold a second SBOM, and
 proceeding on the one file it could see would make the same repository answer differently depending
-on nothing but a permission bit — with the wrong answer being the clean looking one, because the
+on nothing but a permission bit. The wrong answer would look clean because the
 gate passes and the index records a valid digest. When that happens the run stops with exit 2 and
 names the directory that blocked it.
 
 ## Out of scope
 
-rio owns the evidence layer — collect, normalize, gate, index. Analysis, enrichment and storage
-belong to the tools it feeds, and the following are deliberate refusals rather than gaps. Do not
-implement them, and do not leave hooks that invite implementation:
+rio keeps compilation local. Collection from remote systems, storage, signing, querying and
+presentation belong around the compiler. It does not replace scanners, test runners or
+observability systems, and it is not a governance suite or an automatic compliance certification
+system.
+
+The current implementation also excludes:
 
 - merging multiple SBOMs into one closure
 - scope filtering or shipped-set reduction
@@ -382,8 +434,8 @@ implement them, and do not leave hooks that invite implementation:
 - uploading anywhere from inside rio
 - any network access at all
 
-A pull request adding one of these is rejected regardless of quality. Naming what the tool refuses to
-do is what keeps it small.
+The broader direction does not relax these boundaries. Changes require an explicit scope decision
+grounded in a concrete workflow and compatibility with existing users.
 
 ## What rio writes into the output SBOM
 
@@ -398,7 +450,8 @@ they belong to. What it never changes is the set of components. A change there i
 
 ### Reading the repair records
 
-Every repair is traceable from the output document alone, without the index and without the input.
+The output document records the rule and before-and-after values for each repair. It does not yet
+record which coordinate source won or preserve the mapping table's evidence metadata.
 `metadata.properties` carries one property per repaired component:
 
 ```json
@@ -421,12 +474,12 @@ Misses are recorded the same way, so they are as visible as hits:
 ```
 
 Here `purl=` is the purl as it was found in the input and `reason=` says why no coordinate was
-written. An unmapped component still passes the gate — both shapes are valid package URLs — so
-unmapped is a count, not a failure. rio never guesses a groupId from a symbolic name, because a
+written. An unmapped component can still pass the gate because both shapes are valid package URLs.
+Unmapped is a count, not a failure. rio never guesses a groupId from a symbolic name, because a
 wrong coordinate is worse than a missing one.
 
 What happens to the version on a miss differs by shape, and deliberately. An unmapped `pkg:p2` purl
-keeps its type, which announces that it resolves nowhere, so the Eclipse qualifier is stripped and
+keeps its p2 type rather than asserting a Maven mapping. The Eclipse qualifier is stripped and
 preserved as a property; the two halves of the transform are independent. An unmapped synthetic
 purl is left byte-identical, because stripping the qualifier off
 `pkg:maven/p2.eclipse.plugin/com.google.guava@30.1.0.v1` would make it indistinguishable from a
@@ -449,11 +502,12 @@ The same repair is also recorded on the component itself, as an `evidence.identi
 
 The `value` names the rule and the original purl, so a consumer holding only the normalized document
 can still see what the identity used to be. If a component already carries `evidence.identity`, rio
-appends to it and never overwrites an existing entry.
+appends to it and never overwrites an existing entry. The current implementation assigns `0.9`
+to every repair; this is a fixed value, not a measured probability or independent verification.
 
 Where an Eclipse build qualifier was dropped from a version, the component carries it as a
-`rebaze:normalize:p2-qualifier` property, for example `v20230708-0916`. It is the only link back to
-the exact Eclipse build, so it is recorded rather than discarded.
+`rebaze:normalize:p2-qualifier` property, for example `v20230708-0916`. This preserves the version
+detail from the input; it does not independently identify or verify the corresponding build bytes.
 
 Alongside the per-component records, `metadata.properties` carries the run itself.
 `rebaze:normalize:tool`, `rebaze:normalize:artifact-id`, `rebaze:normalize:manifest-sha256` and
