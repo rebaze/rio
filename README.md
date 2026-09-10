@@ -97,7 +97,7 @@ establish what is currently running.
 
 ## rio and rebaze
 
-[rebaze](https://rebaze.com) delivers scoped technical work that improves a customer's evidence
+[rebaze](https://www.rebaze.de/) delivers scoped technical work that improves a customer's evidence
 path and leaves repeatable machinery behind: configurations, adapters, identity rules, contract
 profiles and pipeline integrations. rio provides the reusable open-source compiler at the center
 of that work.
