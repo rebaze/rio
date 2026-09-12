@@ -342,3 +342,23 @@ python3 tools/dependabot-auto-merge_test.py
 
 CI runs it when Python tools or the merge workflow change. The live update and alert-closure
 policy is documented in [SECURITY.md](../SECURITY.md#dependency-updates-and-alert-closure).
+
+
+## Pinned Go vulnerability scanner
+
+`tools/security/go.mod` and `go.sum` pin govulncheck and its dependencies separately from
+rio's runtime module. Dependabot maintains both module directories. CI runs the scanner
+against the rio module while continuing to fetch current Go vulnerability advisories:
+
+```sh
+go -C tools/security tool govulncheck -C ../.. -format text ./...
+```
+
+To intentionally change the scanner version, run `go -C tools/security get -tool
+golang.org/x/vuln/cmd/govulncheck@<version>` and `go -C tools/security mod tidy`, then review
+the module changes through a PR. Scanner code does not change merely because a new version
+is published.
+
+`python3 tools/ci-changes_test.py` checks that edits to every workflow and either module
+trigger the Go checks. It also verifies the narrower triggers for the other CI checks.
+Like the merge-policy tests, it runs offline and is included in CI's Python tests.

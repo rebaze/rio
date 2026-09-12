@@ -63,7 +63,8 @@ jobs:
           # Fixtures, golden files and the embedded CycloneDX schemas are
           # inputs to the test suite, so a change to any of them has to run it.
           # Missing that is how a stale golden file reaches main.
-          if grep -E '(\.go$|^go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$)' <<<"$CHANGED" >/dev/null; then go=true; fi
+          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$)' <<<"$CHANGED" >/dev/null; then go=true; fi
+          if grep -E '^\.github/workflows/.*\.ya?ml$' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.goreleaser\.yaml$' <<<"$CHANGED" >/dev/null; then goreleaser=true; fi
           if grep -E '\.sh$' <<<"$CHANGED" >/dev/null; then shell=true; fi
           if grep -E '(\.py$|^\.github/workflows/dependabot-auto-merge\.yaml$)' <<<"$CHANGED" >/dev/null; then python=true; fi
@@ -78,19 +79,19 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-          cache-dependency-path: go.sum
+          cache-dependency-path: |
+            go.sum
+            tools/security/go.sum
 
-      # Text output is intentional: JSON/SARIF output exits successfully even
-      # when vulnerabilities are found. Dependabot maintains this action pin.
+      # Pin the scanner and its dependencies in a separate tools module.
+      # Dependabot updates that module; the vulnerability database stays live.
+      # Text output exits nonzero when reachable vulnerabilities are found.
       - name: Scan Go dependencies for reachable vulnerabilities
         if: steps.changes.outputs.go == 'true'
-        uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
-        with:
-          repo-checkout: false
-          go-version-input: ''
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
-          output-format: text
+        run: |
+          go -C tools/security mod tidy -diff
+          go -C tools/security mod verify
+          go -C tools/security tool govulncheck -C ../.. -format text ./...
 
       - name: Check formatting
         if: steps.changes.outputs.go == 'true'
@@ -176,6 +177,7 @@ jobs:
           python3 --version
           python3 tools/build-p2-table_test.py
           python3 tools/dependabot-auto-merge_test.py
+          python3 tools/ci-changes_test.py
 
       - name: Install GoReleaser
         if: steps.changes.outputs.goreleaser == 'true'

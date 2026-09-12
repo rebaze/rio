@@ -69,7 +69,8 @@ cover Go modules and GitHub Actions through `.github/dependabot.yml`.
 
 The required CI `build` check reviews every PR for newly introduced vulnerable dependencies at
 any severity, including development dependencies. Changes to Go code, dependencies, or CI also
-run `govulncheck`, the tests, vet, and a static build. A daily CI run and manual dispatch repeat
+run `govulncheck`, the tests, vet, and a static build. The scanner and its dependencies are
+pinned in `tools/security/go.mod` and `go.sum`, which Dependabot also maintains. A daily CI run and manual dispatch repeat
 the Go checks so newly published advisories can be detected without a code change. The Go scan
 uses the compiler selected by `go.mod`; it reports reachable vulnerabilities in that build,
 not a guarantee about every platform or previously released binary.
