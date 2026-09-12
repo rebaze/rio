@@ -109,7 +109,14 @@ jobs:
                   # Check again after the checks query, immediately before merge.
                   latest_body_state=$(read_body_state)
                   if [ "$latest_body_state" != "$body_state" ]; then exit 0; fi
-                  gh pr merge "$PR_NUMBER" --merge --match-head-commit "$PR_HEAD"
+                  # This endpoint only merges now or refuses. Unlike the CLI's
+                  # PR merge command, it never enables native auto-merge/queues.
+                  merged=$(gh api --method PUT "repos/$GH_REPO/pulls/$PR_NUMBER/merge" \
+                    -f sha="$PR_HEAD" -f merge_method=merge --jq '.merged')
+                  if [ "$merged" != "true" ]; then
+                    echo "GitHub refused the merge; leaving the PR open." >&2
+                    exit 1
+                  fi
                   # GITHUB_TOKEN merges do not trigger push workflows.
                   gh workflow run scorecard.yaml --ref main
                   exit 0

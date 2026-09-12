@@ -18,6 +18,18 @@ workflow = (
 ).read_text()
 script = textwrap.dedent(workflow.split("        run: |\n", 1)[1])
 head = "a" * 40
+merge_request = [
+    "api",
+    "--method",
+    "PUT",
+    "repos/rebaze/rio/pulls/99/merge",
+    "-f",
+    "sha=" + head,
+    "-f",
+    "merge_method=merge",
+    "--jq",
+    ".merged",
+]
 base_metadata = [
     dict(
         targetBranch="main",
@@ -141,7 +153,12 @@ import sys
 from pathlib import Path
 
 args = sys.argv[1:]
-if args[:2] == ['pr', 'checks']:
+if args[:3] == ['api', '--method', 'PUT']:
+    with Path(os.environ['TEST_CALLS']).open('a') as f:
+        f.write(json.dumps(args) + '\\n')
+    print(os.environ.get('TEST_MERGE_REPLY', 'true'))
+    sys.exit(int(os.environ.get('TEST_MERGE_EXIT', '0')))
+elif args[:2] == ['pr', 'checks']:
     print(os.environ.get('TEST_CHECKS', '[{"name":"build","bucket":"pass"},{"name":"Analyze Go","bucket":"pass"}]'))
 elif args[:2] == ['api', 'graphql']:
     states = json.loads(os.environ.get('TEST_BODY_STATES', '[{"body":"Dependabot update","lastEditedAt":null,"editor":null,"author":"bot-id"}]'))
@@ -184,7 +201,7 @@ else:
             []
             if expected == "none"
             else [
-                ["pr", "merge", "99", "--merge", "--match-head-commit", head],
+                merge_request,
                 ["workflow", "run", "scorecard.yaml", "--ref", "main"],
             ]
         )
@@ -229,7 +246,7 @@ else:
         invoked = [json.loads(line) for line in calls.read_text().splitlines()]
         want = (
             [
-                ["pr", "merge", "99", "--merge", "--match-head-commit", head],
+                merge_request,
                 ["workflow", "run", "scorecard.yaml", "--ref", "main"],
             ]
             if allowed
@@ -238,6 +255,25 @@ else:
         assert invoked == want, (name, invoked, want)
         print("PASS", name)
     env.pop("TEST_BODY_STATES", None)
+    merge_cases = [("merge refused", "false", "0"), ("merge API failure", "", "1")]
+    for name, reply, status in merge_cases:
+        calls.write_text("")
+        env.update(
+            METADATA=json.dumps(base_metadata),
+            TEST_COMMITS=json.dumps(base_commits),
+            TEST_CURRENT=json.dumps(base_current),
+            TEST_MERGE_REPLY=reply,
+            TEST_MERGE_EXIT=status,
+        )
+        result = subprocess.run(
+            ["bash", "-c", script], env=env, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode != 0, name
+        invoked = [json.loads(line) for line in calls.read_text().splitlines()]
+        assert invoked == [merge_request], (name, invoked)
+        print("PASS", name, "does not dispatch post-merge verification")
+    env.pop("TEST_MERGE_REPLY", None)
+    env.pop("TEST_MERGE_EXIT", None)
     for name, checks in [
         ("failed", '[{"name":"build","bucket":"fail"}]'),
         ("cancelled", '[{"name":"build","bucket":"cancel"}]'),
@@ -265,4 +301,4 @@ else:
             result.stderr,
         )
         print("PASS", name, "checks do not merge")
-print(len(cases) + len(body_cases) + 6, "policy scenarios passed")
+print(len(cases) + len(body_cases) + len(merge_cases) + 6, "policy scenarios passed")
