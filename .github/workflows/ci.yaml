@@ -92,6 +92,7 @@ jobs:
           go -C tools/security mod tidy -diff
           go -C tools/security mod verify
           go -C tools/security tool govulncheck -C ../.. -format text ./...
+          go -C tools/security tool govulncheck -format text golang.org/x/vuln/cmd/govulncheck
 
       - name: Check formatting
         if: steps.changes.outputs.go == 'true'

@@ -69,7 +69,7 @@ cover Go modules and GitHub Actions through `.github/dependabot.yml`.
 
 The required CI `build` check reviews every PR for newly introduced vulnerable dependencies at
 any severity, including development dependencies. Changes to Go code, dependencies, or CI also
-run `govulncheck`, the tests, vet, and a static build. The scanner and its dependencies are
+run `govulncheck` against both rio and the scanner itself, the tests, vet, and a static build. The scanner and its dependencies are
 pinned in `tools/security/go.mod` and `go.sum`, which Dependabot also maintains. A daily CI run and manual dispatch repeat
 the Go checks so newly published advisories can be detected without a code change. Scheduled,
 manual, and push runs have separate concurrency groups so they cannot cancel each other. The Go scan
@@ -84,13 +84,16 @@ protection. The REST merge endpoint either merges that SHA immediately or refuse
 queues native auto-merge authorization that could survive a later edit.
 Major updates, ordinary version updates, upstream maintainer changes, unknown metadata,
 and manually edited PRs require review.
-The workflow uses only API metadata with the built-in token and never checks out PR code.
+The workflow accepts only authenticated Dependabot events, reads API metadata with the
+built-in token, and never checks out PR code. Human-triggered events require manual review;
+a bot-looking commit author and a valid signature alone cannot authorize a merge.
 It verifies that the body matches the triggering event and has not been edited outside
 Dependabot. A combined snapshot of head, target branch, open/draft state, and body/editor/
 timestamp is revalidated during the wait and immediately before merging; changes abort the merge.
 No additional secret, native auto-merge setting, or bot approval is required. Failed checks
-leave the PR open; pushes and reopening rerun the workflow. If checks take longer than
-20 minutes, rerun the automation job once they finish.
+leave the PR open; subsequent Dependabot events rerun the workflow. If checks take longer
+than 20 minutes, rerun the original Dependabot-triggered job once they finish; it retains the
+original actor and event payload and revalidates the current PR before merging.
 
 GitHub closes Dependabot alerts once the fixed dependency reaches the default branch.
 Scorecard runs on pushes to `main` and uploads a new analysis, allowing code-scanning findings that are no longer present to close automatically.

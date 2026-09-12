@@ -16,6 +16,7 @@ jobs:
   merge:
     if: >-
       github.repository == 'rebaze/rio' &&
+      github.actor == 'dependabot[bot]' &&
       github.event.pull_request.user.login == 'dependabot[bot]' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       !github.event.pull_request.draft
@@ -40,12 +41,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_ACTOR: ${{ github.actor }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           PR_BODY: ${{ github.event.pull_request.body }}
           METADATA: ${{ steps.metadata.outputs.updated-dependencies-json }}
         shell: bash
         run: |
           set -euo pipefail
+          # A valid signature plus a bot author does not identify the pusher.
+          # Only authenticated Dependabot events may authorize a merge. A rerun
+          # retains the original actor/payload; the current head is checked below.
+          if [ "$EVENT_ACTOR" != "dependabot[bot]" ]; then
+            echo "Manual review required: event was not triggered by Dependabot."
+            exit 0
+          fi
           # The maintainer signal comes from the event body. Verify its author
           # through GitHub, then detect edits (including edits later reverted).
           # Compare actor IDs: GraphQL bot logins differ from REST bot logins.

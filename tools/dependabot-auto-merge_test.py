@@ -56,7 +56,14 @@ base_current = dict(
 cases = []
 
 
-def add(name, metadata=None, commits=None, current=None, expected="none"):
+def add(
+    name,
+    metadata=None,
+    commits=None,
+    current=None,
+    expected="none",
+    actor="dependabot[bot]",
+):
     cases.append(
         (
             name,
@@ -64,10 +71,13 @@ def add(name, metadata=None, commits=None, current=None, expected="none"):
             base_commits if commits is None else commits,
             base_current if current is None else current,
             expected,
+            actor,
         )
     )
 
 
+add("human push retains verified bot author", actor="maintainer")
+add("lookalike event actor", actor="dependabot")
 add("security patch", expected="enable")
 add(
     "security minor",
@@ -184,7 +194,7 @@ else:
     (p / "gh").chmod(0o755)
     (p / "sleep").write_text("#!/bin/sh\nexit 0\n")
     (p / "sleep").chmod(0o755)
-    for name, metadata, commits, current, expected in cases:
+    for name, metadata, commits, current, expected, actor in cases:
         calls = p / "calls"
         calls.write_text("")
         env = dict(
@@ -192,6 +202,7 @@ else:
             PATH=str(p) + os.pathsep + os.environ["PATH"],
             PR_NUMBER="99",
             PR_HEAD=head,
+            EVENT_ACTOR=actor,
             PR_BODY="Dependabot update",
             GH_REPO="rebaze/rio",
             GH_TOKEN="test",
