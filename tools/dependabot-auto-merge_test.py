@@ -21,7 +21,8 @@ head = "a" * 40
 base_metadata = [
     dict(
         targetBranch="main",
-        packageEcosystem="gomod",
+        maintainerChanges=False,
+        packageEcosystem="go_modules",
         dependencyGroup="security-go",
         updateType="version-update:semver-patch",
     )
@@ -71,6 +72,18 @@ add(
         )
     ],
     expected="enable",
+)
+add(
+    "upstream maintainer changes",
+    metadata=[dict(base_metadata[0], maintainerChanges=True)],
+)
+add(
+    "unknown maintainer status",
+    metadata=[dict(base_metadata[0], maintainerChanges=None)],
+)
+add(
+    "configuration ecosystem is not branch metadata",
+    metadata=[dict(base_metadata[0], packageEcosystem="gomod")],
 )
 add("routine version update", metadata=[dict(base_metadata[0], dependencyGroup="")])
 add(

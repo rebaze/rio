@@ -80,7 +80,8 @@ Dependabot groups patch/minor security fixes separately for Go and GitHub Action
 metadata, and every dependency's update type. It waits for the required `build` and
 `Analyze Go` checks to pass, then merges only that exact commit without bypassing branch
 protection. It does not queue native auto-merge authorization that could survive a later edit.
-Major updates, ordinary version updates, unknown metadata, and manually edited PRs require review.
+Major updates, ordinary version updates, upstream maintainer changes, unknown metadata,
+and manually edited PRs require review.
 The workflow uses only API metadata with the built-in token and never checks out PR code.
 No additional secret, native auto-merge setting, or bot approval is required. Failed checks
 leave the PR open; pushes and reopening rerun the workflow. If checks take longer than

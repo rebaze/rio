@@ -332,7 +332,8 @@ independently verifying the recorded input digests requires retaining the origin
 
 `dependabot-auto-merge_test.py` executes the merge workflow's actual shell policy against
 local GitHub API fixtures. It checks eligible patch/minor security groups and rejects routine
-or major updates, missing metadata, edited commits, stale heads, retargeted PRs, and incomplete
+or major updates, upstream maintainer changes, missing metadata, edited commits, stale heads,
+retargeted PRs, and incomplete
 or failed required checks. The test replaces `gh` and polling sleeps locally: it makes no
 network calls and cannot merge a real PR. Requires Python 3.9+, bash, and jq.
 

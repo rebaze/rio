@@ -24,6 +24,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      checks: read
+      statuses: read
       actions: write # Explicitly dispatch Scorecard after a token-driven merge.
     steps:
       # This privileged workflow only reads API metadata. Never check out or
@@ -46,6 +48,8 @@ jobs:
           # A queued older event must never authorize the current newer head.
           current=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER")
           if [ "$(jq -r '.head.sha' <<<"$current")" != "$PR_HEAD" ]; then exit 0; fi
+          # fetch-metadata uses branch ecosystem names (go_modules, not gomod).
+          # Its maintainerChanges flag concerns upstream package maintainers.
           # fetch-metadata verifies the first commit. Require that to be the
           # only commit, at the exact head being authorized, as well.
           commits=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER/commits?per_page=2")
@@ -55,8 +59,8 @@ jobs:
             .[0].commit.verification.verified == true
           ' <<<"$commits" >/dev/null && jq -e '
             type == "array" and length > 0 and all(.[];
-              .targetBranch == "main" and
-              ((.packageEcosystem == "gomod" and .dependencyGroup == "security-go") or
+              .targetBranch == "main" and .maintainerChanges == false and
+              ((.packageEcosystem == "go_modules" and .dependencyGroup == "security-go") or
                (.packageEcosystem == "github_actions" and .dependencyGroup == "security-actions")) and
               (.updateType == "version-update:semver-patch" or
                .updateType == "version-update:semver-minor"))
