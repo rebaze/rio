@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '45 5 * * *' # Recheck unchanged dependencies against new advisories.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,10 +19,22 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+
+      # Keep this inside the existing required build check so vulnerable
+      # upgrades cannot pass branch protection via a separate optional job.
+      - name: Review dependency changes
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: low
+          fail-on-scopes: runtime, development, unknown
+          license-check: false
+          comment-summary-in-pr: never
 
       - name: Detect changed file types
         id: changes
@@ -41,6 +56,7 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED"
           go=false
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then go=true; fi
           goreleaser=false
           shell=false
           python=false
@@ -63,6 +79,18 @@ jobs:
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
+
+      # Text output is intentional: JSON/SARIF output exits successfully even
+      # when vulnerabilities are found. Dependabot maintains this action pin.
+      - name: Scan Go dependencies for reachable vulnerabilities
+        if: steps.changes.outputs.go == 'true'
+        uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
+        with:
+          repo-checkout: false
+          go-version-input: ''
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+          output-format: text
 
       - name: Check formatting
         if: steps.changes.outputs.go == 'true'

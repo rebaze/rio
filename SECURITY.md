@@ -60,3 +60,28 @@ as well so we can bump or work around it.
 Supporting tools under `tools/` are not part of the rio binary and are not covered by the no-network
 property above. Report issues in those as ordinary bugs unless they expose credentials or
 compromise a release.
+
+## Dependency updates and alert closure
+
+Dependabot security updates are enabled for this repository. When GitHub finds a vulnerable
+dependency with an available fix, Dependabot opens an upgrade PR. Weekly version updates also
+cover Go modules and GitHub Actions through `.github/dependabot.yml`.
+
+The required CI `build` check reviews every PR for newly introduced vulnerable dependencies at
+any severity, including development dependencies. Changes to Go code, dependencies, or CI also
+run `govulncheck`, the tests, vet, and a static build. A daily CI run and manual dispatch repeat
+the Go checks so newly published advisories can be detected without a code change. The Go scan
+uses the compiler selected by `go.mod`; it reports reachable vulnerabilities in that build,
+not a guarantee about every platform or previously released binary.
+
+Review and merge a passing upgrade PR. GitHub then closes Dependabot alerts once the fixed
+dependency reaches the default branch. Scorecard runs on pushes to `main` and uploads a new
+analysis, allowing code-scanning findings that are no longer present to close automatically.
+A PR alone does not close an alert, and this workflow does not auto-merge or dismiss alerts.
+If no patched version exists, the alert remains open for investigation. A Go standard-library
+finding requires a compiler upgrade; already published static binaries require a new release.
+
+The CycloneDX files directly under `testdata/` are synthetic input documents, not rio's dependency
+inventory. `testdata/osv-scanner.toml` records the verified Commons Lang fixture finding by
+advisory ID and reason. That exception applies only beside those fixtures; real dependencies
+in `go.mod` remain scanned, and new fixture advisories still surface for review.
