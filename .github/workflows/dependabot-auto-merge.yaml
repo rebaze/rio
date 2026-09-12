@@ -3,7 +3,7 @@ name: Auto-merge security updates
 on:
   pull_request_target:
     branches: [main]
-    types: [opened, reopened, synchronize, ready_for_review]
+    types: [opened, reopened, synchronize, ready_for_review, edited]
 
 permissions:
   contents: read
@@ -41,6 +41,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
           METADATA: ${{ steps.metadata.outputs.updated-dependencies-json }}
         shell: bash
         run: |
@@ -48,6 +49,27 @@ jobs:
           # A queued older event must never authorize the current newer head.
           current=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER")
           if [ "$(jq -r '.head.sha' <<<"$current")" != "$PR_HEAD" ]; then exit 0; fi
+          # The maintainer signal comes from the event body. Verify its author
+          # through GitHub, then detect edits (including edits later reverted).
+          # Compare actor IDs: GraphQL bot logins differ from REST bot logins.
+          read_body_state() {
+            # Keep GraphQL variables literal for server-side binding.
+            # shellcheck disable=SC2016
+            gh api graphql -f owner="${GH_REPO%/*}" -f name="${GH_REPO#*/}" -F number="$PR_NUMBER" \
+              -f query='query($owner:String!,$name:String!,$number:Int!) {
+                repository(owner:$owner,name:$name) { pullRequest(number:$number) {
+                  body lastEditedAt editor { ... on Node { id } } author { ... on Node { id } }
+                } }
+              }' --jq '.data.repository.pullRequest | {body, lastEditedAt, editor: .editor.id, author: .author.id}'
+          }
+          body_state=$(read_body_state)
+          if ! jq -e --arg body "$PR_BODY" '
+            .body == $body and .author != null and
+            ((.lastEditedAt == null and .editor == null) or .editor == .author)
+          ' <<<"$body_state" >/dev/null; then
+            echo "Manual review required: body changed or was edited outside Dependabot."
+            exit 0
+          fi
           # fetch-metadata uses branch ecosystem names (go_modules, not gomod).
           # Its maintainerChanges flag concerns upstream package maintainers.
           # fetch-metadata verifies the first commit. Require that to be the
@@ -71,6 +93,11 @@ jobs:
               current=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER")
               if [ "$(jq -r '.head.sha' <<<"$current")" != "$PR_HEAD" ]; then exit 0; fi
               if ! jq -e '.state == "open" and .base.ref == "main" and .draft == false' <<<"$current" >/dev/null; then exit 0; fi
+              latest_body_state=$(read_body_state)
+              if [ "$latest_body_state" != "$body_state" ]; then
+                echo "PR body metadata changed; leaving the PR open."
+                exit 0
+              fi
               # gh exits nonzero for pending/failed checks as well as errors.
               # Parse only a real JSON array and never treat empty as passing.
               checks=$(gh pr checks "$PR_NUMBER" --required --json name,bucket) || true
@@ -79,6 +106,9 @@ jobs:
                   any(.[]; .name == "build") and any(.[]; .name == "Analyze Go") and
                   all(.[]; .bucket == "pass")
                 ' <<<"$checks" >/dev/null; then
+                  # Check again after the checks query, immediately before merge.
+                  latest_body_state=$(read_body_state)
+                  if [ "$latest_body_state" != "$body_state" ]; then exit 0; fi
                   gh pr merge "$PR_NUMBER" --merge --match-head-commit "$PR_HEAD"
                   # GITHUB_TOKEN merges do not trigger push workflows.
                   gh workflow run scorecard.yaml --ref main

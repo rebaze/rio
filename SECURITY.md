@@ -83,6 +83,9 @@ protection. It does not queue native auto-merge authorization that could survive
 Major updates, ordinary version updates, upstream maintainer changes, unknown metadata,
 and manually edited PRs require review.
 The workflow uses only API metadata with the built-in token and never checks out PR code.
+It verifies that the body matches the triggering event and has not been edited outside
+Dependabot. Body/editor/timestamp changes during the wait abort the merge, including changes
+noticed in the final check immediately before merging.
 No additional secret, native auto-merge setting, or bot approval is required. Failed checks
 leave the PR open; pushes and reopening rerun the workflow. If checks take longer than
 20 minutes, rerun the automation job once they finish.

@@ -143,6 +143,12 @@ from pathlib import Path
 args = sys.argv[1:]
 if args[:2] == ['pr', 'checks']:
     print(os.environ.get('TEST_CHECKS', '[{"name":"build","bucket":"pass"},{"name":"Analyze Go","bucket":"pass"}]'))
+elif args[:2] == ['api', 'graphql']:
+    states = json.loads(os.environ.get('TEST_BODY_STATES', '[{"body":"Dependabot update","lastEditedAt":null,"editor":null,"author":"bot-id"}]'))
+    counter = Path(os.environ['TEST_CALLS'] + '.body-count')
+    index = int(counter.read_text()) if counter.exists() else 0
+    counter.write_text(str(index + 1))
+    print(json.dumps(states[min(index, len(states) - 1)]))
 elif args[0] == 'api':
     print(os.environ['TEST_COMMITS'] if '/commits?' in args[1] else os.environ['TEST_CURRENT'])
 else:
@@ -160,6 +166,7 @@ else:
             PATH=str(p) + os.pathsep + os.environ["PATH"],
             PR_NUMBER="99",
             PR_HEAD=head,
+            PR_BODY="Dependabot update",
             GH_REPO="rebaze/rio",
             GH_TOKEN="test",
             TEST_CHECKS='[{"name":"build","bucket":"pass"},{"name":"Analyze Go","bucket":"pass"}]',
@@ -185,6 +192,52 @@ else:
         print("PASS", name)
     (p / "sleep").write_text("#!/bin/sh\nexit 0\n")
     (p / "sleep").chmod(0o755)
+    baseline_body = dict(
+        body="Dependabot update", lastEditedAt=None, editor=None, author="bot-id"
+    )
+    bot_edit = dict(baseline_body, lastEditedAt="2026-09-12T15:00:00Z", editor="bot-id")
+    body_cases = [
+        ("unchanged bot-edited body", [bot_edit], True),
+        ("human removed marker before run", [dict(bot_edit, editor="human-id")], False),
+        ("unknown body editor", [dict(bot_edit, editor=None)], False),
+        ("body differs from event", [dict(baseline_body, body="changed")], False),
+        (
+            "marker added while waiting",
+            [baseline_body, dict(bot_edit, body="Maintainer changes")],
+            False,
+        ),
+        ("body reverted after edit", [baseline_body, bot_edit], False),
+        (
+            "body changed during check query",
+            [baseline_body, baseline_body, bot_edit],
+            False,
+        ),
+    ]
+    for name, states, allowed in body_cases:
+        calls.write_text("")
+        Path(str(calls) + ".body-count").unlink(missing_ok=True)
+        env.update(
+            METADATA=json.dumps(base_metadata),
+            TEST_COMMITS=json.dumps(base_commits),
+            TEST_CURRENT=json.dumps(base_current),
+            TEST_BODY_STATES=json.dumps(states),
+        )
+        result = subprocess.run(
+            ["bash", "-c", script], env=env, capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, (name, result.stderr)
+        invoked = [json.loads(line) for line in calls.read_text().splitlines()]
+        want = (
+            [
+                ["pr", "merge", "99", "--merge", "--match-head-commit", head],
+                ["workflow", "run", "scorecard.yaml", "--ref", "main"],
+            ]
+            if allowed
+            else []
+        )
+        assert invoked == want, (name, invoked, want)
+        print("PASS", name)
+    env.pop("TEST_BODY_STATES", None)
     for name, checks in [
         ("failed", '[{"name":"build","bucket":"fail"}]'),
         ("cancelled", '[{"name":"build","bucket":"cancel"}]'),
@@ -212,4 +265,4 @@ else:
             result.stderr,
         )
         print("PASS", name, "checks do not merge")
-print(len(cases) + 6, "policy scenarios passed")
+print(len(cases) + len(body_cases) + 6, "policy scenarios passed")
