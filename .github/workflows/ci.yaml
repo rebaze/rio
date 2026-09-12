@@ -5,21 +5,36 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '45 5 * * *' # Recheck unchanged dependencies against new advisories.
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
   cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+
+      # Keep this inside the existing required build check so vulnerable
+      # upgrades cannot pass branch protection via a separate optional job.
+      - name: Review dependency changes
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: low
+          fail-on-scopes: runtime, development, unknown
+          license-check: false
+          comment-summary-in-pr: never
 
       - name: Detect changed file types
         id: changes
@@ -41,16 +56,18 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED"
           go=false
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then go=true; fi
           goreleaser=false
           shell=false
           python=false
           # Fixtures, golden files and the embedded CycloneDX schemas are
           # inputs to the test suite, so a change to any of them has to run it.
           # Missing that is how a stale golden file reaches main.
-          if grep -E '(\.go$|^go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$)' <<<"$CHANGED" >/dev/null; then go=true; fi
+          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$)' <<<"$CHANGED" >/dev/null; then go=true; fi
+          if grep -E '^\.github/workflows/.*\.ya?ml$' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.goreleaser\.yaml$' <<<"$CHANGED" >/dev/null; then goreleaser=true; fi
           if grep -E '\.sh$' <<<"$CHANGED" >/dev/null; then shell=true; fi
-          if grep -E '\.py$' <<<"$CHANGED" >/dev/null; then python=true; fi
+          if grep -E '(\.py$|^\.github/workflows/dependabot-auto-merge\.yaml$)' <<<"$CHANGED" >/dev/null; then python=true; fi
           if grep -E '^\.github/workflows/ci\.yaml$' <<<"$CHANGED" >/dev/null; then go=true; goreleaser=true; shell=true; python=true; fi
           echo "go=$go" >> "$GITHUB_OUTPUT"
           echo "goreleaser=$goreleaser" >> "$GITHUB_OUTPUT"
@@ -62,7 +79,20 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-          cache-dependency-path: go.sum
+          cache-dependency-path: |
+            go.sum
+            tools/security/go.sum
+
+      # Pin the scanner and its dependencies in a separate tools module.
+      # Dependabot updates that module; the vulnerability database stays live.
+      # Text output exits nonzero when reachable vulnerabilities are found.
+      - name: Scan Go dependencies for reachable vulnerabilities
+        if: steps.changes.outputs.go == 'true'
+        run: |
+          go -C tools/security mod tidy -diff
+          go -C tools/security mod verify
+          go -C tools/security tool govulncheck -C ../.. -format text ./...
+          go -C tools/security tool govulncheck -format text golang.org/x/vuln/cmd/govulncheck
 
       - name: Check formatting
         if: steps.changes.outputs.go == 'true'
@@ -147,6 +177,8 @@ jobs:
           set -euo pipefail
           python3 --version
           python3 tools/build-p2-table_test.py
+          python3 tools/dependabot-auto-merge_test.py
+          python3 tools/ci-changes_test.py
 
       - name: Install GoReleaser
         if: steps.changes.outputs.goreleaser == 'true'
