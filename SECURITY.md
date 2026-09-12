@@ -74,12 +74,25 @@ the Go checks so newly published advisories can be detected without a code chang
 uses the compiler selected by `go.mod`; it reports reachable vulnerabilities in that build,
 not a guarantee about every platform or previously released binary.
 
-Review and merge a passing upgrade PR. GitHub then closes Dependabot alerts once the fixed
-dependency reaches the default branch. Scorecard runs on pushes to `main` and uploads a new
-analysis, allowing code-scanning findings that are no longer present to close automatically.
-A PR alone does not close an alert, and this workflow does not auto-merge or dismiss alerts.
-If no patched version exists, the alert remains open for investigation. A Go standard-library
-finding requires a compiler upgrade; already published static binaries require a new release.
+Dependabot groups patch/minor security fixes separately for Go and GitHub Actions. The
+`Auto-merge security updates` workflow checks the bot's verified single commit, security-group
+metadata, and every dependency's update type. It waits for the required `build` and
+`Analyze Go` checks to pass, then merges only that exact commit without bypassing branch
+protection. It does not queue native auto-merge authorization that could survive a later edit.
+Major updates, ordinary version updates, unknown metadata, and manually edited PRs require review.
+The workflow uses only API metadata with the built-in token and never checks out PR code.
+No additional secret, native auto-merge setting, or bot approval is required. Failed checks
+leave the PR open; pushes and reopening rerun the workflow. If checks take longer than
+20 minutes, rerun the automation job once they finish.
+
+GitHub closes Dependabot alerts once the fixed dependency reaches the default branch.
+Scorecard runs on pushes to `main` and uploads a new analysis, allowing code-scanning findings that are no longer present to close automatically.
+Because a workflow-token merge does not trigger push workflows, the merge workflow explicitly
+dispatches Scorecard afterward; its weekly schedule remains a fallback if dispatch fails.
+A PR alone does not close an alert, and the workflow never dismisses alerts.
+If no patched version exists or Dependabot cannot construct a fix, the alert remains open for
+investigation. A Go standard-library finding requires a compiler upgrade; already published
+static binaries require a new release.
 
 The CycloneDX files directly under `testdata/` are synthetic input documents, not rio's dependency
 inventory. `testdata/osv-scanner.toml` records the verified Commons Lang fixture finding by

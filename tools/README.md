@@ -326,3 +326,19 @@ Signing and verification tooling is planned in [issue #14](https://github.com/re
 No signing or verification script ships here yet. An unsigned statement is a claim, not
 cryptographic proof of its origin. Its paths are local references, not download URIs, and
 independently verifying the recorded input digests requires retaining the original files.
+
+
+## Testing dependency auto-merge
+
+`dependabot-auto-merge_test.py` executes the merge workflow's actual shell policy against
+local GitHub API fixtures. It checks eligible patch/minor security groups and rejects routine
+or major updates, missing metadata, edited commits, stale heads, retargeted PRs, and incomplete
+or failed required checks. The test replaces `gh` and polling sleeps locally: it makes no
+network calls and cannot merge a real PR. Requires Python 3.9+, bash, and jq.
+
+```sh
+python3 tools/dependabot-auto-merge_test.py
+```
+
+CI runs it when Python tools or the merge workflow change. The live update and alert-closure
+policy is documented in [SECURITY.md](../SECURITY.md#dependency-updates-and-alert-closure).

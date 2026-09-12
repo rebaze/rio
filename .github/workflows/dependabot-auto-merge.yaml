@@ -1,0 +1,95 @@
+name: Auto-merge security updates
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  merge:
+    if: >-
+      github.repository == 'rebaze/rio' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write # Explicitly dispatch Scorecard after a token-driven merge.
+    steps:
+      # This privileged workflow only reads API metadata. Never check out or
+      # execute PR code here; the unprivileged CI workflow verifies that code.
+      - name: Read verified Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+
+      - name: Apply security auto-merge policy
+        if: always() && !cancelled()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          METADATA: ${{ steps.metadata.outputs.updated-dependencies-json }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A queued older event must never authorize the current newer head.
+          current=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER")
+          if [ "$(jq -r '.head.sha' <<<"$current")" != "$PR_HEAD" ]; then exit 0; fi
+          # fetch-metadata verifies the first commit. Require that to be the
+          # only commit, at the exact head being authorized, as well.
+          commits=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER/commits?per_page=2")
+          if jq -e --arg head "$PR_HEAD" '
+            length == 1 and .[0].sha == $head and
+            .[0].author.login == "dependabot[bot]" and
+            .[0].commit.verification.verified == true
+          ' <<<"$commits" >/dev/null && jq -e '
+            type == "array" and length > 0 and all(.[];
+              .targetBranch == "main" and
+              ((.packageEcosystem == "gomod" and .dependencyGroup == "security-go") or
+               (.packageEcosystem == "github_actions" and .dependencyGroup == "security-actions")) and
+              (.updateType == "version-update:semver-patch" or
+               .updateType == "version-update:semver-minor"))
+          ' <<<"${METADATA:-[]}" >/dev/null; then
+            # Do not queue native auto-merge: that authorization can survive
+            # later maintainer edits. Wait, then merge only this verified SHA.
+            for attempt in {1..80}; do
+              current=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER")
+              if [ "$(jq -r '.head.sha' <<<"$current")" != "$PR_HEAD" ]; then exit 0; fi
+              if ! jq -e '.state == "open" and .base.ref == "main" and .draft == false' <<<"$current" >/dev/null; then exit 0; fi
+              # gh exits nonzero for pending/failed checks as well as errors.
+              # Parse only a real JSON array and never treat empty as passing.
+              checks=$(gh pr checks "$PR_NUMBER" --required --json name,bucket) || true
+              if jq -e 'type == "array"' <<<"$checks" >/dev/null; then
+                if jq -e '
+                  any(.[]; .name == "build") and any(.[]; .name == "Analyze Go") and
+                  all(.[]; .bucket == "pass")
+                ' <<<"$checks" >/dev/null; then
+                  gh pr merge "$PR_NUMBER" --merge --match-head-commit "$PR_HEAD"
+                  # GITHUB_TOKEN merges do not trigger push workflows.
+                  gh workflow run scorecard.yaml --ref main
+                  exit 0
+                fi
+                if jq -e 'any(.[]; .bucket == "fail" or .bucket == "cancel")' <<<"$checks" >/dev/null; then
+                  echo "Required checks failed; leaving the PR open."
+                  exit 0
+                fi
+              fi
+              echo "Waiting for required checks ($attempt/80)."
+              sleep 15
+            done
+            echo "Timed out waiting for required checks; leaving the PR open." >&2
+            exit 1
+          else
+            echo "Manual review required: not a verified patch/minor security group."
+          fi
