@@ -165,7 +165,16 @@ elif args[:2] == ['api', 'graphql']:
     counter = Path(os.environ['TEST_CALLS'] + '.body-count')
     index = int(counter.read_text()) if counter.exists() else 0
     counter.write_text(str(index + 1))
-    print(json.dumps(states[min(index, len(states) - 1)]))
+    state = states[min(index, len(states) - 1)]
+    if 'headRefOid' in ' '.join(args):
+        current = json.loads(os.environ['TEST_CURRENT'])
+        state.setdefault('head', current['head']['sha'])
+        state.setdefault('base', current['base']['ref'])
+        state.setdefault('state', current['state'].upper())
+        state.setdefault('draft', current['draft'])
+    else:
+        state = {key: state[key] for key in ('body', 'lastEditedAt', 'editor', 'author')}
+    print(json.dumps(state))
 elif args[0] == 'api':
     print(os.environ['TEST_COMMITS'] if '/commits?' in args[1] else os.environ['TEST_CURRENT'])
 else:
@@ -230,6 +239,30 @@ else:
             False,
         ),
     ]
+    body_cases.extend(
+        [
+            (
+                "retargeted during check query",
+                [baseline_body, baseline_body, dict(baseline_body, base="other")],
+                False,
+            ),
+            (
+                "draft during check query",
+                [baseline_body, baseline_body, dict(baseline_body, draft=True)],
+                False,
+            ),
+            (
+                "closed during check query",
+                [baseline_body, baseline_body, dict(baseline_body, state="CLOSED")],
+                False,
+            ),
+            (
+                "new head during check query",
+                [baseline_body, baseline_body, dict(baseline_body, head="b" * 40)],
+                False,
+            ),
+        ]
+    )
     for name, states, allowed in body_cases:
         calls.write_text("")
         Path(str(calls) + ".body-count").unlink(missing_ok=True)
