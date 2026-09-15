@@ -3,15 +3,15 @@
 Things that support rio without being part of it. Nothing here ships in the binary, nothing here is
 covered by rio's compatibility promises, and rio never calls any of it.
 
-They live together because they share one property: **rio makes no network calls**, and both of
-these do. Keeping them out of the binary is what lets it stay static, `CGO_ENABLED=0`, and run
-identically on a build agent with no egress. The work that needs a network happens here instead,
-ahead of time or afterwards, where a human can look at the result.
+Network-facing helpers live here so **rio makes no network calls** and stays static,
+`CGO_ENABLED=0`. Offline demos also live here: they exercise the binary with inspectable example
+inputs and remain separate from its runtime.
 
 | tool | what it does | when you run it |
 |---|---|---|
 | [`build-p2-table.py`](#build-p2-tablepy) | builds the bundle-symbolic-name → Maven coordinate table rio repairs purls with | occasionally, on a workstation |
 | [`rio-dtrack-upload.sh`](#rio-dtrack-uploadsh) | uploads normalized SBOMs to DependencyTrack | after every `rio normalize`, in a pipeline |
+| [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | offline, with an installed rio release |
 
 ---
 
@@ -445,3 +445,23 @@ Only the optional renderer needs Pillow and ffmpeg; the demo and guard tests use
 Python library (the demo also uses bash, tar and shasum). The video preserves command output
 and slows playback for reading; it clearly labels the offline service substitutes. Commands remain
 on screen above their output. Version 2 transcripts require a fresh run of the demo capture command.
+
+## Manifest enrichment demo
+
+The [standalone enrichment demo](demo-enrichment/README.md) includes synthetic CycloneDX 1.6
+SBOMs, three manifests and a shell runner. It uses a real installed rio release containing #61;
+no Go toolchain, source build, Python, jq or network access is needed. Copy `demo-enrichment/`
+with its inputs from the matching tagged source archive, or use it from a checkout:
+
+```sh
+./tools/demo-enrichment/run.sh
+# Or select an installed binary:
+RIO_BIN=/absolute/path/to/rio ./tools/demo-enrichment/run.sh
+```
+
+Two products inherit organization and product defaults while supplying their own identities and
+documentation URLs. A separate case refuses a conflicting existing subject with exit 2 and no new
+output files; an explicit `replace` list then permits just the named fields to change. The runner
+shows plans and subject before/after values and retains the complete inputs, plans, conflict log,
+SBOMs, indexes and unsigned statements in a fresh temporary directory printed at exit. See the
+[demo README](demo-enrichment/README.md) for expected values, inspection paths and limits.

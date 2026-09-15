@@ -116,6 +116,9 @@ type Artifact struct {
 	// carries no integrityFindings key at all, and the key's presence is
 	// itself the signal that something needs looking at.
 	IntegrityFindings []sbom.IntegrityFinding `json:"integrityFindings,omitempty"`
+
+	// Enrichment is additive producer-assertion provenance, omitted when unused.
+	Enrichment *sbom.EnrichmentRecord `json:"enrichment,omitempty"`
 }
 
 // Gate is an artifact's gate result. Exactly two values are legal (§4.2).

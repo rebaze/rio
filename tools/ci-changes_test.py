@@ -67,6 +67,15 @@ class ChangesTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(detect(path)["go"], "true")
 
+    def test_enrichment_demo_changes_run_binary_checks(self):
+        for path in (
+            "tools/demo-enrichment/rio.yaml",
+            "tools/demo-enrichment/inputs/console.cdx.json",
+            "tools/demo-enrichment/run.sh",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(detect(path)["go"], "true")
+
     def test_unrelated_documentation_keeps_checks_skipped(self):
         self.assertEqual(
             detect("README.md"),

@@ -525,3 +525,78 @@ func treeOf(t *testing.T, dir string) map[string]string {
 	}
 	return out
 }
+
+func TestPlanEnrichmentJSONAndTextWithoutReadingSBOM(t *testing.T) {
+	dir := t.TempDir()
+	// Invalid SBOM content is intentional: plan must never parse it.
+	if err := os.WriteFile(filepath.Join(dir, "bom.json"), []byte("not an SBOM"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	body := `version: 1
+enrichment:
+  producer:
+    name: Publisher
+  subject:
+    name: Shared
+  replace: [subject.name]
+artifacts:
+  - id: app
+    sbom: bom.json
+    enrichment:
+      subject:
+        name: App
+`
+	if err := os.WriteFile(filepath.Join(dir, "rio.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := rio(t, dir, "plan", "--json")
+	requireExit(t, r, ExitOK)
+	var got struct {
+		PlanVersion int
+		Artifacts   []struct {
+			Enrichment struct {
+				Version int
+				Fields  []struct {
+					Field   string
+					Value   json.RawMessage
+					Source  string
+					Replace bool
+				}
+			}
+		}
+	}
+	if err := json.Unmarshal([]byte(r.stdout), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.PlanVersion != 1 || len(got.Artifacts) != 1 || got.Artifacts[0].Enrichment.Version != 1 {
+		t.Fatalf("missing versioned extension: %s", r.stdout)
+	}
+	fields := got.Artifacts[0].Enrichment.Fields
+	if len(fields) != 2 || fields[0].Field != "producer.name" || fields[0].Source != "enrichment.producer.name" || fields[1].Field != "subject.name" || string(fields[1].Value) != `"App"` || fields[1].Source != "artifacts[0].enrichment.subject.name" || !fields[1].Replace {
+		t.Fatalf("fields = %+v", fields)
+	}
+	r = rio(t, dir, "plan")
+	requireExit(t, r, ExitOK)
+	for _, want := range []string{"no transforms", `producer.name = "Publisher" (source enrichment.producer.name, replace=false)`, `subject.name = "App" (source artifacts[0].enrichment.subject.name, replace=true)`} {
+		if !strings.Contains(r.stdout, want) {
+			t.Errorf("plan missing %q:\n%s", want, r.stdout)
+		}
+	}
+}
+
+func TestPlanAndNormalizeRejectUnknownEnrichmentLicense(t *testing.T) {
+	dir := t.TempDir()
+	body := "version: 1\nenrichment: {dataLicense: Definitely-Not-A-License}\nartifacts: [{id: app, sbom: missing.json}]\n"
+	if err := os.WriteFile(filepath.Join(dir, "rio.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, cmd := range []string{"plan", "normalize"} {
+		t.Run(cmd, func(t *testing.T) {
+			result := rio(t, dir, cmd)
+			requireExit(t, result, ExitUsage)
+			if !strings.Contains(result.stderr, "dataLicense") || !strings.Contains(result.stderr, "Definitely-Not-A-License") {
+				t.Fatalf("stderr = %s", result.stderr)
+			}
+		})
+	}
+}

@@ -63,7 +63,7 @@ jobs:
           # Fixtures, golden files and the embedded CycloneDX schemas are
           # inputs to the test suite, so a change to any of them has to run it.
           # Missing that is how a stale golden file reaches main.
-          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$)' <<<"$CHANGED" >/dev/null; then go=true; fi
+          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-enrichment/)' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.github/workflows/.*\.ya?ml$' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.goreleaser\.yaml$' <<<"$CHANGED" >/dev/null; then goreleaser=true; fi
           if grep -E '\.sh$' <<<"$CHANGED" >/dev/null; then shell=true; fi
@@ -140,6 +140,7 @@ jobs:
           ./rio version
           ./rio normalize --help > /dev/null
           ./rio plan --help > /dev/null
+          ./tools/demo-enrichment/run.sh "$PWD/rio"
 
       - name: Lint shell scripts
         if: steps.changes.outputs.shell == 'true'
@@ -151,7 +152,7 @@ jobs:
             sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
           fi
           shellcheck --version
-          shellcheck -s sh install.sh
+          shellcheck -s sh install.sh tools/demo-enrichment/run.sh
           shellcheck tools/rio-dtrack-upload.sh install_test.sh tools/rio-dtrack-upload_test.sh
 
       - name: Test the shell scripts offline

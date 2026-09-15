@@ -27,6 +27,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/rebaze/rio/internal/enrichment"
 	"github.com/rebaze/rio/internal/sbom"
 	"github.com/rebaze/rio/internal/transform"
 )
@@ -79,6 +80,8 @@ type Artifact struct {
 	// building module rather than the shipped artifact (§4.3d). Nil when the
 	// manifest does not override it.
 	Subject *Subject
+	// Enrichment contains resolved metadata values and their declaration sources.
+	Enrichment *enrichment.Resolved
 	// Transforms are applied in the order given (§5 step 3).
 	Transforms []TransformSpec
 }
@@ -171,6 +174,10 @@ func Load(path string) (*Manifest, error) {
 		return nil, l.yamlError(err)
 	}
 
+	if err := l.enrichmentTypes(); err != nil {
+		return nil, err
+	}
+
 	if err := l.version(&f, m); err != nil {
 		return nil, err
 	}
@@ -192,16 +199,18 @@ func Load(path string) (*Manifest, error) {
 type fileSection struct {
 	// Version is a Node rather than an int so a missing version and a
 	// non-numeric one both get a message naming the field.
-	Version   yaml.Node         `yaml:"version"`
-	Artifacts []artifactSection `yaml:"artifacts"`
-	Output    *outputSection    `yaml:"output"`
-	Gate      *gateSection      `yaml:"gate"`
+	Version    yaml.Node          `yaml:"version"`
+	Artifacts  []artifactSection  `yaml:"artifacts"`
+	Output     *outputSection     `yaml:"output"`
+	Gate       *gateSection       `yaml:"gate"`
+	Enrichment *enrichment.Config `yaml:"enrichment"`
 }
 
 type artifactSection struct {
-	ID      string          `yaml:"id"`
-	SBOM    string          `yaml:"sbom"`
-	Subject *subjectSection `yaml:"subject"`
+	ID         string             `yaml:"id"`
+	SBOM       string             `yaml:"sbom"`
+	Subject    *subjectSection    `yaml:"subject"`
+	Enrichment *enrichment.Config `yaml:"enrichment"`
 	// Transforms stay as nodes: each entry is a single-key mapping whose key
 	// is the transform name, which no Go struct describes.
 	Transforms []yaml.Node `yaml:"transforms"`
@@ -289,6 +298,14 @@ func (l loader) artifacts(f *fileSection, m *Manifest) error {
 		}
 
 		out := Artifact{ID: a.ID, SBOM: a.SBOM}
+		resolved, err := enrichment.Resolve(f.Enrichment, a.Enrichment, field)
+		if err != nil {
+			return l.errf("", "%v", err)
+		}
+		if err := sbom.ValidateEnrichmentConfig(resolved); err != nil {
+			return l.errf(field+".enrichment", "%v", err)
+		}
+		out.Enrichment = resolved
 
 		if a.Subject != nil {
 			// Both halves are required: the override replaces
@@ -411,6 +428,16 @@ var yamlTargets = map[string]struct {
 		where: regexp.MustCompile(`^artifacts\[[0-9]+\]$`)},
 	"manifest.subjectSection": {field: "subject", shape: "a mapping with name and version",
 		where: regexp.MustCompile(`^artifacts\[[0-9]+\]\.subject$`)},
+	"enrichment.Config": {field: "enrichment", shape: "a mapping",
+		where: regexp.MustCompile(`^(artifacts\[[0-9]+\]\.)?enrichment$`)},
+	"enrichment.Subject": {field: "enrichment.subject", shape: "a mapping",
+		where: regexp.MustCompile(`^(artifacts\[[0-9]+\]\.)?enrichment\.subject$`)},
+	"enrichment.Organization": {field: "enrichment organization", shape: "a mapping",
+		where: regexp.MustCompile(`^(artifacts\[[0-9]+\]\.)?enrichment\.(producer|subject\.(manufacturer|supplier))$`)},
+	"[]enrichment.Contact": {field: "enrichment contact", shape: "a list of contacts",
+		where: regexp.MustCompile(`^(artifacts\[[0-9]+\]\.)?enrichment\.(producer|subject\.(manufacturer|supplier))\.contact$`)},
+	"enrichment.Contact": {field: "enrichment contact", shape: "a mapping with name, email or phone",
+		where: regexp.MustCompile(`^(artifacts\[[0-9]+\]\.)?enrichment\.(producer|subject\.(manufacturer|supplier))\.contact\[[0-9]+\]$`)},
 	"manifest.outputSection": {field: "output", shape: "a mapping",
 		where: regexp.MustCompile(`^output$`)},
 	"manifest.gateSection": {field: "gate", shape: "a mapping",
@@ -418,11 +445,11 @@ var yamlTargets = map[string]struct {
 	"[]yaml.Node": {field: "transforms", shape: "a list of transforms",
 		where: regexp.MustCompile(`^artifacts\[[0-9]+\]\.transforms$`)},
 	"[]string": {field: "gate.require", shape: "a list of strings",
-		where: regexp.MustCompile(`^gate\.require$`)},
+		where: regexp.MustCompile(`^(gate\.require|(artifacts\[[0-9]+\]\.)?enrichment\.(replace|(producer|subject\.(manufacturer|supplier))\.url))$`)},
 	// The one type several keys share, which is why it names none of them
 	// when the lookup below cannot tell which one was meant.
 	"string": {shape: "a string", where: regexp.MustCompile(
-		`^(artifacts\[[0-9]+\]\.(id|sbom|subject\.(name|version))|output\.specVersionFloor|gate\.require\[[0-9]+\])$`)},
+		`^(artifacts\[[0-9]+\]\.(id|sbom|subject\.(name|version))|output\.specVersionFloor|gate\.require\[[0-9]+\]|(artifacts\[[0-9]+\]\.)?enrichment\..+)$`)},
 }
 
 // yamlDetail reduces a decode failure to go-yaml's own words, without the
@@ -644,3 +671,68 @@ func describe(n *yaml.Node) string {
 		return "an unexpected value"
 	}
 }
+
+// enrichmentTypes prevents YAML from silently converting numbers and booleans
+// to metadata strings. The typed decoder still owns shape and unknown-key checks.
+func (l loader) enrichmentTypes() error {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(l.src, &doc); err != nil {
+		return l.yamlError(err)
+	}
+	var invalid error
+	var visit func(*yaml.Node, string, bool, bool, int)
+	visit = func(n *yaml.Node, path string, inside, merged bool, depth int) {
+		if invalid != nil {
+			return
+		}
+		if depth > 100 {
+			invalid = l.errf(path, "YAML aliases are too deeply nested")
+			return
+		}
+		if n.Kind == yaml.AliasNode {
+			visit(n.Alias, path, inside, merged, depth+1)
+			return
+		}
+		if inside && n.Kind == yaml.ScalarNode && n.Tag != strTag {
+			invalid = l.errf(path, "must be a string, got %s", describe(n))
+			return
+		}
+		switch n.Kind {
+		case yaml.DocumentNode:
+			for _, child := range n.Content {
+				visit(child, path, inside, false, depth+1)
+			}
+		case yaml.MappingNode:
+			for i := 0; i+1 < len(n.Content); i += 2 {
+				key, value := n.Content[i], n.Content[i+1]
+				if key.Tag == mergeTag {
+					// Merged keys belong to the receiving mapping. Keeping its
+					// path also activates strict strings for inherited blocks.
+					visit(value, path, inside, true, depth+1)
+					continue
+				}
+				child := key.Value
+				if path != "" {
+					child = path + "." + key.Value
+				}
+				// Only the schema's root/artifact enrichment blocks opt into strict strings.
+				enabled := inside || (key.Value == "enrichment" && (path == "" || artifactEnrichmentParent.MatchString(path)))
+				visit(value, child, enabled, false, depth+1)
+			}
+		case yaml.SequenceNode:
+			for i, child := range n.Content {
+				if merged {
+					// YAML permits <<: [*first, *second]; both mappings merge
+					// into the same parent rather than into indexed children.
+					visit(child, path, inside, true, depth+1)
+				} else {
+					visit(child, fmt.Sprintf("%s[%d]", path, i), inside, false, depth+1)
+				}
+			}
+		}
+	}
+	visit(&doc, "", false, false, 0)
+	return invalid
+}
+
+var artifactEnrichmentParent = regexp.MustCompile(`^artifacts\[[0-9]+\]$`)
