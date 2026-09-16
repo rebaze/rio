@@ -54,6 +54,13 @@ make vet                        # go vet ./...
 - Version, commit, and build date injected via ldflags at build time (see `cmd/root.go`)
 - The binary must stay self-contained: `CGO_ENABLED=0`, no runtime dependencies on external tools
 
+## Feature Demonstrations
+
+Every feature includes synthetic example data and a runnable demo that works with an installed
+Rio release binary. Users must not need a Go toolchain or a source build to run it. Keep supporting
+demo scripts and fixtures under `tools/`, document them in `tools/README.md`, and link there from
+the main README. Exercise the demo against the built binary during verification.
+
 ## Task Tracking
 
 Tasks are tracked as GitHub issues on `rebaze/rio` — **not** as files in this repository. Never create

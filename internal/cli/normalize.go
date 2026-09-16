@@ -68,6 +68,7 @@ type artifact struct {
 	stats           []index.TransformResult
 	gate            gate.Result
 	integrity       []sbom.IntegrityFinding
+	enrichment      *sbom.EnrichmentRecord
 	output          []byte
 }
 
@@ -204,6 +205,15 @@ func process(man *manifest.Manifest, a *artifact) error {
 		oldName, oldVersion := doc.SetSubject(s.Name, s.Version)
 		doc.AddMetadataProperty(sbom.PropertyPrefix+"subject-override",
 			fmt.Sprintf("from=%s@%s | to=%s@%s", oldName, oldVersion, s.Name, s.Version))
+	}
+
+	// Enrichment is a separate metadata phase: it never changes dependency membership.
+	if a.spec.Enrichment != nil {
+		record, err := doc.Enrich(a.spec.Enrichment, filepath.Base(man.Path), man.SHA256)
+		if err != nil {
+			return usageErrorf("%s: artifact %q: %v", man.Path, a.spec.ID, err)
+		}
+		a.enrichment = record
 	}
 
 	// Run metadata (§4.3a).
@@ -346,6 +356,7 @@ func writeAll(man *manifest.Manifest, artifacts []*artifact, outDir string, atte
 			Gate:              gateStatus(a.gate),
 			GateFindings:      gateFindings(a.gate),
 			IntegrityFindings: a.integrity,
+			Enrichment:        a.enrichment,
 		})
 	}
 
