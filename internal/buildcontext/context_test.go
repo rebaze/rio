@@ -92,6 +92,8 @@ func TestReadRejectsStrictInvalidDocuments(t *testing.T) {
 		{"blank", `{"contextVersion":1,"artifacts":[{"id":" ","sbom":{"sha256":"` + validDigest + `"}}]}`, "id"},
 		{"control character", `{"contextVersion":1,"artifacts":[{"id":"a\u001f","sbom":{"sha256":"` + validDigest + `"}}]}`, "id"},
 		{"credentials hidden", `{"contextVersion":1,"artifacts":[{"id":"a","sbom":{"sha256":"` + validDigest + `"},"source":{"repository":"https://user:secret@example.org/x"}}]}`, "repository"},
+		{"raw repository query", `{"contextVersion":1,"artifacts":[{"id":"a","sbom":{"sha256":"` + validDigest + `"},"source":{"repository":"https://example.org/x?"}}]}`, "repository"},
+		{"raw build fragment", `{"contextVersion":1,"artifacts":[{"id":"a","sbom":{"sha256":"` + validDigest + `"},"build":{"url":"https://example.org/x#"}}]}`, "build.url"},
 		{"bad path", `{"contextVersion":1,"artifacts":[{"id":"a","sbom":{"sha256":"` + validDigest + `"},"source":{"subdirectory":"../x"}}]}`, "subdirectory"},
 		{"bad lifecycle", `{"contextVersion":1,"artifacts":[{"id":"a","sbom":{"sha256":"` + validDigest + `"},"lifecycle":"ship"}]}`, "lifecycle"},
 		{"empty source", `{"contextVersion":1,"artifacts":[{"id":"a","sbom":{"sha256":"` + validDigest + `"},"source":{}}]}`, "source"},

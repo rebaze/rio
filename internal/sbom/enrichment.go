@@ -1,7 +1,6 @@
 package sbom
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -92,15 +91,8 @@ func (d *Document) Enrich(cfg *enrichment.Resolved, manifestPath, manifestSHA st
 	if err := ValidateEnrichmentConfig(cfg); err != nil {
 		return nil, err
 	}
-	data, err := json.Marshal(d.raw)
+	working, err := d.cloneForMetadata()
 	if err != nil {
-		return nil, err
-	}
-	working := *d
-	working.raw = nil // Decode into a fresh map; reusing d.raw would break rollback.
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.UseNumber()
-	if err := dec.Decode(&working.raw); err != nil {
 		return nil, err
 	}
 	result := &EnrichmentRecord{Version: 1, Changes: []EnrichmentChange{}}
@@ -277,7 +269,17 @@ func sameDataLicense(existing any, id string) bool {
 
 func (d *Document) enrichReference(f enrichment.Field, uri, kind string) (string, any, any, bool, error) {
 	parent := d.metadataComponent(true)
-	before := parent["externalReferences"]
+	before, after, changed, err := mergeReference(parent, kind, uri, f.Replace)
+	if err != nil {
+		return "", nil, nil, false, fmt.Errorf("conflicts with existing %s external reference; explicitly list %s in enrichment.replace to replace it", kind, f.Field)
+	}
+	return "/metadata/component/externalReferences", before, after, changed, nil
+}
+
+// mergeReference reconciles one kind/URL pair, preserving auxiliary data on
+// matching references and unrelated kinds. The caller owns conflict wording.
+func mergeReference(parent map[string]any, kind, uri string, replace bool) (before, after any, changed bool, err error) {
+	before = parent["externalReferences"]
 	refs, _ := before.([]any)
 	matchingURI, conflictingURI := false, false
 	for _, r := range refs {
@@ -291,8 +293,8 @@ func (d *Document) enrichReference(f enrichment.Field, uri, kind string) (string
 			conflictingURI = true
 		}
 	}
-	if conflictingURI && !f.Replace {
-		return "", nil, nil, false, fmt.Errorf("conflicts with existing %s external reference; explicitly list %s in enrichment.replace to replace it", kind, f.Field)
+	if conflictingURI && !replace {
+		return nil, nil, false, fmt.Errorf("conflicting external reference")
 	}
 	next := make([]any, 0, len(refs)+1)
 	added := false
@@ -325,10 +327,10 @@ func (d *Document) enrichReference(f enrichment.Field, uri, kind string) (string
 		next = append(next, map[string]any{"type": kind, "url": uri})
 	}
 	if reflect.DeepEqual(refs, next) {
-		return "/metadata/component/externalReferences", before, before, false, nil
+		return before, before, false, nil
 	}
 	parent["externalReferences"] = next
-	return "/metadata/component/externalReferences", before, next, true, nil
+	return before, next, true, nil
 }
 
 func (d *Document) checkEnrichedIdentity() error {

@@ -442,6 +442,16 @@ func parseArtifact(value any, field string) (Artifact, error) {
 	return a, nil
 }
 
+// ParseEffective validates a previously recorded effective artifact without
+// opening a file. It uses the same strict shape and value rules as input entries.
+func ParseEffective(data []byte) (Artifact, error) {
+	value, err := decodeStrict(data)
+	if err != nil {
+		return Artifact{}, err
+	}
+	return parseArtifact(value, "effective")
+}
+
 func parseSource(value any, field string) (*Source, error) {
 	m, ok := value.(map[string]any)
 	if !ok {
@@ -607,7 +617,7 @@ func lowerHex(value string, length int) bool {
 }
 func validURL(value string) bool {
 	u, err := url.Parse(value)
-	return err == nil && !invalidString(value) && (u.Scheme == "http" || u.Scheme == "https") && u.Hostname() != "" && u.User == nil && u.RawQuery == "" && u.Fragment == ""
+	return err == nil && !invalidString(value) && (u.Scheme == "http" || u.Scheme == "https") && u.Hostname() != "" && u.User == nil && !u.ForceQuery && u.RawQuery == "" && u.Fragment == "" && !strings.Contains(value, "#")
 }
 func validSubdirectory(value string) bool {
 	if invalidString(value) || strings.Contains(value, "\\") || path.IsAbs(value) {

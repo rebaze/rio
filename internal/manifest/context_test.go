@@ -34,6 +34,7 @@ func TestArtifactContextRejectsStrictYAMLAndInvalidBindings(t *testing.T) {
 		{"merged boolean", "<<: &defaults {context: {file: ctx.json, require: [true]}}", "context.require[0]"},
 		{"duplicate selector", "context: {file: ctx.json, replace: [build.url, build.url]}", "listed more than once"},
 		{"lifecycle replacement", "context: {file: ctx.json, replace: [lifecycle]}", "lifecycle"},
+		{"null context", "context: null", "context"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := manifest.Load(write(t, "version: 1\nartifacts:\n  - id: app\n    sbom: app.cdx.json\n    "+tc.body+"\n"))
@@ -41,6 +42,29 @@ func TestArtifactContextRejectsStrictYAMLAndInvalidBindings(t *testing.T) {
 				t.Fatalf("error = %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestContextBindingAcceptsAliasAndMerge(t *testing.T) {
+	m, err := manifest.Load(write(t, `version: 1
+artifacts:
+  - id: one
+    sbom: one.json
+    context: &shared {file: context.json, require: [build.url]}
+  - id: two
+    sbom: two.json
+    context: *shared
+  - id: three
+    sbom: three.json
+    context:
+      <<: *shared
+      replace: [source.repository]
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Artifacts) != 3 || m.Artifacts[1].Context.File != "context.json" || !sameContextStrings(m.Artifacts[2].Context.Require, []string{"build.url"}) || !sameContextStrings(m.Artifacts[2].Context.Replace, []string{"source.repository"}) {
+		t.Fatalf("bindings: %+v", m.Artifacts)
 	}
 }
 
