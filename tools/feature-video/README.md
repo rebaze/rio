@@ -127,6 +127,16 @@ python3 -m http.server --directory target/feature-video/bundle
 Serving it matters for captions: a browser opening the page straight from `file://` may
 refuse to load the separate `.vtt`.
 
+Two things about that command specifically. It is single-threaded, so one stalled request
+blocks the rest of the page; and it does not implement `Range`, answering a range request
+with `200` and the whole file. A browser can still play the video that way, but it cannot
+seek until the download finishes, so **scrubbing and the chapter links will feel broken
+under `http.server` and work on any real static host**. It is fine for checking the page;
+it is not a fair test of playback.
+
+`bundle.py` also writes a `SHA256SUMS` covering exactly the files it shipped, so
+`shasum -a 256 -c SHA256SUMS` works inside the folder someone was handed.
+
 ## Dependencies
 
 | step | needs |

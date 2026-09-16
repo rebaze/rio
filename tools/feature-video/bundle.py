@@ -11,6 +11,7 @@ Python 3.9+, standard library only.
     python3 tools/feature-video/bundle.py
 """
 import argparse
+import hashlib
 import html
 import json
 import os
@@ -32,11 +33,21 @@ DESCRIPTION = (
 )
 
 # Copied into the bundle. Everything here is small; the MP4 is the only large file.
+# SHA256SUMS is not among them: the bundle gets its own, covering exactly the files it
+# contains, so `shasum -a 256 -c SHA256SUMS` works inside the folder someone was handed.
 ASSETS = [
     "{base}.mp4", "{base}.srt", "{base}.vtt", "poster.png", "commands.sh",
     "command-output.txt", "narration.txt", "chapters.txt", "transcript.json",
-    "timeline.json", "usage.json", "SHA256SUMS",
+    "timeline.json", "usage.json",
 ]
+
+
+def checksums(paths):
+    """`shasum -a 256 -c` format, over the files as shipped."""
+    lines = []
+    for path in sorted(paths, key=lambda p: p.name):
+        lines.append("%s  %s" % (hashlib.sha256(path.read_bytes()).hexdigest(), path.name))
+    return "\n".join(lines) + "\n"
 
 
 def chapter_markup(marks):
@@ -108,6 +119,8 @@ def main(argv=None):
         {"transcript": (work / "narration.txt").read_text().strip(), "footer": footer},
     )
     (out / "index.html").write_text(page)
+    (out / "SHA256SUMS").write_text(
+        checksums([p for p in out.iterdir() if p.name != "SHA256SUMS"]))
 
     size = sum(p.stat().st_size for p in out.iterdir())
     print("bundle written to %s (%d files, %.1f MB)"
