@@ -20,6 +20,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import capture  # noqa: E402
+import endscreen  # noqa: E402
 import narrate  # noqa: E402
 import storyboard  # noqa: E402
 import timeline  # noqa: E402
@@ -583,6 +584,47 @@ class Verification(unittest.TestCase):
         problems = verify.check_chapters(expected[:1] and [
             {"start_time": "0.000", "end_time": "9.000", "tags": {"title": "One"}}], expected, 9.0)
         self.assertIn("1 chapters in the file, 2 in the timeline", " ".join(problems))
+
+
+class EndScreen(unittest.TestCase):
+    """The end card is rebaze's brand, not rio's, so the tokens are checked against it."""
+
+    def test_the_brand_assets_are_vendored(self):
+        for name in ("rebaze-horizontal.svg", "rebaze-symbol.svg"):
+            self.assertTrue((endscreen.BRAND / name).exists(), name)
+
+    def test_the_symbol_viewbox_holds_the_whole_mark(self):
+        # A hand-guessed viewBox once clipped the hexagon, which only showed up on screen.
+        import re
+        text = (endscreen.BRAND / "rebaze-symbol.svg").read_text()
+        box = re.search(r'viewBox="([-\d. ]+)"', text)
+        self.assertIsNotNone(box)
+        vx, vy, vw, vh = [float(v) for v in box.group(1).split()]
+        xs, ys = [], []
+        for _, blob in re.findall(r'([MLCZmlcz])\s*((?:-?\d+\.?\d*[ ,]*)*)', text):
+            values = [float(v) for v in re.findall(r'-?\d+\.?\d*', blob)]
+            xs.extend(values[0::2])
+            ys.extend(values[1::2])
+        self.assertTrue(xs and ys, "no path coordinates found")
+        self.assertLessEqual(vx, min(xs), "viewBox clips the mark on the left")
+        self.assertLessEqual(vy, min(ys), "viewBox clips the mark on the top")
+        self.assertGreaterEqual(vx + vw, max(xs), "viewBox clips the mark on the right")
+        self.assertGreaterEqual(vy + vh, max(ys), "viewBox clips the mark on the bottom")
+
+    def test_the_palette_is_the_brand_palette_not_the_video_one(self):
+        self.assertEqual("#20251f", endscreen.BG)
+        self.assertEqual("#f4f1e8", endscreen.CREAM)
+        self.assertEqual("#b7ccaa", endscreen.SAGE)
+        self.assertNotEqual(endscreen.SAGE, "#73e1bb")
+
+    def test_the_headline_tracking_matches_the_site(self):
+        self.assertAlmostEqual(-0.03, endscreen.TRACKING, places=4)
+
+    def test_the_card_points_at_the_live_domain(self):
+        self.assertEqual("rebaze.de", endscreen.DEFAULT_URL)
+        self.assertIn("Find out more", endscreen.DEFAULT_HEADLINE)
+        # rebaze.io is a domain this repository does not use; the README links rebaze.de.
+        self.assertNotIn("rebaze.io", endscreen.DEFAULT_URL)
 
 
 if __name__ == "__main__":

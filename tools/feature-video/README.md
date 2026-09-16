@@ -137,6 +137,30 @@ it is not a fair test of playback.
 `bundle.py` also writes a `SHA256SUMS` covering exactly the files it shipped, so
 `shasum -a 256 -c SHA256SUMS` works inside the folder someone was handed.
 
+### endscreen.py
+
+Renders `endscreen.png`, the 1920x1080 card for the last seconds of the video on YouTube.
+
+This is the one asset here that is not in rio's palette. The video is rio's terminal styling;
+an end card is rebaze speaking, so it uses the brand's own colours, mark and typography as
+they are on rebaze.de — near-black green `#20251f`, warm cream `#f4f1e8`, sage `#b7ccaa`, and
+a medium-weight grotesque with -3% tracking. The two brand SVGs are vendored in `brand/` so
+the card renders offline.
+
+The right-hand third is deliberately empty: YouTube draws its own end-screen elements over
+the frame, and anything placed there would be covered. The mark bleeds off that edge so the
+crop reads as deliberate.
+
+```sh
+python3 tools/feature-video/endscreen.py
+python3 tools/feature-video/endscreen.py --headline "Find out more" --url rebaze.de
+python3 tools/feature-video/endscreen.py --no-watermark
+```
+
+Needs Pillow and `rsvg-convert`. YouTube shows end screens only over the last 5-20 seconds,
+so the card is uploaded as an end-screen background or appended to the cut; it is not part of
+the encoded walkthrough.
+
 ## Dependencies
 
 | step | needs |
