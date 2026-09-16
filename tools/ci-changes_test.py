@@ -76,6 +76,25 @@ class ChangesTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(detect(path)["go"], "true")
 
+    def test_context_demo_changes_run_binary_checks(self):
+        for path in (
+            "tools/demo-context/rio.yaml",
+            "tools/demo-context/inputs/console.cdx.json",
+            "tools/demo-context/context.json",
+            "tools/demo-context/run.sh",
+        ):
+            with self.subTest(path=path):
+                result = detect(path)
+                self.assertEqual(result["go"], "true")
+                if path.endswith(".sh"):
+                    self.assertEqual(result["shell"], "true")
+
+    def test_context_helper_changes_run_python_checks(self):
+        self.assertEqual(detect("tools/rio-context.py")["python"], "true")
+        self.assertEqual(detect("tools/rio-context_test.py")["python"], "true")
+        self.assertEqual(detect("tools/rio-context.py")["go"], "true")
+        self.assertEqual(detect("tools/rio-context_test.py")["go"], "true")
+
     def test_unrelated_documentation_keeps_checks_skipped(self):
         self.assertEqual(
             detect("README.md"),
