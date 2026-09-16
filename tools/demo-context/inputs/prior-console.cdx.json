@@ -1,0 +1,70 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2025-01-15T12:00:00Z",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "synthetic-demo-generator",
+          "version": "1.0.0"
+        }
+      ]
+    },
+    "component": {
+      "type": "application",
+      "bom-ref": "subject-console",
+      "name": "console",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://code.example.org/widgets/console"
+        },
+        {
+          "type": "build-system",
+          "url": "https://ci.example.org/widgets/runs/42"
+        }
+      ]
+    },
+    "properties": [
+      {
+        "name": "rebaze:normalize:context",
+        "value": "{\"version\":1,\"file\":{\"path\":\"prior-context.json\",\"sha256\":\"cf262a19a110f7cddb6f7b907471e81564667b8ce6b3414c99b8ac838931e68c\"},\"selector\":\"/artifacts/0\",\"effective\":{\"id\":\"console\",\"sbom\":{\"sha256\":\"f3fc7209de8aa6e28a61bf7728da672416cc133c7cc5797d4126177ed44bf7a7\"},\"source\":{\"repository\":\"https://code.example.org/widgets/console\",\"revision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"workspace\":\"clean\"},\"build\":{\"url\":\"https://ci.example.org/widgets/runs/42\",\"id\":\"old-run\"}},\"defaulted\":[],\"changes\":[],\"assertion\":\"producer\"}"
+      }
+    ]
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "dependency-tiny-json",
+      "group": "org.thirdparty",
+      "name": "tiny-json",
+      "version": "2.0.0",
+      "purl": "pkg:maven/org.thirdparty/tiny-json@2.0.0",
+      "supplier": {
+        "name": "Third Party Example"
+      },
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "subject-console",
+      "dependsOn": [
+        "dependency-tiny-json"
+      ]
+    },
+    {
+      "ref": "dependency-tiny-json",
+      "dependsOn": []
+    }
+  ]
+}

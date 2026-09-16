@@ -1,0 +1,31 @@
+{
+  "contextVersion": 1,
+  "artifacts": [
+    {
+      "id": "console",
+      "sbom": {
+        "sha256": "f3fc7209de8aa6e28a61bf7728da672416cc133c7cc5797d4126177ed44bf7a7"
+      },
+      "source": {
+        "repository": "https://code.example.org/widgets/console",
+        "revision": "1111111111111111111111111111111111111111",
+        "subdirectory": "apps/console",
+        "ref": "refs/heads/main",
+        "workspace": "clean"
+      },
+      "build": {
+        "id": "42",
+        "timestamp": "2026-01-01T12:00:00Z",
+        "system": {
+          "name": "Gradle",
+          "version": "8.14"
+        }
+      },
+      "generator": {
+        "name": "CycloneDX Gradle Plugin",
+        "version": "3.0.0"
+      },
+      "lifecycle": "build"
+    }
+  ]
+}
