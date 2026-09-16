@@ -14,6 +14,7 @@ inputs and remain separate from its runtime.
 | [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | offline, with an installed rio release |
 | [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, refusals and owned-claim replacement | offline, with an installed rio release |
 | [`rio-context.py`](#rio-contextpy) | emits one explicit build-context entry bound to original SBOM bytes | in a producing CI job |
+| [`feature-video/`](#feature-video) | records, narrates and encodes the context feature walkthrough | when the feature or its demo changes |
 
 ---
 
@@ -520,3 +521,37 @@ merge entries. Available flags cover all v1 leaves: `--source-repository`,
 writing any JSON; Rio remains the final validator of the context and manifest binding. See
 the [native context contract](../README.md#build-and-source-context) for field meaning and
 authority limits.
+
+## feature-video
+
+The [feature-video tooling](feature-video/README.md) builds the narrated walkthrough of the
+CI context feature: it runs the demo's commands for real, synthesizes the narration, draws a
+split-screen terminal replay and checks the encoded result. Five steps, kept apart because
+they fail for unrelated reasons and only one of them costs money:
+
+```sh
+python3 tools/feature-video/capture.py     # run the commands, record what they printed
+python3 tools/feature-video/narrate.py     # synthesize the narration (about $0.16 a pass)
+python3 tools/feature-video/render.py      # draw the frames and encode
+python3 tools/feature-video/verify.py      # check the result is worth publishing
+python3 tools/feature-video/bundle.py      # assemble the portable viewing folder
+```
+
+Outputs land in `target/feature-video/`, which is not tracked: the video is tens of megabytes
+and regenerable, so what is committed is the thing that regenerates it.
+
+Authoring needs Pillow, ffmpeg, a Go toolchain for the capture, and — for narration only —
+the 1Password CLI and a paid Google Gemini key. None of them is a rio runtime dependency, and
+none is needed to watch the video or to run the
+[demo it walks through](demo-context/README.md).
+
+The narration voice is a recorded decision: Google Gemini `gemini-3.1-flash-tts-preview`,
+voice `Charon`, under fixed director instructions. The tool refuses to substitute another
+model rather than quietly producing a video in the wrong voice. Clips are cached by a digest
+of provider, model, voice, direction and the line itself, so editing one sentence re-buys one
+sentence. `python3 tools/feature-video/narrate.py --dry-run` prints the estimate before
+anything is spent.
+
+`python3 tools/feature-video/feature_video_test.py` covers the pacing rules, the cache, the
+audio decoding and the failure paths. It runs in CI, makes no network calls and reads no
+credentials — the synthesizer is stubbed, so a test run never spends anything.
