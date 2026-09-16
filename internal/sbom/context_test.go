@@ -176,6 +176,13 @@ func TestContextRejectsMalformedPriorRecordAtomically(t *testing.T) {
 		{"unknown change field", strings.Replace(base, `"changes":[]`, `"changes":[{"field":"build.secret","target":"context:/build/secret","before":null,"after":"value","selector":"/artifacts/0/build/secret","override":false}]`, 1)},
 		{"wrong logical before type", strings.Replace(base, `"changes":[]`, `"changes":[{"field":"build.id","target":"context:/build/id","before":["old"],"after":"42","selector":"/artifacts/0/build/id","override":true}]`, 1)},
 		{"wrong entry selector", strings.Replace(base, `"changes":[]`, `"changes":[{"field":"build.id","target":"context:/build/id","before":null,"after":"42","selector":"/artifacts/00/build/id","override":false}]`, 1)},
+		{"unrelated source selector", strings.Replace(base, `"changes":[]`, `"changes":[{"field":"build.id","target":"context:/build/id","before":null,"after":"42","selector":"/artifacts/0/anything","override":false}]`, 1)},
+		{"entry selector for addition", strings.Replace(base, `"changes":[]`, `"changes":[{"field":"build.id","target":"context:/build/id","before":null,"after":"42","selector":"/artifacts/0","override":false}]`, 1)},
+		{"invalid native reference after", strings.Replace(base, `"changes":[]`, `"changes":[{"field":"build.url","target":"/metadata/component/externalReferences","before":null,"after":[42],"selector":"/artifacts/0/build/url","override":false}]`, 1)},
+		{"invalid native reference before", strings.Replace(base, `"changes":[]`, `"changes":[{"field":"build.url","target":"/metadata/component/externalReferences","before":[null],"after":[{"type":"build-system","url":"https://ci.example/1"}],"selector":"/artifacts/0/build/url","override":false}]`, 1)},
+		{"invalid native lifecycle after", strings.Replace(base, `"changes":[]`, `"changes":[{"field":"lifecycle","target":"/metadata/lifecycles","before":null,"after":[42],"selector":"/artifacts/0/lifecycle","override":false}]`, 1)},
+		{"invalid native lifecycle before", strings.Replace(base, `"changes":[]`, `"changes":[{"field":"lifecycle","target":"/metadata/lifecycles","before":[null],"after":[{"phase":"build"}],"selector":"/artifacts/0/lifecycle","override":false}]`, 1)},
+		{"invalid native lifecycle phase", strings.Replace(base, `"changes":[]`, `"changes":[{"field":"lifecycle","target":"/metadata/lifecycles","before":null,"after":[{"phase":42,"name":"custom"}],"selector":"/artifacts/0/lifecycle","override":false}]`, 1)},
 		{"missing file path", strings.Replace(base, `"path":"old.json",`, "", 1)},
 		{"source missing workspace", strings.Replace(base, `"build":{"id":"42"}`, `"source":{"revision":"`+strings.Repeat("1", 40)+`"},"build":{"id":"42"}`, 1)},
 	} {
@@ -201,6 +208,51 @@ func TestContextRejectsMalformedPriorRecordAtomically(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestContextAcceptsWriterAuditWithRichNativeEvidenceAndDefault(t *testing.T) {
+	d := load(t, []byte(`{"bomFormat":"CycloneDX","specVersion":"1.6","metadata":{"component":{"type":"application","name":"app","externalReferences":[{"type":"vcs","url":"https://code.example/old"},{"type":"website","url":"mailto:help@example.org","comment":"original","hashes":[{"alg":"SHA-256","content":"abc"}]}]},"lifecycles":[]}}`))
+	cfg := contextResolved(contextField("source.repository", "https://code.example/new"), buildcontext.Field{Name: "source.workspace", Value: "unknown", Selector: "/artifacts/0/source", Defaulted: true}, contextField("lifecycle", "build"))
+	cfg.Defaulted = []string{"source.workspace"}
+	cfg.Replace = []string{"source.repository"}
+	if _, err := d.ApplyContext(cfg); err != nil {
+		t.Fatal(err)
+	}
+	d = loadContextOutput(t, d)
+	if _, err := d.ApplyContext(cfg); err != nil {
+		t.Fatalf("writer-produced prior audit rejected: %v", err)
+	}
+	root := tree(t, mustContextBytes(t, d)).(map[string]any)
+	refs := root["metadata"].(map[string]any)["component"].(map[string]any)["externalReferences"].([]any)
+	if len(refs) != 2 || refs[1].(map[string]any)["comment"] != "original" {
+		t.Fatalf("auxiliary reference evidence lost: %v", refs)
+	}
+}
+
+func TestContextAcceptsWriterRemovalSelector(t *testing.T) {
+	d := load(t, []byte(`{"bomFormat":"CycloneDX","specVersion":"1.6","metadata":{"component":{"type":"application","name":"app"}}}`))
+	if _, err := d.ApplyContext(contextResolved(contextField("build.id", "42"))); err != nil {
+		t.Fatal(err)
+	}
+	d = loadContextOutput(t, d)
+	next := contextResolved()
+	next.Replace = []string{"build.id"}
+	if _, err := d.ApplyContext(next); err != nil {
+		t.Fatal(err)
+	}
+	d = loadContextOutput(t, d)
+	if _, err := d.ApplyContext(contextResolved()); err != nil {
+		t.Fatalf("writer-produced removal rejected: %v", err)
+	}
+}
+
+func mustContextBytes(t *testing.T, d *sbom.Document) []byte {
+	t.Helper()
+	b, err := d.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }
 
 func TestContextPriorClaimsNeedExplicitRemovalAndDoNotLeakIntoNewSnapshot(t *testing.T) {

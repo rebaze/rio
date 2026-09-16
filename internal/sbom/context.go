@@ -318,12 +318,23 @@ func parsePriorContext(value, id string) (*ContextRecord, error) {
 		if !ok {
 			return nil, fmt.Errorf("%s.override must be a boolean", label)
 		}
-		if (source != selector && !strings.HasPrefix(source, selector+"/")) || !validContextChange(field, target, change["before"], change["after"]) {
+		if !validChangeSelector(selector, source, field, target, change["after"], defaulted) || !validContextChange(field, target, change["before"], change["after"]) {
 			return nil, fmt.Errorf("%s has invalid target or selector", label)
 		}
 		changes = append(changes, ContextChange{Field: field, Target: target, Before: change["before"], After: change["after"], Selector: source, Override: override})
 	}
 	return &ContextRecord{Version: 1, File: buildcontext.FileRef{Path: path, SHA256: digest}, Selector: selector, Effective: effective, Defaulted: defaulted, Changes: changes, Assertion: assertion}, nil
+}
+
+func validChangeSelector(entry, source, field, target string, after any, defaulted []string) bool {
+	logical := "context:/" + strings.ReplaceAll(field, ".", "/")
+	if target == logical && after == nil {
+		return source == entry
+	}
+	if field == "source.workspace" && target == logical && len(defaulted) == 1 && defaulted[0] == field && after == "unknown" {
+		return source == entry+"/source"
+	}
+	return source == entry+"/"+strings.ReplaceAll(field, ".", "/")
 }
 
 func validContextChange(field, target string, before, after any) bool {
@@ -335,10 +346,10 @@ func validContextChange(field, target string, before, after any) bool {
 		return optionalStringClaim(before) && optionalStringClaim(after)
 	}
 	if target == "/metadata/component/externalReferences" && (field == "source.repository" || field == "build.url") {
-		return optionalArrayClaim(before) && optionalArrayClaim(after)
+		return validNativeArray(before, "reference") && validNativeArray(after, "reference")
 	}
 	if target == "/metadata/lifecycles" && field == "lifecycle" {
-		return optionalArrayClaim(before) && optionalArrayClaim(after)
+		return validNativeArray(before, "lifecycle") && validNativeArray(after, "lifecycle")
 	}
 	return false
 }
@@ -350,12 +361,37 @@ func optionalStringClaim(v any) bool {
 	_, ok := v.(string)
 	return ok
 }
-func optionalArrayClaim(v any) bool {
+func validNativeArray(v any, kind string) bool {
 	if v == nil {
 		return true
 	}
-	_, ok := v.([]any)
-	return ok
+	list, ok := v.([]any)
+	if !ok {
+		return false
+	}
+	for _, item := range list {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			return false
+		}
+		if kind == "reference" {
+			if !nonblankMember(entry, "type") || !nonblankMember(entry, "url") {
+				return false
+			}
+		} else {
+			_, hasPhase := entry["phase"]
+			_, hasName := entry["name"]
+			if (!hasPhase && !hasName) || (hasPhase && !nonblankMember(entry, "phase")) || (hasName && !nonblankMember(entry, "name")) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func nonblankMember(m map[string]any, key string) bool {
+	s, ok := m[key].(string)
+	return ok && strings.TrimSpace(s) != ""
 }
 
 func recordObject(value any, label string, keys ...string) (map[string]any, error) {
