@@ -1,7 +1,7 @@
 # CI build context demo
 
 Run the committed synthetic fixtures with an **installed Rio release containing #62**. A POSIX
-shell and standard `cp`, `cmp`, `grep`, `find`, `mktemp`, `mv` and `cat` commands suffice. No Go,
+shell and standard `cp`, `cmp`, `grep`, `find`, `mktemp`, `mv`, `cat`, `sed` and `dirname` commands suffice. No Go,
 Python, jq, source build, credentials or network are needed. Copy this complete directory from
 the matching tagged source archive, or run it in a checkout:
 

@@ -156,11 +156,22 @@ func Read(baseDir, file string) (*File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("context file %s: %w", file, err)
 	}
-	sum := sha256.Sum256(data)
-	rel, err := filepath.Rel(baseDir, resolved)
+	// Resolve both sides against the same working directory. A relative
+	// manifest directory and an absolute context input are otherwise
+	// incomparable, and different Windows volumes have no relative path.
+	absBase, err := filepath.Abs(baseDir)
 	if err != nil {
-		rel = resolved
+		return nil, fmt.Errorf("context file %s: resolve manifest directory %q: %w", file, baseDir, err)
 	}
+	absResolved, err := filepath.Abs(resolved)
+	if err != nil {
+		return nil, fmt.Errorf("context file %s: resolve path: %w", file, err)
+	}
+	rel, err := filepath.Rel(absBase, absResolved)
+	if err != nil {
+		return nil, fmt.Errorf("context file %s has no path relative to manifest directory %q: %w", file, baseDir, err)
+	}
+	sum := sha256.Sum256(data)
 	return &File{ref: FileRef{Path: filepath.ToSlash(rel), SHA256: hex.EncodeToString(sum[:])}, artifacts: artifacts}, nil
 }
 

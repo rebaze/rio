@@ -77,6 +77,59 @@ func TestReadResolveSelectsExactArtifactAndBuildsDeterministicFields(t *testing.
 	}
 }
 
+func TestReadRecordsContextPathRelativeToManifest(t *testing.T) {
+	dir := t.TempDir()
+	writeContext(t, dir, `{"contextVersion":1,"artifacts":[{"id":"app","sbom":{"sha256":"`+strings.Repeat("a", 64)+`"}}]}`)
+	contextFile := filepath.Join(dir, "build-context.json")
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	relBase, relErr := filepath.Rel(wd, dir)
+
+	for _, tc := range []struct {
+		name, base, file, want string
+	}{
+		{"relative base and absolute file", relBase, contextFile, "build-context.json"},
+		{"absolute base and absolute file", dir, contextFile, "build-context.json"},
+		{"upward file", filepath.Join(dir, "nested"), contextFile, "../build-context.json"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.name == "relative base and absolute file" && relErr != nil {
+				t.Skipf("working directory and temporary file are on different volumes: %v", relErr)
+			}
+			f, err := buildcontext.Read(tc.base, tc.file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resolved, err := f.Resolve("app", strings.Repeat("a", 64), buildcontext.Binding{File: tc.file})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resolved.File.Path != tc.want {
+				t.Fatalf("recorded file path = %q, want %q", resolved.File.Path, tc.want)
+			}
+		})
+	}
+}
+
+func TestReadRejectsContextOnDifferentWindowsVolume(t *testing.T) {
+	if os.PathSeparator != '\\' {
+		t.Skip("Windows volume boundary")
+	}
+	dir := t.TempDir()
+	writeContext(t, dir, `{"contextVersion":1,"artifacts":[{"id":"app","sbom":{"sha256":"`+strings.Repeat("a", 64)+`"}}]}`)
+	volume := strings.ToUpper(filepath.VolumeName(dir))
+	other := `C:\manifest`
+	if volume == "C:" {
+		other = `D:\manifest`
+	}
+	_, err := buildcontext.Read(other, filepath.Join(dir, "build-context.json"))
+	if err == nil || !strings.Contains(err.Error(), "relative") || !strings.Contains(err.Error(), "context") {
+		t.Fatalf("error = %v, want context relative-path refusal", err)
+	}
+}
+
 func TestReadRejectsStrictInvalidDocuments(t *testing.T) {
 	validDigest := strings.Repeat("a", 64)
 	for _, tc := range []struct {
