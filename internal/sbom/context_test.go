@@ -3,6 +3,7 @@ package sbom_test
 import (
 	"bytes"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -131,6 +132,74 @@ func TestContextLifecycleRejectsKnownMismatchAndPreservesCustom(t *testing.T) {
 				t.Fatal("failure mutated document")
 			}
 		}
+		if !tc.fail {
+			after, _ := d.Bytes()
+			got := tree(t, after).(map[string]any)["metadata"].(map[string]any)["lifecycles"]
+			var want any
+			if err := json.Unmarshal([]byte(tc.native), &want); err != nil {
+				t.Fatal(err)
+			}
+			if len(want.([]any)) == 0 {
+				want = []any{map[string]any{"phase": "build"}}
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("native lifecycle %s changed to %v", tc.native, got)
+			}
+		}
+	}
+}
+
+func TestPriorLifecycleChangeOrRemovalIsNotReplaceable(t *testing.T) {
+	for _, fields := range [][]buildcontext.Field{{contextField("lifecycle", "design")}, nil} {
+		d := load(t, []byte(`{"bomFormat":"CycloneDX","specVersion":"1.6","metadata":{"component":{"type":"application","name":"app"}}}`))
+		if _, err := d.ApplyContext(contextResolved(contextField("lifecycle", "build"))); err != nil {
+			t.Fatal(err)
+		}
+		d = loadContextOutput(t, d)
+		_, err := d.ApplyContext(contextResolved(fields...))
+		if err == nil || !strings.Contains(err.Error(), "cannot be changed or removed") || strings.Contains(err.Error(), "context.replace") {
+			t.Fatalf("lifecycle diagnostic: %v", err)
+		}
+	}
+}
+
+func TestContextRejectsMalformedPriorRecordAtomically(t *testing.T) {
+	base := `{"version":1,"file":{"path":"old.json","sha256":"` + strings.Repeat("b", 64) + `"},"selector":"/artifacts/0","effective":{"id":"app","sbom":{"sha256":"` + strings.Repeat("a", 64) + `"},"build":{"id":"42"}},"defaulted":[],"changes":[],"assertion":"producer"}`
+	for _, tc := range []struct{ name, record string }{
+		{"duplicate outer", strings.Replace(base, `"version":1,`, `"version":1,"version":1,`, 1)},
+		{"contradictory effective", strings.Replace(base, `"build":{"id":"42"}`, `"build":{"id":"42"},"build":{"id":"43"}`, 1)},
+		{"duplicate effective member", strings.Replace(base, `"effective":{"id":"app","sbom":{"sha256":"`+strings.Repeat("a", 64)+`"},"build":{"id":"42"}}`, `"effective":{"id":"app","sbom":{"sha256":"`+strings.Repeat("a", 64)+`"},"build":{"id":"42"}},"effective":{"id":"app","sbom":{"sha256":"`+strings.Repeat("a", 64)+`"},"build":{"id":"43"}}`, 1)},
+		{"duplicate nested file", strings.Replace(base, `"path":"old.json",`, `"path":"old.json","path":"other.json",`, 1)},
+		{"null change", strings.Replace(base, `"changes":[]`, `"changes":[null]`, 1)},
+		{"incomplete change", strings.Replace(base, `"changes":[]`, `"changes":[{"field":"build.id","target":"context:/build/id"}]`, 1)},
+		{"missing change before", strings.Replace(base, `"changes":[]`, `"changes":[{"field":"build.id","target":"context:/build/id","after":"42","selector":"/artifacts/0/build/id","override":false}]`, 1)},
+		{"unknown change field", strings.Replace(base, `"changes":[]`, `"changes":[{"field":"build.secret","target":"context:/build/secret","before":null,"after":"value","selector":"/artifacts/0/build/secret","override":false}]`, 1)},
+		{"wrong logical before type", strings.Replace(base, `"changes":[]`, `"changes":[{"field":"build.id","target":"context:/build/id","before":["old"],"after":"42","selector":"/artifacts/0/build/id","override":true}]`, 1)},
+		{"wrong entry selector", strings.Replace(base, `"changes":[]`, `"changes":[{"field":"build.id","target":"context:/build/id","before":null,"after":"42","selector":"/artifacts/00/build/id","override":false}]`, 1)},
+		{"missing file path", strings.Replace(base, `"path":"old.json",`, "", 1)},
+		{"source missing workspace", strings.Replace(base, `"build":{"id":"42"}`, `"source":{"revision":"`+strings.Repeat("1", 40)+`"},"build":{"id":"42"}`, 1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			property, _ := json.Marshal(tc.record)
+			d := load(t, []byte(`{"bomFormat":"CycloneDX","specVersion":"1.6","metadata":{"component":{"type":"application","name":"app"},"properties":[{"name":"rebaze:normalize:context","value":`+string(property)+`}]}}`))
+			before, _ := d.Bytes()
+			newID := "42"
+			if tc.name == "contradictory effective" || tc.name == "duplicate effective member" {
+				newID = "43"
+			}
+			fields := []buildcontext.Field{contextField("build.id", newID)}
+			if tc.name == "source missing workspace" {
+				fields = append(fields, contextField("source.revision", strings.Repeat("1", 40)))
+			}
+			_, err := d.ApplyContext(contextResolved(fields...))
+			if err == nil {
+				t.Fatal("malformed prior record accepted")
+			}
+			after, _ := d.Bytes()
+			if !bytes.Equal(before, after) {
+				t.Fatal("failed context changed document")
+			}
+		})
 	}
 }
 

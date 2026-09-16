@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/rebaze/rio/internal/buildcontext"
 )
@@ -85,7 +86,10 @@ func (d *Document) ApplyContext(cfg *buildcontext.Resolved) (*ContextRecord, err
 		if bok && aok && before == after {
 			continue
 		}
-		if bok && (name == "lifecycle" || !replacement[name]) {
+		if bok && name == "lifecycle" {
+			return nil, fmt.Errorf("context lifecycle prior owned assertion cannot be changed or removed")
+		}
+		if bok && !replacement[name] {
 			return nil, fmt.Errorf("context %s conflicts with prior owned assertion; explicitly list %s in context.replace", name, name)
 		}
 		var b, a any
@@ -198,37 +202,193 @@ func (d *Document) priorContext(id string) (*ContextRecord, error) {
 		if !ok {
 			return nil, fmt.Errorf("malformed prior %s property", contextProperty)
 		}
-		dec := json.NewDecoder(strings.NewReader(value))
-		dec.DisallowUnknownFields()
-		var record struct {
-			Version   int                  `json:"version"`
-			File      buildcontext.FileRef `json:"file"`
-			Selector  string               `json:"selector"`
-			Effective json.RawMessage      `json:"effective"`
-			Defaulted []string             `json:"defaulted"`
-			Changes   []ContextChange      `json:"changes"`
-			Assertion string               `json:"assertion"`
-		}
-		if err := dec.Decode(&record); err != nil {
+		record, err := parsePriorContext(value, id)
+		if err != nil {
 			return nil, fmt.Errorf("malformed prior %s property: %w", contextProperty, err)
 		}
-		if _, err := dec.Token(); err != io.EOF {
-			return nil, fmt.Errorf("malformed prior %s property: trailing data", contextProperty)
-		}
-		effective, err := buildcontext.ParseEffective(record.Effective)
-		if err != nil {
-			return nil, fmt.Errorf("malformed prior %s effective: %w", contextProperty, err)
-		}
-		if record.Version != 1 || record.Assertion != "producer" || record.File.Path == "" || !contextDigest(record.File.SHA256) || !contextSelector(record.Selector) || record.Defaulted == nil || record.Changes == nil || effective.ID != id || !validPriorDefaults(record.Defaulted, effective) {
-			return nil, fmt.Errorf("unsupported or malformed prior %s property", contextProperty)
-		}
-		current := &ContextRecord{Version: record.Version, File: record.File, Selector: record.Selector, Effective: effective, Defaulted: record.Defaulted, Changes: record.Changes, Assertion: record.Assertion}
-		if prior != nil && !reflect.DeepEqual(prior, current) {
+		if prior != nil && !reflect.DeepEqual(prior, record) {
 			return nil, fmt.Errorf("contradictory prior %s properties", contextProperty)
 		}
-		prior = current
+		prior = record
 	}
 	return prior, nil
+}
+
+// parsePriorContext checks presence and type before decoding values. Ordinary
+// encoding/json struct decoding cannot detect duplicate keys or distinguish a
+// missing before/after member from an intentional JSON null.
+func parsePriorContext(value, id string) (*ContextRecord, error) {
+	raw, err := buildcontext.DecodeStrict([]byte(value))
+	if err != nil {
+		return nil, err
+	}
+	root, err := recordObject(raw, "record", "version", "file", "selector", "effective", "defaulted", "changes", "assertion")
+	if err != nil {
+		return nil, err
+	}
+	version, ok := root["version"].(json.Number)
+	if !ok || version.String() != "1" {
+		return nil, fmt.Errorf("unsupported version")
+	}
+	file, err := recordObject(root["file"], "file", "path", "sha256")
+	if err != nil {
+		return nil, err
+	}
+	path, err := recordString(file["path"], "file.path")
+	if err != nil {
+		return nil, err
+	}
+	if filepath.IsAbs(path) {
+		return nil, fmt.Errorf("file.path must be manifest-relative")
+	}
+	digest, err := recordString(file["sha256"], "file.sha256")
+	if err != nil {
+		return nil, err
+	}
+	if !contextDigest(digest) {
+		return nil, fmt.Errorf("file.sha256 must be a lowercase SHA-256 digest")
+	}
+	selector, err := recordString(root["selector"], "selector")
+	if err != nil {
+		return nil, err
+	}
+	if !contextSelector(selector) {
+		return nil, fmt.Errorf("invalid selector")
+	}
+	assertion, err := recordString(root["assertion"], "assertion")
+	if err != nil {
+		return nil, err
+	}
+	if assertion != "producer" {
+		return nil, fmt.Errorf("unsupported assertion")
+	}
+	effectiveJSON, err := json.Marshal(root["effective"])
+	if err != nil {
+		return nil, err
+	}
+	effective, err := buildcontext.ParseEffective(effectiveJSON)
+	if err != nil {
+		return nil, fmt.Errorf("effective: %w", err)
+	}
+	if effective.ID != id {
+		return nil, fmt.Errorf("effective.id does not match artifact")
+	}
+	if effective.Source != nil && effective.Source.Workspace == nil {
+		return nil, fmt.Errorf("effective.source.workspace is missing from prior snapshot")
+	}
+	rawDefaulted, ok := root["defaulted"].([]any)
+	if !ok {
+		return nil, fmt.Errorf("defaulted must be an array")
+	}
+	defaulted := make([]string, 0, len(rawDefaulted))
+	for i, item := range rawDefaulted {
+		s, err := recordString(item, fmt.Sprintf("defaulted[%d]", i))
+		if err != nil {
+			return nil, err
+		}
+		defaulted = append(defaulted, s)
+	}
+	if !validPriorDefaults(defaulted, effective) {
+		return nil, fmt.Errorf("invalid defaulted fields")
+	}
+	rawChanges, ok := root["changes"].([]any)
+	if !ok {
+		return nil, fmt.Errorf("changes must be an array")
+	}
+	changes := make([]ContextChange, 0, len(rawChanges))
+	for i, item := range rawChanges {
+		label := fmt.Sprintf("changes[%d]", i)
+		change, err := recordObject(item, label, "field", "target", "before", "after", "selector", "override")
+		if err != nil {
+			return nil, err
+		}
+		field, err := recordString(change["field"], label+".field")
+		if err != nil {
+			return nil, err
+		}
+		target, err := recordString(change["target"], label+".target")
+		if err != nil {
+			return nil, err
+		}
+		source, err := recordString(change["selector"], label+".selector")
+		if err != nil {
+			return nil, err
+		}
+		override, ok := change["override"].(bool)
+		if !ok {
+			return nil, fmt.Errorf("%s.override must be a boolean", label)
+		}
+		if (source != selector && !strings.HasPrefix(source, selector+"/")) || !validContextChange(field, target, change["before"], change["after"]) {
+			return nil, fmt.Errorf("%s has invalid target or selector", label)
+		}
+		changes = append(changes, ContextChange{Field: field, Target: target, Before: change["before"], After: change["after"], Selector: source, Override: override})
+	}
+	return &ContextRecord{Version: 1, File: buildcontext.FileRef{Path: path, SHA256: digest}, Selector: selector, Effective: effective, Defaulted: defaulted, Changes: changes, Assertion: assertion}, nil
+}
+
+func validContextChange(field, target string, before, after any) bool {
+	if err := buildcontext.ValidateBinding(&buildcontext.Binding{File: "prior", Require: []string{field}}); err != nil {
+		return false
+	}
+	logical := "context:/" + strings.ReplaceAll(field, ".", "/")
+	if target == logical {
+		return optionalStringClaim(before) && optionalStringClaim(after)
+	}
+	if target == "/metadata/component/externalReferences" && (field == "source.repository" || field == "build.url") {
+		return optionalArrayClaim(before) && optionalArrayClaim(after)
+	}
+	if target == "/metadata/lifecycles" && field == "lifecycle" {
+		return optionalArrayClaim(before) && optionalArrayClaim(after)
+	}
+	return false
+}
+
+func optionalStringClaim(v any) bool {
+	if v == nil {
+		return true
+	}
+	_, ok := v.(string)
+	return ok
+}
+func optionalArrayClaim(v any) bool {
+	if v == nil {
+		return true
+	}
+	_, ok := v.([]any)
+	return ok
+}
+
+func recordObject(value any, label string, keys ...string) (map[string]any, error) {
+	m, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%s must be an object", label)
+	}
+	allowed := map[string]bool{}
+	for _, key := range keys {
+		allowed[key] = true
+		if _, exists := m[key]; !exists {
+			return nil, fmt.Errorf("%s.%s is required", label, key)
+		}
+	}
+	for key := range m {
+		if !allowed[key] {
+			return nil, fmt.Errorf("%s has unknown key %q", label, key)
+		}
+	}
+	return m, nil
+}
+
+func recordString(value any, label string) (string, error) {
+	s, ok := value.(string)
+	if !ok || strings.TrimSpace(s) == "" || strings.TrimSpace(s) != s {
+		return "", fmt.Errorf("%s must be a nonblank string", label)
+	}
+	for _, r := range s {
+		if unicode.IsControl(r) {
+			return "", fmt.Errorf("%s must not contain controls", label)
+		}
+	}
+	return s, nil
 }
 
 func contextDigest(s string) bool {

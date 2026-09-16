@@ -296,6 +296,10 @@ func decodeStrict(data []byte) (any, error) {
 	return value, nil
 }
 
+// DecodeStrict parses a single JSON value, rejecting duplicate keys at every
+// depth. It also serves validation of previously owned context records.
+func DecodeStrict(data []byte) (any, error) { return decodeStrict(data) }
+
 func decodeValue(dec *json.Decoder) (any, error) {
 	token, err := dec.Token()
 	if err != nil {

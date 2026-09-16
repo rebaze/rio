@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rebaze/rio/internal/index"
@@ -90,10 +91,14 @@ func TestNormalizeContextSharedSnapshotAndStatement(t *testing.T) {
 		if stored == nil || stored["file"].(map[string]any)["sha256"] != ctx["file"].(map[string]any)["sha256"] {
 			t.Fatal("SBOM context differs from index")
 		}
+		x, _ := json.Marshal(ctx)
+		storedJSON, _ := json.Marshal(stored)
+		if !bytes.Equal(x, storedJSON) {
+			t.Fatalf("SBOM property differs from index context:\n%s\n%s", storedJSON, x)
+		}
 		stmt := decode(t, readFile(t, dir, "target", "rio", id+".intoto.json"))
 		predicate := stmt["predicate"].(map[string]any)
 		artifact := predicate["artifact"].(map[string]any)
-		x, _ := json.Marshal(ctx)
 		y, _ := json.Marshal(artifact["context"])
 		if !bytes.Equal(x, y) {
 			t.Fatal("statement context differs")
@@ -103,6 +108,23 @@ func TestNormalizeContextSharedSnapshotAndStatement(t *testing.T) {
 	requireExit(t, rio(t, dir, "normalize", "--attest"), ExitOK)
 	if !bytes.Equal(first, readFile(t, dir, "target", "rio", "index.json")) {
 		t.Fatal("same inputs changed index")
+	}
+}
+
+func TestNormalizeMalformedPriorContextWritesNothing(t *testing.T) {
+	dir, _, two := contextProject(t)
+	record := fmt.Sprintf(`{"version":1,"file":{"path":"old.json","sha256":"%s"},"selector":"/artifacts/0","effective":{"id":"one","sbom":{"sha256":"%s"}},"defaulted":[],"changes":[null],"assertion":"producer"}`, strings.Repeat("b", 64), strings.Repeat("a", 64))
+	property, _ := json.Marshal(record)
+	one := []byte(`{"bomFormat":"CycloneDX","specVersion":"1.6","metadata":{"component":{"type":"application","name":"one"},"properties":[{"name":"rebaze:normalize:context","value":` + string(property) + `}]}}`)
+	if err := os.WriteFile(filepath.Join(dir, "one.json"), one, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeContextFile(t, dir, one, two)
+	r := rio(t, dir, "normalize")
+	requireExit(t, r, ExitUsage)
+	requireStderr(t, r, "one", "context")
+	if _, err := os.Stat(filepath.Join(dir, "target")); !os.IsNotExist(err) {
+		t.Fatalf("malformed prior context wrote outputs: %v", err)
 	}
 }
 
