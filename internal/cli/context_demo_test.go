@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -116,6 +117,34 @@ func TestContextDemoFixtures(t *testing.T) {
 		if field == "build.id" && change["after"] != nil {
 			t.Fatalf("build ID was not removed: %v", change)
 		}
+	}
+	check := filepath.Join(dir, "check-replacement.sh")
+	replacementIndex := filepath.Join(dir, "replaced", "index.json")
+	if output, err := exec.Command("sh", check, replacementIndex).CombinedOutput(); err != nil {
+		t.Fatalf("public replacement check rejected valid output: %s: %v", output, err)
+	}
+	good := readFile(t, replacementIndex)
+	for _, tc := range []struct{ name, old, new string }{
+		{"wrong artifact ID", "\"effective\": {\n          \"id\": \"console\"", "\"effective\": {\n          \"id\": \"other\""},
+		{"inherited build ID", "\"build\": {\n            \"url\"", "\"build\": {\n            \"id\": \"old-run\",\n            \"url\""},
+		{"different build ID", "\"build\": {\n            \"url\"", "\"build\": {\n            \"id\": \"new-run\",\n            \"url\""},
+		{"wrong revision", `"revision": "` + strings.Repeat("1", 40) + `"`, `"revision": "` + strings.Repeat("2", 40) + `"`},
+		{"wrong workspace", `"workspace": "unknown"`, `"workspace": "clean"`},
+		{"missing removal audit", "\"before\": \"old-run\",\n            \"after\": null", "\"before\": \"old-run\",\n            \"after\": \"old-run\""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			corrupted := bytes.Replace(good, []byte(tc.old), []byte(tc.new), 1)
+			if bytes.Equal(corrupted, good) {
+				t.Fatalf("test did not corrupt %s", tc.name)
+			}
+			path := filepath.Join(dir, "corrupted-index.json")
+			if err := os.WriteFile(path, corrupted, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if output, err := exec.Command("sh", check, path).CombinedOutput(); err == nil {
+				t.Fatalf("public replacement check accepted %s: %s", tc.name, output)
+			}
+		})
 	}
 }
 

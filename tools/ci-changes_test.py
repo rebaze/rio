@@ -82,6 +82,7 @@ class ChangesTest(unittest.TestCase):
             "tools/demo-context/inputs/console.cdx.json",
             "tools/demo-context/context.json",
             "tools/demo-context/run.sh",
+            "tools/demo-context/check-replacement.sh",
         ):
             with self.subTest(path=path):
                 result = detect(path)

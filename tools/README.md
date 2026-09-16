@@ -494,13 +494,18 @@ Git, CI-provider or environment discovery, clock default, network call, JSON mer
 Rio. Redirect stdout to a temporary file and move it into place after the command succeeds:
 
 ```sh
-python3 tools/rio-context.py \
+set -eu
+if python3 tools/rio-context.py \
   --artifact-id console --sbom target/console.cdx.json \
   --source-repository "$CI_SOURCE_URL" --source-revision "$CI_REVISION" \
   --source-workspace "$CI_WORKSPACE" --build-url "$CI_RUN_URL" \
   --build-id "$CI_RUN_ID" --generator-name 'CycloneDX Gradle Plugin' \
-  > build-context.tmp.json
-mv build-context.tmp.json build-context.json
+  > build-context.tmp.json; then
+  mv build-context.tmp.json build-context.json
+else
+  rm -f build-context.tmp.json
+  exit 1
+fi
 rio normalize --manifest rio.yaml
 ```
 

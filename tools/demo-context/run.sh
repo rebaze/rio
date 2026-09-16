@@ -20,6 +20,7 @@ run_dir=$(mktemp -d "${TMPDIR:-/tmp}/rio-context.XXXXXXXX")
 trap 'printf "\nDemo inputs and results retained in: %s\n" "$run_dir"' 0
 cp -R "$demo_dir/inputs" "$run_dir/inputs"
 cp "$demo_dir"/*.yaml "$demo_dir"/*.json "$run_dir/"
+cp "$demo_dir/check-replacement.sh" "$run_dir/"
 cd "$run_dir"
 
 printf 'CI build context demo (synthetic inputs; no network)\n'
@@ -70,13 +71,6 @@ refuse conflict.yaml source.revision conflict-refused
 
 printf '\n4. Explicit replacement of revision and removal of old owned claims\n'
 "$rio_bin" normalize --manifest replace.yaml --out replaced > replacement.log
-if ! grep -F '"workspace": "unknown"' replaced/index.json >/dev/null; then
-  printf 'FAIL: omitted workspace did not become explicit unknown\n' >&2
-  exit 1
-fi
-if grep -F '"old-run"' replaced/index.json >/dev/null && ! grep -F '"after": null' replaced/index.json >/dev/null; then
-  printf 'FAIL: prior build ID has no removal audit\n' >&2
-  exit 1
-fi
+sh ./check-replacement.sh replaced/index.json
 printf 'PASS: authorized replacement; inspect replaced/index.json for before/after and null removal.\n'
 printf '\nInspect plan-before-context.json, normalized/, replaced/, and refusal logs in the retained directory.\n'
