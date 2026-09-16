@@ -13,6 +13,7 @@ import json
 import subprocess
 import sys
 import unittest
+import warnings
 import wave
 from pathlib import Path
 
@@ -628,4 +629,7 @@ class EndScreen(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    # A leaked pipe is a defect worth failing on: capture.py holds a shell open across
+    # 44 commands, and CI found it not closing its descriptors before this was here.
+    warnings.simplefilter("error", ResourceWarning)
     unittest.main(verbosity=2)

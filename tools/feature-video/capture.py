@@ -114,12 +114,24 @@ def run_steps(steps, root, timeout=DEFAULT_TIMEOUT, log=print):
             )
             log("%02d exit=%d %s" % (index + 1, rc, step["title"]))
     finally:
+        # Ask bash to leave, then close both pipes: closing stdin is the EOF that ends it
+        # even when the write above could not be delivered. Leaving them to the garbage
+        # collector leaks two descriptors per run and warns under -W error.
         try:
             shell.stdin.write(b"exit\n")
             shell.stdin.flush()
-        except (BrokenPipeError, ValueError):
+        except (OSError, ValueError):
             pass
-        shell.wait(timeout=20)
+        for stream in (shell.stdin, shell.stdout):
+            try:
+                stream.close()
+            except (OSError, ValueError):
+                pass
+        try:
+            shell.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            shell.kill()
+            shell.wait(timeout=5)
     return records
 
 
