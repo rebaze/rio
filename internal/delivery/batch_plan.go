@@ -19,6 +19,7 @@ type Job struct {
 	ArtifactID, Target, Record string
 	Verified                   Verified
 	Description                Description
+	ExpectedReferences         []Reference
 	Provider                   Provider
 	Error                      *Error
 }
@@ -250,6 +251,16 @@ func planResolved(plan BatchPlan, c Config, indexPath string, idx index.Index, o
 			if e != nil {
 				return failJob(e)
 			}
+			refs := []PayloadRef{}
+			for _, payload := range v.Payloads() {
+				refs = append(refs, payload.Ref())
+			}
+			prepared, e := Prepare(p, d, v.Source(), refs)
+			if e != nil {
+				return failJob(e)
+			}
+			d = prepared.Description
+			plan.Jobs[cursor].ExpectedReferences = prepared.ExpectedReferences
 			plan.Jobs[cursor].Verified = v
 			plan.Jobs[cursor].Description = d
 			plan.Jobs[cursor].Provider = p

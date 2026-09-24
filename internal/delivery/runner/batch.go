@@ -8,14 +8,15 @@ import (
 )
 
 type BatchItem struct {
-	ArtifactID  string                `json:"artifactId"`
-	Target      string                `json:"target"`
-	Record      string                `json:"record"`
-	State       string                `json:"state"`
-	Source      *delivery.Source      `json:"source,omitempty"`
-	Destination *delivery.Description `json:"destination,omitempty"`
-	Result      *Result               `json:"result,omitempty"`
-	Error       *delivery.Error       `json:"error,omitempty"`
+	ExpectedReferences []delivery.Reference  `json:"expectedReferences,omitempty"`
+	ArtifactID         string                `json:"artifactId"`
+	Target             string                `json:"target"`
+	Record             string                `json:"record"`
+	State              string                `json:"state"`
+	Source             *delivery.Source      `json:"source,omitempty"`
+	Destination        *delivery.Description `json:"destination,omitempty"`
+	Result             *Result               `json:"result,omitempty"`
+	Error              *delivery.Error       `json:"error,omitempty"`
 }
 type BatchResult struct {
 	SchemaVersion          int                   `json:"schemaVersion"`
@@ -40,7 +41,7 @@ func NewBatch(operation string, plan delivery.BatchPlan) BatchResult {
 		if operation == "plan" {
 			state = "ready"
 		}
-		item := BatchItem{ArtifactID: j.ArtifactID, Target: j.Target, Record: j.Record, State: state, Error: j.Error}
+		item := BatchItem{ArtifactID: j.ArtifactID, Target: j.Target, Record: j.Record, State: state, Error: j.Error, ExpectedReferences: j.ExpectedReferences}
 		if len(j.Verified.Payloads()) > 0 {
 			source := j.Verified.Source()
 			item.Source = &source

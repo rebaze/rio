@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/delivery/dtrack"
-	"github.com/rebaze/rio/internal/delivery/record"
 	"github.com/rebaze/rio/internal/delivery/runner"
 	"github.com/rebaze/rio/internal/manifest"
 	"github.com/spf13/cobra"
@@ -27,9 +26,6 @@ var deliveryBuild = func(p delivery.Provider, d delivery.Description) (delivery.
 	return p.Build(d, deliveryLookupEnv)
 }
 
-func providers(dir string) map[string]delivery.Provider {
-	return map[string]delivery.Provider{"dependency-track": dtrack.Provider{Directory: dir}}
-}
 func loadDeliveryConfig(path string) (delivery.Config, error) {
 	m, e := manifest.Load(path)
 	if e != nil {
@@ -48,48 +44,6 @@ func batchPreflight(path string, o deliveryOptions) (delivery.Config, delivery.B
 	}
 	plan, e := delivery.PlanBatch(c, o.index, delivery.PlanOptions{Artifacts: o.artifacts, Targets: o.targets, AllowFailedGate: o.allowFailed}, providers(c.Directory))
 	return c, plan, e
-}
-func validateSnapshot(s record.Snapshot) error {
-	if _, _, e := dtrack.ValidateDescription(s.Intent.Destination); e != nil {
-		return e
-	}
-	for _, event := range s.Events {
-		if event.Kind == "submission" {
-			var sub delivery.Submission
-			if e := delivery.DecodeJSON(event.Data, &sub, true); e != nil {
-				return e
-			}
-			if e := dtrack.ValidateSubmission(sub); e != nil {
-				return e
-			}
-		}
-	}
-	return dtrack.ValidateEvidence(s.References, s.Observations)
-}
-func samePolicy(a, b delivery.Description, reconcile bool) bool {
-	ao, ai, e := dtrack.ValidateDescription(a)
-	if e != nil {
-		return false
-	}
-	bo, bi, e := dtrack.ValidateDescription(b)
-	if e != nil {
-		return false
-	}
-	ab, _ := json.Marshal(ai)
-	bb, _ := json.Marshal(bi)
-	if string(ab) != string(bb) || a.Type != b.Type || ao.Project != bo.Project {
-		return false
-	}
-	if (ao.AutoCreate == nil) != (bo.AutoCreate == nil) {
-		return false
-	}
-	if ao.AutoCreate != nil && *ao.AutoCreate != *bo.AutoCreate {
-		return false
-	}
-	if ao.AllowHTTP != bo.AllowHTTP {
-		return false
-	}
-	return true
 }
 func deliveryFinish(r runner.Result, e error, o deliveryOptions, global *globalOptions, stdout, stderr io.Writer) error {
 	if e != nil && r.Error == nil {

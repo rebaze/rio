@@ -17,13 +17,14 @@ type Retry struct {
 	PathHint  string `json:"pathHint,omitempty"`
 }
 type Intent struct {
-	RioVersion   string                `json:"rioVersion"`
-	Source       delivery.Source       `json:"source"`
-	Payloads     []delivery.PayloadRef `json:"payloads"`
-	Binding      string                `json:"binding"`
-	Destination  delivery.Description  `json:"destination"`
-	ConfigSHA256 string                `json:"configSHA256"`
-	Retry        *Retry                `json:"retry,omitempty"`
+	ExpectedReferences []delivery.Reference  `json:"expectedReferences,omitempty"`
+	RioVersion         string                `json:"rioVersion"`
+	Source             delivery.Source       `json:"source"`
+	Payloads           []delivery.PayloadRef `json:"payloads"`
+	Binding            string                `json:"binding"`
+	Destination        delivery.Description  `json:"destination"`
+	ConfigSHA256       string                `json:"configSHA256"`
+	Retry              *Retry                `json:"retry,omitempty"`
 }
 type Reconciliation struct {
 	Observation  delivery.Observation `json:"observation"`
@@ -68,6 +69,16 @@ func validateIntent(i Intent) error {
 		if p.Role == "" || p.MediaType == "" || !delivery.ValidDigest(p.SHA256) || !delivery.ValidDigest(p.SourceSHA256) || p.Size < 0 || p.Transformation == "" || p.SourceSHA256 != i.Source.OutputSHA256 || (p.Transformation == "identity" && p.SHA256 != p.SourceSHA256) || (p.Size == 0 && p.SHA256 != delivery.Digest(nil)) {
 			return invalid()
 		}
+	}
+	if !validReferences(i.ExpectedReferences) {
+		return invalid()
+	}
+	seen := map[delivery.Reference]bool{}
+	for _, ref := range i.ExpectedReferences {
+		if seen[ref] {
+			return invalid()
+		}
+		seen[ref] = true
 	}
 	if i.Retry != nil && (!idRE.MatchString(i.Retry.AttemptID) || !delivery.ValidDigest(i.Retry.SHA256)) {
 		return invalid()
@@ -167,11 +178,15 @@ func addEvent(s *Snapshot, e Event) error {
 		s.References = sub.References
 		s.Observations = append(s.Observations, sub.Observations...)
 	case "reconciliation":
-		if len(s.Events) < 2 || s.Events[1].Kind != "submission" {
+		contentRecovery := len(s.Events) >= 1 && delivery.HasCapability(s.Intent.Destination, "observe-content") && len(s.Intent.ExpectedReferences) > 0
+		if len(s.Events) < 1 || (len(s.Events) < 2 || s.Events[1].Kind != "submission") && !contentRecovery {
 			return invalid()
 		}
 		var r Reconciliation
 		if delivery.DecodeJSON(e.Data, &r, true) != nil || !delivery.ValidDigest(r.ConfigSHA256) || validateObservation(r.Observation) != nil || r.Observation.Kind == "acknowledgment" {
+			return invalid()
+		}
+		if (len(s.Events) == 1 || s.Events[1].Kind != "submission") && r.Observation.Kind != "content" {
 			return invalid()
 		}
 		s.Observations = append(s.Observations, r.Observation)

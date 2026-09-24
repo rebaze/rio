@@ -2,7 +2,6 @@ package cli
 
 import (
 	"github.com/rebaze/rio/internal/delivery"
-	"github.com/rebaze/rio/internal/delivery/dtrack"
 	"github.com/rebaze/rio/internal/delivery/record"
 	"github.com/rebaze/rio/internal/delivery/runner"
 	"github.com/spf13/cobra"
@@ -48,10 +47,21 @@ func runDeliveryReconcile(cmd *cobra.Command, o deliveryOptions, manifestPath st
 		return r, e
 	}
 	r = runner.FromSnapshot("reconcile", o.record, s)
-	if _, e = dtrack.EventToken(s.References); e != nil {
+	entry, e := adapter(s.Intent.Destination.Type)
+	if e != nil {
 		return r, e
 	}
-	_, id, e := dtrack.ValidateDescription(s.Intent.Destination)
+	if cmd.Flags().Changed("wait") && delivery.HasCapability(s.Intent.Destination, "observe-content") {
+		return r, delivery.Fail("invalid_wait", "content observations do not poll")
+	}
+	refs := s.References
+	if len(refs) == 0 && delivery.HasCapability(s.Intent.Destination, "observe-content") {
+		refs = s.Intent.ExpectedReferences
+	}
+	if e = entry.ValidateObserverReferences(s.Intent, refs); e != nil {
+		return r, e
+	}
+	subject, e := entry.RecordedSubject(s.Intent.Destination)
 	if e != nil {
 		return r, e
 	}
@@ -63,9 +73,17 @@ func runDeliveryReconcile(cmd *cobra.Command, o deliveryOptions, manifestPath st
 	if e := delivery.ValidateConfig(c, registry); e != nil {
 		return r, e
 	}
-	d, p, e := delivery.DescribeTarget(c, s.Intent.Destination.DestinationName, s.Intent.Source.ArtifactID, delivery.Subject{Name: id.Project.Name, Version: id.Project.Version}, registry)
+	d, p, e := delivery.DescribeTarget(c, s.Intent.Destination.DestinationName, s.Intent.Source.ArtifactID, subject, registry)
 	if e != nil {
 		return r, e
+	}
+	prepared, e := delivery.Prepare(p, d, s.Intent.Source, s.Intent.Payloads)
+	if e != nil {
+		return r, e
+	}
+	d = prepared.Description
+	if !equalReferences(prepared.ExpectedReferences, s.Intent.ExpectedReferences) {
+		return r, delivery.Fail("destination_drift", "expected references changed")
 	}
 	if d.DestinationName != s.Intent.Destination.DestinationName || !samePolicy(s.Intent.Destination, d, true) {
 		return r, delivery.Fail("destination_drift", "binding artifact, target or policy changed")
@@ -81,4 +99,16 @@ func runDeliveryReconcile(cmd *cobra.Command, o deliveryOptions, manifestPath st
 	r, e = runner.Reconcile(cmd.Context(), w, observer, c.SHA256, wait)
 	r.Record = o.record
 	return r, e
+}
+
+func equalReferences(a, b []delivery.Reference) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

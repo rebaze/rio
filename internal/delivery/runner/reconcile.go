@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/delivery/record"
+	"slices"
 	"time"
 )
 
@@ -31,6 +32,14 @@ func reconcile(ctx context.Context, w *record.Writer, target delivery.Observer, 
 	if wait < 0 || wait > 10*time.Minute {
 		return Failure(r, delivery.Fail("invalid_wait", "wait must be positive and at most 10m"), 2)
 	}
+	content := delivery.HasCapability(s.Intent.Destination, "observe-content")
+	if content && wait != 0 {
+		return Failure(r, delivery.Fail("invalid_wait", "content observations do not poll"), 2)
+	}
+	refs := slices.Clone(s.References)
+	if len(refs) == 0 && content {
+		refs = slices.Clone(s.Intent.ExpectedReferences)
+	}
 	if wait > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, wait)
@@ -40,14 +49,21 @@ func reconcile(ctx context.Context, w *record.Writer, target delivery.Observer, 
 		if ctx.Err() != nil {
 			return Failure(r, delivery.Fail("observation_deadline", "observation deadline or cancellation; prior evidence retained"), 4)
 		}
-		requestCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		timeout := 30 * time.Second
+		if content {
+			timeout = 5 * time.Minute
+		}
+		requestCtx, cancel := context.WithTimeout(ctx, timeout)
 		r.RequestMayHaveOccurred = true
-		o, observeErr := target.Observe(requestCtx, s.References)
+		o, observeErr := target.Observe(requestCtx, refs)
 		cancel()
 		b, e := json.Marshal(record.Reconciliation{Observation: o, ConfigSHA256: configSHA256})
 		r.Observations = append(r.Observations, o)
 		if o.Kind == "activity" {
 			r.Activity = o.Value
+			r.Outcome = o.Value
+		} else if o.Kind == "content" {
+			r.Verification = o.Value
 			r.Outcome = o.Value
 		} else {
 			r.Outcome = "unavailable"
@@ -58,6 +74,9 @@ func reconcile(ctx context.Context, w *record.Writer, target delivery.Observer, 
 		if e = w.Append("reconciliation", b); e != nil {
 			r.Persisted = false
 			return Failure(r, delivery.Fail("persistence_failed", "observation not durably saved"), 3)
+		}
+		if o.Kind == "content" && o.Value != "verified" && observeErr == nil {
+			observeErr = delivery.Fail("observation_unavailable", "content verification incomplete")
 		}
 		if observeErr == nil && (wait == 0 || o.Value == "not-observed") {
 			return r, nil

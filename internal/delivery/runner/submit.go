@@ -10,11 +10,13 @@ import (
 )
 
 type Prepared struct {
-	Verified    delivery.Verified
-	Description delivery.Description
-	Intent      record.Intent
-	Target      delivery.Target
-	Reservation *record.Reservation
+	ExpectedReferences []delivery.Reference
+	ValidateIntent     func(record.Intent) error
+	Verified           delivery.Verified
+	Description        delivery.Description
+	Intent             record.Intent
+	Target             delivery.Target
+	Reservation        *record.Reservation
 }
 type Result struct {
 	SchemaVersion          int                    `json:"schemaVersion"`
@@ -29,6 +31,7 @@ type Result struct {
 	RequestMayHaveOccurred bool                   `json:"requestMayHaveOccurred"`
 	Persisted              bool                   `json:"persisted"`
 	Acknowledgment         string                 `json:"acknowledgment,omitempty"`
+	Verification           string                 `json:"verification,omitempty"`
 	Activity               string                 `json:"activity,omitempty"`
 	Journal                *record.Snapshot       `json:"journal,omitempty"`
 	ExitCode               int                    `json:"-"`
@@ -63,6 +66,9 @@ func FromSnapshot(operation, path string, s record.Snapshot) Result {
 	r.Observations = s.Observations
 	r.Persisted = true
 	for _, o := range s.Observations {
+		if o.Kind == "content" {
+			r.Verification = o.Value
+		}
 		if o.Kind == "activity" {
 			r.Activity = o.Value
 		}
@@ -114,6 +120,11 @@ func Submit(ctx context.Context, p Prepared, path string) (r Result, err error) 
 	r.Outcome = sub.Disposition
 	r.Acknowledgment = sub.Disposition
 	r.Observations = sub.Observations
+	for _, o := range sub.Observations {
+		if o.Kind == "content" {
+			r.Verification = o.Value
+		}
+	}
 	b, e := json.Marshal(sub)
 	if e != nil {
 		return Failure(r, delivery.Fail("persistence_failed", "remote disposition observed; result not saved"), 3)
@@ -151,9 +162,15 @@ func PrepareIntent(p Prepared) (record.Intent, error) {
 	intent := p.Intent
 	intent.Source = p.Verified.Source()
 	intent.Destination = p.Description
+	intent.ExpectedReferences = append([]delivery.Reference(nil), p.ExpectedReferences...)
 	intent.Payloads = []delivery.PayloadRef{}
 	for _, payload := range p.Verified.Payloads() {
 		intent.Payloads = append(intent.Payloads, payload.Ref())
+	}
+	if p.ValidateIntent != nil {
+		if e := p.ValidateIntent(intent); e != nil {
+			return record.Intent{}, e
+		}
 	}
 	if e := record.CheckIntent(intent); e != nil {
 		return record.Intent{}, e
