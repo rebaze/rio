@@ -65,6 +65,9 @@ func Verify(indexPath, artifactID string, allowFailed bool) (Verified, error) {
 	return verifyArtifact(indexPath, Digest(b), idx, artifactID, allowFailed)
 }
 func verifyArtifact(indexPath, indexSHA string, idx index.Index, artifactID string, allowFailed bool) (Verified, error) {
+	return verifyArtifactRead(indexPath, indexSHA, idx, artifactID, allowFailed, ReadBounded)
+}
+func verifyArtifactRead(indexPath, indexSHA string, idx index.Index, artifactID string, allowFailed bool, read func(string, int64) ([]byte, error)) (Verified, error) {
 	bad := func(code, field string) (Verified, error) { return Verified{}, Fail(code, field) }
 	var selected *index.Artifact
 	for i := range idx.Artifacts {
@@ -79,7 +82,7 @@ func verifyArtifact(indexPath, indexSHA string, idx index.Index, artifactID stri
 	if a.Gate == index.GateFail && !allowFailed {
 		return bad("failed_gate", "explicit allow-failed-gate required")
 	}
-	payload, err := ReadBounded(filepath.Join(filepath.Dir(indexPath), filepath.FromSlash(a.Output.Path)), PayloadLimit)
+	payload, err := read(filepath.Join(filepath.Dir(indexPath), filepath.FromSlash(a.Output.Path)), PayloadLimit)
 	if err != nil {
 		return Verified{}, err
 	}

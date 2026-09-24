@@ -80,13 +80,26 @@ func canonicalURL(s string, allow bool) (string, error) {
 }
 func (p Provider) Describe(destination, binding yaml.Node, subject delivery.Subject) (delivery.Description, error) {
 	var desc delivery.Description
-	dm, e := delivery.YAMLMap(destination, "url", "apiKeyEnv", "caFile", "allowHTTP")
+	dm, e := delivery.YAMLMap(destination, "url", "apiKeyEnv", "caFile", "allowHTTP", "project", "autoCreate")
 	if e != nil {
 		return desc, e
 	}
 	bm, e := delivery.YAMLMap(binding, "project", "autoCreate")
 	if e != nil {
 		return desc, e
+	}
+	// Presence survives inheritance: an explicit false is still forbidden for UUID.
+	for _, key := range []string{"project", "autoCreate"} {
+		if _, ok := bm[key]; !ok {
+			if n, present := dm[key]; present {
+				bm[key] = n
+			}
+		}
+	}
+	if _, ok := bm["project"]; !ok {
+		var n yaml.Node
+		n.Encode(map[string]any{"fromSubject": true})
+		bm["project"] = n
 	}
 	o := Options{APIKeyEnv: "DTRACK_API_KEY"}
 	if n, ok := dm["allowHTTP"]; ok {
@@ -238,3 +251,15 @@ func ValidateDescription(d delivery.Description) (Options, Identity, error) {
 	return o, id, nil
 }
 func mustJSON(v any) []byte { b, _ := json.Marshal(v); return b }
+
+// CollisionDomain exposes receiver and selector mode without network lookup.
+func (p Provider) CollisionDomain(d delivery.Description) (string, string) {
+	var id Identity
+	if json.Unmarshal(d.Identity, &id) != nil {
+		return "", ""
+	}
+	if id.Project.UUID != "" {
+		return id.URL, "uuid"
+	}
+	return id.URL, "pair"
+}
