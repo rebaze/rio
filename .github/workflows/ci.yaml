@@ -127,9 +127,8 @@ jobs:
         run: go test -race ./...
 
       # rio must stay a self-contained static binary with no runtime
-      # dependency on external tools, and it must make no network calls
-      # (§8, and the "no network access anywhere in the binary" acceptance
-      # criterion). Building with CGO off is the part CI can enforce.
+      # dependency on external tools. Normalization/planning stay offline;
+      # explicit delivery may construct clients. Build with CGO off.
       - name: Build the release binary the way GoReleaser does
         if: steps.changes.outputs.go == 'true'
         env:

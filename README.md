@@ -181,3 +181,16 @@ Reading an extracted release archive? [Open these references on GitHub](https://
 
 Maintained by [rebaze](https://www.rebaze.de/), licensed under [Apache-2.0](LICENSE).
 [Roadmap, scope and contributing](docs/project.md) · [Report an issue](https://github.com/rebaze/rio/issues)
+
+### Verified delivery
+
+After normalization, `rio deliver --delivery application-security --record delivery-record`
+checks the selected output against `index.json` and sends that exact snapshot to Dependency-Track.
+Configure direct project name/version in a separate `delivery.yaml`; UUID and explicit
+subject-derived targeting are alternatives. Project creation is disabled by default.
+`rio delivery plan` previews offline, `rio delivery inspect` reads retained evidence offline,
+and `rio delivery reconcile` queries saved receipt activity without resubmitting.
+Accepted means submission acknowledged, never successful ingestion.
+
+See the [delivery configuration, evidence and runnable demo](tools/README.md#native-verified-delivery)
+for setup, permissions, exit codes, limitations and migration from the shell uploader.

@@ -223,3 +223,21 @@ func TestDeliveryOfflineNeverBuildsClient(t *testing.T) {
 		t.Fatal("offline command constructed client", builds, secrets)
 	}
 }
+
+func TestNormalizeAndPlanIgnoreDeliveryCredentials(t *testing.T) {
+	manifest, err := filepath.Abs("../../tools/demo-repair/rio.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DTRACK_API_KEY", "invalid\ncredential")
+	for _, op := range []string{"normalize", "plan"} {
+		var out, stderr bytes.Buffer
+		args := []string{op, "--manifest", manifest, "--out", t.TempDir()}
+		if op == "plan" {
+			args = append(args, "--json")
+		}
+		if code := Main(args, &out, &stderr); code != 0 {
+			t.Fatal(op, code, stderr.String())
+		}
+	}
+}

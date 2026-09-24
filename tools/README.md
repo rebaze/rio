@@ -677,3 +677,99 @@ shows coordinate normalization, not the safety or vulnerability status of Gson.
 
 To use your own input, create a manifest selecting its path and retain this transform only if
 that SBOM needs p2 repair. See the [README's project configuration](../README.md#configure-your-project).
+
+## Native verified delivery
+
+Native delivery checks index v1 structure, gate outcome and the output SHA-256, then sends the
+exact retained snapshot. It never rewrites a BOM to match the destination. One artifact and
+one destination are selected per command. Normalization, existing plan, delivery preview and
+inspection stay offline, with no secret resolution or TLS client construction.
+
+```yaml
+# delivery.yaml (separate from rio.yaml)
+version: 1
+destinations:
+  security:
+    type: dependency-track
+    options:
+      url: https://dtrack.example.com
+      apiKeyEnv: DTRACK_API_KEY
+      # caFile: company-ca.pem  # relative to this configuration file
+      # allowHTTP: true       # explicit local development opt-in only
+deliveries:
+  application-security:
+    artifact: application
+    destination: security
+    options:
+      project:
+        name: acme-application
+        version: "1.2.3"
+      autoCreate: false
+```
+
+Inject the API key through the selected environment variable using your CI secret facility.
+Never put API keys in YAML, command arguments or committed files. HTTPS verifies hostnames and
+uses system roots plus an optional custom CA; redirects are refused. The API URL may contain
+a deployment prefix, and must be the base before `/api/v1`. Standard Go proxy environment
+variables apply. Preview does not need the secret or CA file.
+
+```sh
+rio delivery plan --delivery application-security --json
+rio deliver --delivery application-security --record delivery-record --json
+rio delivery inspect --record delivery-record --json
+rio delivery reconcile --record delivery-record --wait 30s --json
+```
+
+Default paths are `target/rio/index.json` and `delivery.yaml`; override with `--index` and
+`--config`. Delivery commands reject `--manifest` and `--out`. The `--record` path is a new
+**directory**, not a JSON file. `--quiet` suppresses human progress, never requested JSON.
+Use `project: {uuid: f90934f5-cb88-47ce-81cb-db06fc67d4b4}` for UUID targeting (synthetic UUID),
+or `project: {fromSubject: true}` to explicitly use the verified BOM subject's name/version.
+Do not combine selectors. Quote numeric-looking versions. UUID mode forbids `autoCreate`,
+even `false`. Name/version uploads go directly to the upload endpoint with no UUID lookup or
+portfolio-read prerequisite. Creating a missing project requires explicit `autoCreate: true`
+and appropriate receiver permissions. Uploading replaces the project's component inventory.
+
+`--allow-failed-gate` permits a recorded failed gate and is retained in evidence. It cannot
+bypass invalid records, unknown gate outcomes or digest mismatch. Skipped schema validation
+remains visible. Digest agreement establishes consistency with the supplied record, not signer
+authentication, executable equivalence, vulnerability absence or software acceptance.
+
+| Exit | Meaning for delivery commands |
+| --- | --- |
+| 0 | Accepted receipt persisted, valid observation obtained, or valid offline data displayed |
+| 2 | Preflight refusal; no HTTP request (inspection may briefly acquire a lock) |
+| 3 | Local execution/persistence failure; output states whether a request may have occurred |
+| 4 | Remote outcome unknown, observation unavailable, or wait deadline |
+| 5 | Supported receiver rejection of an upload |
+
+Code 0 never establishes ingestion. Inspect can return 0 with an `unknown` outcome. A token
+returning `processing:false` means **no processing observed**; it does not prove a valid token,
+successful ingestion or content retention. Reconciliation retains acknowledgment separately
+from activity, and never uploads. It requires the same binding, artifact and effective target;
+API-key env references and CA files may rotate. It needs no original index or SBOM files.
+
+Every attempt writes immutable, numbered journal events. An intent without a submission result
+is unknown: a crash could have happened on either side of the request. Do not resubmit merely
+because a response was lost. There is no automatic upload retry. Deliberately authorize a
+possible duplicate using `rio deliver ... --retry-of delivery-record --record new-record`;
+the source/index digest, target and creation/gate policies must match and all bytes are checked
+again. Existing journals cannot be reused. The prior journal is never edited.
+
+A sibling `<record>.lock` directory protects cooperating writers and readers. Rio never breaks
+stale locks automatically. Remove one only after confirming no writer remains; age or PID
+alone is insufficient. Inspect reports orphan `.event-*.tmp` files and ignores them as evidence.
+Corrupt, empty or incomplete journals never authorize replay. File sync and immutable events
+reduce crash hazards but do not promise power-loss durability on every filesystem. Shared/network
+storage is supported only when it provides reliable exclusive directory creation and same-directory
+publication. Windows uses native filesystem operations and the same cooperative lock/validation.
+
+Limits: configuration 1 MiB, index 16 MiB, selected SBOM 64 MiB, receiver JSON 64 KiB,
+each journal event 1 MiB, journal 10,000 events. Each request has a 30-second deadline;
+`--wait` polls every 3 seconds for at most 10 minutes, persisting each observation.
+
+The existing `rio-dtrack-upload.sh` remains available for batch/parent workflows. Native v1
+has no batch, parent hierarchy or merge behavior and does not claim script parity. The shell
+uploader's weaker handoff checks remain tracked separately in #43; native validation does not
+silently complete that work. Integration support is limited to versions with retained real-server
+evidence; synthetic demo responses alone do not establish a tested server version.
