@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/rebaze/rio/internal/delivery"
 )
@@ -142,9 +141,18 @@ func canonicalParent(path string) (string, error) {
 	}
 	return filepath.Join(parent, filepath.Base(abs)), nil
 }
+
+// inside compares existing ancestor identities, not spelling. The leaf may not
+// exist yet, and filesystems can resolve case/normalization aliases differently.
 func inside(path, root string) bool {
-	rel, e := filepath.Rel(root, path)
-	return e == nil && (rel == "." || rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+	for current := filepath.Clean(path); ; current = filepath.Dir(current) {
+		if samePath(current, root) {
+			return true
+		}
+		if filepath.Dir(current) == current {
+			return false
+		}
+	}
 }
 func samePath(a, b string) bool {
 	if a == b {
@@ -180,13 +188,41 @@ func preflightOutput(path, indexPath string, journals []string) (string, error) 
 		if e != nil {
 			return "", e
 		}
-		for _, candidate := range []string{out, out + ".lock"} {
-			for _, namespace := range []string{root, root + ".lock"} {
-				if inside(candidate, namespace) || samePath(candidate, namespace) || inside(namespace, candidate) {
-					return "", delivery.Fail("output_collision", "output or lock collides with selected journal")
-				}
+		collision, e := journalNamespaceCollision(out, root)
+		if e != nil {
+			return "", e
+		}
+		if collision {
+			return "", delivery.Fail("output_collision", "output or lock collides with selected journal")
+		}
+
+	}
+	return out, nil
+}
+
+// Materialize the reserved sibling namespace under its normal exclusive lock so
+// even a nonexistent differently-cased lock name has a real identity to compare.
+// This metadata-only preflight never reads events and releases every journal lock
+// before output publication. It also respects case-sensitive directory behavior.
+func journalNamespaceCollision(out, root string) (collision bool, err error) {
+	lock := root + ".lock"
+	if e := os.Mkdir(lock, 0700); e != nil {
+		if os.IsExist(e) {
+			return false, delivery.Fail("record_busy", "journal lock exists; never removed automatically")
+		}
+		return false, persistence("create journal preflight lock")
+	}
+	defer func() {
+		if e := os.Remove(lock); e != nil {
+			err = persistence("remove owned journal preflight lock")
+		}
+	}()
+	for _, candidate := range []string{out, out + ".lock"} {
+		for _, namespace := range []string{root, lock} {
+			if inside(candidate, namespace) || inside(namespace, candidate) {
+				return true, nil
 			}
 		}
 	}
-	return out, nil
+	return false, nil
 }

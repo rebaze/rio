@@ -151,3 +151,60 @@ func TestPublishActualLockCleanupFailurePreservesFinal(t *testing.T) {
 		t.Fatal("removed foreign obstruction")
 	}
 }
+
+func TestPublishRefusesPhysicalJournalAliases(t *testing.T) {
+	for _, suffix := range []string{"journal/record.json", "JOURNAL/nested/record.json", "journal.lock", "journal.LOCK"} {
+		t.Run(suffix, func(t *testing.T) {
+			d, ip, p, _ := collectFixture(t)
+			raw, e := Marshal(d)
+			if e != nil {
+				t.Fatal(e)
+			}
+			root := filepath.Join(filepath.Dir(p), "Journal")
+			if e = os.Rename(p, root); e != nil {
+				t.Fatal(e)
+			}
+			if _, e = os.Stat(filepath.Join(filepath.Dir(root), "journal")); e != nil {
+				t.Skip("case-sensitive filesystem")
+			}
+			if e = os.Mkdir(filepath.Join(root, "nested"), 0700); e != nil {
+				t.Fatal(e)
+			}
+			before, e := os.ReadDir(root)
+			if e != nil {
+				t.Fatal(e)
+			}
+			out := filepath.Join(filepath.Dir(root), filepath.FromSlash(suffix))
+			r, e := Publish(out, ip, []string{root}, raw, validateFixture)
+			if e == nil || r.OutputMayExist {
+				t.Fatalf("physical source namespace modified: %+v %v", r, e)
+			}
+			after, _ := os.ReadDir(root)
+			if len(before) != len(after) {
+				t.Fatal("journal entries changed")
+			}
+			for n := range before {
+				if before[n].Name() != after[n].Name() {
+					t.Fatal("journal entries changed")
+				}
+			}
+			if _, e = os.Lstat(root + ".lock"); !os.IsNotExist(e) {
+				t.Fatal("journal lock namespace changed", e)
+			}
+		})
+	}
+}
+func TestPublishKeepsDistinctCaseSensitiveDirectory(t *testing.T) {
+	d, ip, p, _ := collectFixture(t)
+	raw, _ := Marshal(d)
+	root := filepath.Join(filepath.Dir(p), "Journal")
+	os.Rename(p, root)
+	other := filepath.Join(filepath.Dir(p), "journal")
+	if e := os.Mkdir(other, 0700); e != nil {
+		t.Skip("case-insensitive filesystem")
+	}
+	out := filepath.Join(other, "record.json")
+	if _, e := Publish(out, ip, []string{root}, raw, validateFixture); e != nil {
+		t.Fatal("distinct case-sensitive directory refused", e)
+	}
+}
