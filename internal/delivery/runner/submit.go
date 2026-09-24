@@ -77,7 +77,10 @@ func FromSnapshot(operation, path string, s record.Snapshot) Result {
 	}
 	return r
 }
-func Submit(ctx context.Context, p Prepared, path string) (r Result, err error) {
+func Submit(ctx context.Context, p Prepared, path string) (Result, error) {
+	return submitWithJournal(ctx, p, path, nil)
+}
+func submitWithJournal(ctx context.Context, p Prepared, path string, create func(record.Intent) (*record.Writer, error)) (r Result, err error) {
 	r = NewResult("deliver", path)
 	source := p.Verified.Source()
 	r.Source = &source
@@ -91,7 +94,9 @@ func Submit(ctx context.Context, p Prepared, path string) (r Result, err error) 
 		return Failure(r, e, PreflightCode(e))
 	}
 	var w *record.Writer
-	if p.Reservation != nil {
+	if create != nil {
+		w, e = create(intent)
+	} else if p.Reservation != nil {
 		w, e = p.Reservation.Create(intent)
 	} else {
 		w, e = record.Create(path, intent)
@@ -109,6 +114,16 @@ func Submit(ctx context.Context, p Prepared, path string) (r Result, err error) 
 		return Failure(r, e, 3)
 	}
 	r.AttemptID = s.Events[0].AttemptID
+	expectedIntent, expectedErr := json.Marshal(intent)
+	committedIntent, committedErr := json.Marshal(s.Intent)
+	if expectedErr != nil || committedErr != nil || !delivery.JSONEqual(expectedIntent, committedIntent) {
+		return Failure(r, delivery.Fail("persistence_failed", "committed intent differs from validated preparation"), 3)
+	}
+	if p.ValidateIntent != nil {
+		if e := p.ValidateIntent(s.Intent); e != nil {
+			return Failure(r, delivery.Fail("persistence_failed", "committed intent failed adapter validation"), 3)
+		}
+	}
 	r.RequestMayHaveOccurred = true
 	sub, submitErr := p.Target.Submit(ctx, p.Verified.Payloads())
 	if sub.Disposition != "accepted" && sub.Disposition != "rejected" {

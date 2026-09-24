@@ -102,14 +102,14 @@ func (s *recordScanner) value(t reflect.Type, scope string, depth int) error {
 					}
 				}
 				oldEvent, oldEntries := s.inEvent, s.eventEntries
-				if t == eventType && name == "data" {
+				if t == eventType && name == "data" || t == deliveryType && name == "intent" {
 					s.inEvent = true
 					s.eventEntries = 0
 				}
 				if e = s.value(child, childScope, depth+1); e != nil {
 					return e
 				}
-				if t == eventType && name == "data" {
+				if t == eventType && name == "data" || t == deliveryType && name == "intent" {
 					s.inEvent, s.eventEntries = oldEvent, oldEntries
 				}
 			}
