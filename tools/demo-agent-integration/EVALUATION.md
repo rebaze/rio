@@ -22,9 +22,9 @@ or the automated test assertions. The existing `mixed/rio.yaml` is intentionally
 Keep the harness's normal project instructions in effect and record any additional instructions.
 
 Provide the agent the canonical guide at a revision that includes this feature. For an offline
-session, place Rio's README and `docs/agent-integration.md` in a separate reference directory while
-preserving their relative layout. The guide's synthetic examples can remain unavailable for this
-exercise: the agent must derive the configuration from the target project. Let it report an
+session, place Rio's README and the complete `docs/` directory in a separate reference directory
+while preserving their relative layout. This includes the manifest, command and output references.
+The guide's synthetic examples can remain unavailable for this exercise: the agent must derive the configuration from the target project. Let it report an
 unavailable example link rather than silently substitute unrelated documentation.
 
 Use an installed Rio binary containing artifact sets (#71 / #72), and supply its absolute path if
