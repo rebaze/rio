@@ -86,6 +86,12 @@ var rawType = reflect.TypeFor[json.RawMessage]()
 
 func shape(v any, t reflect.Type, strict bool) error {
 	if v == nil {
+		// Producer change records intentionally use null for absent before/after
+		// values. Their interface fields accept JSON values; typed contract fields
+		// (including required objects, arrays and booleans) remain non-null.
+		if t.Kind() == reflect.Interface {
+			return nil
+		}
 		return Fail("invalid_json", "null field")
 	}
 	if t == rawType {

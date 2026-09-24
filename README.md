@@ -21,7 +21,7 @@ binary, on your workstation or in CI.
 Delivery destinations include analysis platforms and artifact registries. **Dependency-Track is
 implemented today; [OCI registry delivery is planned](https://github.com/rebaze/rio/issues/83).**
 
-[Quick start](#quick-start) · [Verified delivery](#deliver-to-dependency-track) · [Configuration](#configure-your-project) · [For agents](#for-agents) · [Reference](#reference)
+[Quick start](#quick-start) · [Verified delivery](#deliver-to-dependency-track) · [One evidence record](#one-evidence-record) · [Configuration](#configure-your-project) · [For agents](#for-agents) · [Reference](#reference)
 
 ## When to use Rio
 
@@ -51,6 +51,7 @@ scanning remain separate steps.
 |---|---|
 | `index.json` | Normalization inputs, output digests, transforms and gate results |
 | `<artifact>.intoto.json`, with `rio normalize --attest` | An **unsigned in-toto Statement** describing the normalization |
+| `record.json` (explicit `rio record`) | Complete index and selected committed delivery events, exact source bytes, readable facts and coverage |
 | The directory passed to `rio deliver --record` | Separate journal events for delivery intent, receipt when available, and later reconciliation observations |
 
 Delivery history is not added to `index.json` or the normalization statements. These records
@@ -149,6 +150,22 @@ Use the reported journal path with `rio delivery inspect --record PATH` or
 `rio delivery reconcile --record PATH` to query saved receipt activity without resubmitting.
 See [delivery configuration and the runnable demo](tools/README.md#native-verified-delivery)
 for filters, overrides, UUID selectors, deliberate retries, and tested server versions.
+
+## One evidence record
+
+Collect one record of current evidence from an index and explicitly selected delivery attempts:
+
+```sh
+rio record --delivery-record target/security-attempt --output record.json
+rio record inspect --file record.json
+```
+
+Both commands are offline. The file retains the complete index, original committed event bytes,
+readable delivery facts and explicit coverage; inspection works after the source workspace is gone.
+New observations need a new output path. This checks evidence consistency, without authenticating
+producers, checking external SBOM bytes, or proving ingestion. Signing and full file retention are
+separate. See the [record schema](docs/output.md#consolidated-recordjson-v1) and
+[installed-binary demo](tools/README.md#consolidated-record-demo).
 
 ## Configure your project
 

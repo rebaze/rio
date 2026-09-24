@@ -76,6 +76,13 @@ class ChangesTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(detect(path)["go"], "true")
 
+    def test_record_demo_files_run_binary_checks(self):
+        paths = [str(p.relative_to(ROOT)) for p in (ROOT / "tools/demo-record").rglob("*") if p.is_file()]
+        paths.append("tools/demo-record/future-fixture.json")
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertEqual(detect(path)["go"], "true")
+
     def test_context_demo_changes_run_binary_checks(self):
         for path in (
             "tools/demo-context/rio.yaml",

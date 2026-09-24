@@ -79,6 +79,17 @@ func canonicalURL(s string, allow bool) (string, error) {
 	return u.String(), nil
 }
 func (p Provider) Describe(destination, binding yaml.Node, subject delivery.Subject) (delivery.Description, error) {
+	return describe(destination, binding, subject, func(path string) string {
+		if !filepath.IsAbs(path) {
+			return filepath.Join(p.Directory, path)
+		}
+		return path
+	})
+}
+
+// Persisted references are historical strings, not paths on the inspecting host.
+// Only current-manifest Describe supplies a host-specific CA resolver.
+func describe(destination, binding yaml.Node, subject delivery.Subject, resolveCA func(string) string) (delivery.Description, error) {
 	var desc delivery.Description
 	dm, e := delivery.YAMLMap(destination, "url", "apiKeyEnv", "caFile", "allowHTTP", "project", "autoCreate")
 	if e != nil {
@@ -130,8 +141,8 @@ func (p Provider) Describe(destination, binding yaml.Node, subject delivery.Subj
 		if e != nil {
 			return desc, e
 		}
-		if !filepath.IsAbs(o.CAFile) {
-			o.CAFile = filepath.Join(p.Directory, o.CAFile)
+		if resolveCA != nil {
+			o.CAFile = resolveCA(o.CAFile)
 		}
 	}
 	pm, e := delivery.YAMLMap(bm["project"], "name", "version", "uuid", "fromSubject")
@@ -238,7 +249,7 @@ func ValidateDescription(d delivery.Description) (Options, Identity, error) {
 	var dn, bn yaml.Node
 	dn.Encode(dm)
 	bn.Encode(bm)
-	fresh, e := (Provider{}).Describe(dn, bn, delivery.Subject{Name: id.Project.Name, Version: id.Project.Version})
+	fresh, e := describe(dn, bn, delivery.Subject{Name: id.Project.Name, Version: id.Project.Version}, nil)
 	if e != nil {
 		return o, id, e
 	}

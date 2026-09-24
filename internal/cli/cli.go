@@ -93,6 +93,7 @@ func newRootCommand(opts *globalOptions, stdout, stderr io.Writer) *cobra.Comman
 	root.AddCommand(newVersionCommand(stdout))
 	root.AddCommand(newDeliverCommand(opts, stdout, stderr))
 	root.AddCommand(newDeliveryCommand(opts, stdout, stderr))
+	root.AddCommand(newRecordCommand(opts, stdout, stderr))
 	return root
 }
 

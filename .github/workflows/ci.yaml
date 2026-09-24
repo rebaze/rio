@@ -63,7 +63,7 @@ jobs:
           # Fixtures, golden files and the embedded CycloneDX schemas are
           # inputs to the test suite, so a change to any of them has to run it.
           # Missing that is how a stale golden file reaches main.
-          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$)' <<<"$CHANGED" >/dev/null; then go=true; fi
+          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery|record)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$)' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.github/workflows/.*\.ya?ml$' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.goreleaser\.yaml$' <<<"$CHANGED" >/dev/null; then goreleaser=true; fi
           if grep -E '\.sh$' <<<"$CHANGED" >/dev/null; then shell=true; fi
@@ -220,8 +220,8 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.9"
-      - name: Native delivery tests
-        run: go test ./internal/delivery/... ./internal/manifest ./internal/index ./internal/cli ./cmd/rio
+      - name: Native delivery and evidence tests
+        run: go test ./internal/delivery/... ./internal/evidence ./internal/manifest ./internal/index ./internal/cli ./cmd/rio
       - name: Static build and installed-binary demo
         shell: bash
         env:
@@ -229,3 +229,4 @@ jobs:
         run: |
           go build -trimpath -o rio-demo.exe ./cmd/rio
           python tools/demo-delivery/run.py "$PWD/rio-demo.exe"
+          python tools/demo-record/run.py "$PWD/rio-demo.exe"

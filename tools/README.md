@@ -15,6 +15,7 @@ inputs and remain separate from its runtime.
 | [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | offline, with an installed rio release |
 | [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, refusals and owned-claim replacement | offline, with an installed rio release |
 | [`demo-artifact-sets/`](#artifact-sets-demo) | discovers module SBOMs, adds/removes membership and refuses missing or overlapping inputs | offline, with an installed rio release |
+| [`demo-record/`](#consolidated-record-demo) | exports and inspects one offline evidence snapshot with explicit coverage | when retaining normalization and selected delivery facts |
 | [`demo-repair/`](#first-repair-sample) | shows optional p2 repair with an unchanged input and an audit record | when evaluating Eclipse/OSGi coordinate repair |
 | [`demo-agent-integration/`](#agent-integration-examples) | tests project onboarding configurations and a CI collection step | offline, with an installed rio release |
 | [`rio-context.py`](#rio-contextpy) | emits one explicit build-context entry bound to original SBOM bytes | in a producing CI job |
@@ -824,3 +825,18 @@ The adapter's real-server contract is tested against **Dependency-Track 5.1.1**.
 [sanitized integration evidence and opt-in test instructions](demo-delivery/integration/README.md)
 cover both selectors, creation policies and denial/status behavior. Other versions are not
 advertised as tested. The integration harness uses additional read permissions only for testing.
+
+## Consolidated record demo
+
+```sh
+python3 tools/demo-record/run.py /absolute/path/to/rio
+# Windows: python tools/demo-record/run.py C:\path\rio.exe
+```
+
+Requires an installed Rio binary and Python 3.9+; never invokes Go. The
+[walkthrough](demo-record/README.md) creates source/build context, acknowledged and ambiguous
+synthetic deliveries, retries and reconciliation, then stops its loopback receiver before every
+record collection/inspection. It retains before/after snapshots, shows failed gates, zero selected
+journals and missing selected retry ancestry, removes the original workspace and inspects a copied
+record. Altered embedded bytes and summaries refuse. All receiver responses are labeled synthetic;
+no successful-ingestion, authenticated-identity, signing or full-retention claim is made.

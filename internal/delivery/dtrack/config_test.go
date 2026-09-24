@@ -98,3 +98,23 @@ func TestDescribeRejectsAPIEndpointAsBaseURL(t *testing.T) {
 		}
 	}
 }
+
+func TestPersistedDescriptionPreservesForeignCAReferences(t *testing.T) {
+	for _, path := range []string{`/missing/rotated-ca.pem`, `C:\missing\ca.pem`, `C:/missing/../ca.pem`, `\\server\share\missing.pem`, `//server/share/missing.pem`} {
+		t.Run(path, func(t *testing.T) {
+			d, e := (Provider{}).Describe(node(t, "url: https://example.test"), node(t, "project: {name: app, version: '1'}"), delivery.Subject{})
+			if e != nil {
+				t.Fatal(e)
+			}
+			var options Options
+			json.Unmarshal(d.Options, &options)
+			options.CAFile = path
+			d.Options, _ = json.Marshal(options)
+			before := string(d.Options)
+			got, _, e := ValidateDescription(d)
+			if e != nil || got.CAFile != path || string(d.Options) != before {
+				t.Fatalf("saved path interpreted using inspecting host: want=%q got=%q err=%v", path, got.CAFile, e)
+			}
+		})
+	}
+}
