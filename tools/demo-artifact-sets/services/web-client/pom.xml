@@ -1,0 +1,4 @@
+<project>
+  <!-- Synthetic marker: Rio never parses this file. -->
+  <artifactId>different-from-directory-name</artifactId>
+</project>

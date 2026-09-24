@@ -1,0 +1,9 @@
+version: 1
+
+artifactSets:
+  - modules: "services/**/*server/pom.xml"
+    sbom: "target/bom.json"
+    idFrom: module-directory
+  - modules: "services/billing-server/pom.xml"
+    sbom: "target/bom.json"
+    idFrom: module-directory

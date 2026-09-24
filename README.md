@@ -56,6 +56,10 @@ absence of scanner findings does not establish that a component is safe.
 
 `rio normalize`:
 
+- **Discovers module SBOMs.** Optional [`artifactSets`](#discovering-module-artifacts) selects
+  module markers and requires an SBOM from each selected module. New matching modules enter the
+  output bundle automatically, with separate SBOMs and index entries. Explicit artifacts can be
+  used alongside sets.
 - **Levels the spec version.** Documents below the configured floor are uplifted to it. Documents
   at or above the floor keep their spec version; other configured processing still applies.
 - **Repairs package identities.** Supported p2 and synthetic Maven purls are rewritten using
@@ -239,7 +243,7 @@ this contract for each `index.artifacts[i]`:
 The references in the table mean the actual JSON values from the same run's `index.json`.
 `predicate.artifact` preserves every field: `id`, `input`, `output`, `specVersion`,
 `schemaValidated`, `components`, `transforms`, `gate`, `gateFindings`, `integrityFindings`, and
-`enrichment` and `context` when present. Arrays retain the index's order and empty-array representation; absent optional
+`enrichment`, `context` and `selection` when present. Arrays retain the index's order and empty-array representation; absent optional
 fields stay absent. There is no additional `schemaVersion` field in the statement or predicate;
 the two type URIs identify their versions.
 
@@ -338,7 +342,7 @@ show replacement intent but cannot establish whether an existing value conflicts
 When an artifact binds context, the plan artifact has `context: {"version":1,
 "file":"build-context.json","require":["source.repository"],"replace":[]}`. The path is
 manifest-relative. Planning reports only that binding and never opens the context file or SBOM;
-it can succeed before the producer writes either file.
+it can succeed before the producer writes the context file; the selected SBOM must already exist.
 
 This is not `index.json` with fewer fields. The index describes a run that happened, and a run needs
 the mapping table that the plan is read to produce, so the index can never describe the first run
@@ -420,7 +424,9 @@ failed. Exit code 2 writes nothing.
 ## The manifest
 
 `rio.yaml`, committed at the repository root. It is the declared intent for the repository and is
-reviewed like code. Its sha256 is recorded in every output.
+reviewed like code. Its sha256 is recorded in every output. Use explicit `artifacts` for individually
+named inputs, [`artifactSets`](#discovering-module-artifacts) for module-based discovery, or both
+in the same manifest.
 
 ```yaml
 version: 1                        # must be 1; anything else is exit 2
@@ -459,6 +465,101 @@ proceeding on the one file it could see would make the same repository answer di
 on nothing but a permission bit. The wrong answer would look clean because the
 gate passes and the index records a valid digest. When that happens the run stops with exit 2 and
 names the directory that blocked it.
+
+### Discovering module artifacts
+
+Optional `artifactSets` discovers module **marker paths**, then requires exactly one SBOM for
+**every selected module**. It does not match Maven `artifactId`, the SBOM subject name, or an SBOM
+filename to decide which modules exist. No Maven invocation or POM parsing is involved; a suitable
+marker filename other than `pom.xml` works too.
+
+```yaml
+version: 1
+artifacts:                         # optional; explicit entries still work
+  - id: desktop
+    sbom: desktop/target/bom.json
+artifactSets:                      # optional; sets-only or mixed manifests work
+  - modules: "services/**/*server/pom.xml"
+    sbom: "target/bom.json"
+    idFrom: module-directory
+    # exclude: ["services/experimental-server/pom.xml"]
+    # transforms:
+    #   - repair-purl: {ecosystem: p2, table: mappings/p2-maven.json}
+    # enrichment: {producer: {name: Example}}
+    # context: {file: build-context.json}
+```
+
+Adding `services/orders-server/pom.xml` and its `target/bom.json` adds an `orders-server` artifact
+without editing YAML. `services/web-client/pom.xml` is outside this selector. A selected server
+without an SBOM makes both `plan` and `normalize` fail with exit 2; normalize writes no new output.
+Each module gets a separate normalized SBOM, gate result, index entry and optional statement.
+SBOM contents are never combined.
+
+- `modules`, `sbom` and `idFrom` are required nonblank strings. Only `idFrom: module-directory`
+  is supported. At least one explicit artifact or set declaration is required overall.
+- `modules` uses doublestar globs (`*`, `**`, prefix/suffix patterns) selecting regular marker files.
+  Its paths and `exclude` marker-path globs are relative to the **manifest directory**. Exclusions
+  apply before an SBOM is required. All patterns must be valid, including exclusions matching nothing.
+- Only a set's `sbom` glob is relative to **each selected module root**, the marker's containing
+  directory. The new selector fields reject absolute paths and literal `..` segments. Existing
+  explicit-artifact path rules are unchanged. Zero roots after exclusions fails that set, even
+  when other declarations match. Zero or multiple regular SBOM matches, unreadable relevant search
+  paths and incomplete searches fail rather than returning a partial bundle.
+- The Rio ID is exactly the module directory's basename and must match
+  `^[a-z0-9][a-z0-9._-]*$`. It is an output identity; it does not change the SBOM's name, version,
+  purl or components. Invalid names and duplicate IDs fail without renaming. Exclude the marker
+  and use an explicit artifact for exceptions, including legacy `subject` overrides (unsupported
+  on sets).
+- Multiple markers in one lexical directory select one module, recording the lexically first
+  matching marker. Distinct lexical roots pointing at the same physical directory are ambiguous
+  and fail. Symlink cycles and unreadable searches fail. Overlapping sets and duplicate physical
+  SBOM selection fail whenever a generated artifact is involved, including overlaps with explicit
+  entries. Existing explicit-only duplicate-input behavior is unchanged.
+- Explicit artifacts retain declaration order, followed by sets in declaration order. Within
+  each set, modules sort lexically by manifest-relative forward-slash path. The working directory
+  and filesystem enumeration order do not determine membership order.
+
+Set-level `transforms`, `enrichment` and `context` apply uniformly to every generated artifact,
+using the existing validation and merge/replace rules. Global output settings, the gate and root
+enrichment defaults apply. **Transform configuration paths and `context.file` stay
+manifest-relative**, not module-relative. Enrichment provenance uses
+`artifactSets[0].enrichment...` for set declarations and `enrichment...` for inherited defaults.
+A shared context document binds each entry by generated Rio ID and original SBOM SHA-256. Plan
+reports context and transform configuration without reading context files or building transforms,
+so a missing context file or p2 mapping table does not prevent planning.
+
+`plan --json` still exposes one flat `artifacts` array, so existing plan consumers see every
+expanded SBOM. Generated plan and index artifacts, and their statement artifact payloads, include
+this optional record; explicit artifacts omit it:
+
+```json
+{
+  "selection": {
+    "version": 1,
+    "kind": "artifactSet",
+    "source": "artifactSets[0]",
+    "module": "services/orders-server",
+    "marker": "services/orders-server/pom.xml"
+  }
+}
+```
+
+These paths are manifest-relative and forward-slashed. The manifest digest identifies the exact
+declaration; input and output digests identify SBOM bytes. Selection records describe filesystem
+membership, not Maven build membership or source/build provenance. Modules with no selected marker
+are outside this policy and cannot be diagnosed as missing. Maven profiles, reactors and `-pl`
+are not interpreted. An old SBOM left in `target/` remains an input: this feature infers no freshness,
+Git/CI claims or product metadata.
+
+Plan is a preview, not a lock: a later invocation can see intentionally changed modules.
+`index.json` defines the current run's members. Files from previous runs can remain in a reused
+output directory; collecting the whole directory does not guarantee current membership. Prefer a
+fresh output directory per run. The [runnable artifact sets demo](tools/README.md#artifact-sets-demo)
+shows automatic inclusion, missing-output refusal and module removal with fresh output directories.
+
+This optional extension keeps manifest, plan and index outer versions at v1, and preserves
+explicit-only output shapes. It requires a Rio release containing #71; older binaries reject the
+unknown `artifactSets` key rather than silently ignoring it.
 
 ### Build and source context
 

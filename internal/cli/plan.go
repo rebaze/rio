@@ -11,7 +11,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rebaze/rio/internal/discover"
 	"github.com/rebaze/rio/internal/enrichment"
 	"github.com/rebaze/rio/internal/index"
 	"github.com/rebaze/rio/internal/manifest"
@@ -74,7 +73,8 @@ type planManifest struct {
 }
 
 type planArtifact struct {
-	ID string `json:"id"`
+	ID        string           `json:"id"`
+	Selection *index.Selection `json:"selection,omitempty"`
 	// Input.Path is relative to the manifest directory and Output.Path is
 	// relative to Out, exactly as index.json records them.
 	Input      planFile        `json:"input"`
@@ -184,6 +184,11 @@ func runPlan(opts *globalOptions, asJSON bool, stdout io.Writer) error {
 		return usageErrorf("%v", err)
 	}
 
+	resolved, err := resolveArtifacts(man)
+	if err != nil {
+		return err
+	}
+
 	builtin, err := p2.BuiltinEntries()
 	if err != nil {
 		// The table is compiled in, so only a broken build reaches this.
@@ -200,15 +205,15 @@ func runPlan(opts *globalOptions, asJSON bool, stdout io.Writer) error {
 		},
 		Out:          filepath.ToSlash(opts.out),
 		BuiltinTable: builtin,
-		Artifacts:    make([]planArtifact, 0, len(man.Artifacts)),
+		Artifacts:    make([]planArtifact, 0, len(resolved)),
 		// gate.require may legally be the empty subset, and a nil slice
 		// serializes as null. Every array this format promises is an array,
 		// exactly as in index.json, so a consumer can iterate it unguarded.
 		Gate: planGate{Require: append([]string{}, man.Gate.Require...)},
 	}
 
-	for _, spec := range man.Artifacts {
-		a, err := describeArtifact(man, spec)
+	for _, input := range resolved {
+		a, err := describeArtifact(man, input)
 		if err != nil {
 			return err
 		}
@@ -224,12 +229,12 @@ func runPlan(opts *globalOptions, asJSON bool, stdout io.Writer) error {
 // describeArtifact is the plan's counterpart to normalize's prepare, minus
 // everything that touches the artifact's contents.
 //
-// The transforms are described before the glob is resolved, in the order
-// prepare builds and resolves them, so the two commands report the same
-// failure first on a manifest with more than one problem.
-func describeArtifact(man *manifest.Manifest, spec manifest.Artifact) (planArtifact, error) {
+// Shared preflight has already expanded declarations and resolved every input.
+func describeArtifact(man *manifest.Manifest, input resolvedArtifact) (planArtifact, error) {
+	spec := input.Spec
 	a := planArtifact{
 		ID:         spec.ID,
+		Selection:  input.Selection,
 		Enrichment: spec.Enrichment,
 		Output:     planFile{Path: spec.ID + ".cdx.json"},
 		Transforms: make([]planTransform, 0, len(spec.Transforms)),
@@ -254,11 +259,7 @@ func describeArtifact(man *manifest.Manifest, spec manifest.Artifact) (planArtif
 		a.Transforms = append(a.Transforms, planTransform{Name: ts.Name, Options: options})
 	}
 
-	path, err := discover.Resolve(man.Dir, spec.ID, spec.SBOM)
-	if err != nil {
-		return planArtifact{}, usageErrorf("%v", err)
-	}
-	rel, err := index.RelPath(man.Dir, path)
+	rel, err := index.RelPath(man.Dir, input.Input)
 	if err != nil {
 		return planArtifact{}, usageErrorf("artifact %q: %v", spec.ID, err)
 	}
@@ -291,6 +292,9 @@ func writePlanText(p plan, man *manifest.Manifest, opts *globalOptions, stdout i
 	if !opts.quiet {
 		for _, a := range p.Artifacts {
 			fmt.Fprintf(stdout, "\n%s\n", a.ID)
+			if a.Selection != nil {
+				fmt.Fprintf(stdout, "  select %s module %s (marker %s)\n", a.Selection.Source, a.Selection.Module, a.Selection.Marker)
+			}
 			fmt.Fprintf(stdout, "  read   %s\n", a.Input.Path)
 			fmt.Fprintf(stdout, "  write  %s\n", filepath.ToSlash(filepath.Join(opts.out, a.Output.Path)))
 			if len(a.Transforms) == 0 {

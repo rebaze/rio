@@ -57,10 +57,11 @@ var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 
 // Manifest is a loaded, validated rio.yaml.
 type Manifest struct {
-	Version   int
-	Artifacts []Artifact
-	Output    Output
-	Gate      Gate
+	Version      int
+	Artifacts    []Artifact
+	ArtifactSets []ArtifactSet
+	Output       Output
+	Gate         Gate
 
 	// Path is the manifest path exactly as the caller gave it, which is what
 	// index.json records (§4.2).
@@ -189,6 +190,9 @@ func Load(path string) (*Manifest, error) {
 	if err := l.artifacts(&f, m); err != nil {
 		return nil, err
 	}
+	if err := l.artifactSets(&f, m); err != nil {
+		return nil, err
+	}
 	if err := l.output(&f, m); err != nil {
 		return nil, err
 	}
@@ -204,11 +208,12 @@ func Load(path string) (*Manifest, error) {
 type fileSection struct {
 	// Version is a Node rather than an int so a missing version and a
 	// non-numeric one both get a message naming the field.
-	Version    yaml.Node          `yaml:"version"`
-	Artifacts  []artifactSection  `yaml:"artifacts"`
-	Output     *outputSection     `yaml:"output"`
-	Gate       *gateSection       `yaml:"gate"`
-	Enrichment *enrichment.Config `yaml:"enrichment"`
+	Version      yaml.Node            `yaml:"version"`
+	Artifacts    []artifactSection    `yaml:"artifacts"`
+	ArtifactSets []artifactSetSection `yaml:"artifactSets"`
+	Output       *outputSection       `yaml:"output"`
+	Gate         *gateSection         `yaml:"gate"`
+	Enrichment   *enrichment.Config   `yaml:"enrichment"`
 }
 
 type artifactSection struct {
@@ -277,8 +282,8 @@ func (l loader) version(f *fileSection, m *Manifest) error {
 }
 
 func (l loader) artifacts(f *fileSection, m *Manifest) error {
-	if len(f.Artifacts) == 0 {
-		return l.errf("artifacts", "at least one artifact is required")
+	if len(f.Artifacts) == 0 && len(f.ArtifactSets) == 0 {
+		return l.errf("artifacts", "at least one artifact is required in artifacts or artifactSets")
 	}
 
 	seen := make(map[string]int, len(f.Artifacts))
@@ -441,33 +446,35 @@ var yamlTargets = map[string]struct {
 	"[]manifest.artifactSection": {field: "artifacts", shape: "a list of artifact entries",
 		where: regexp.MustCompile(`^artifacts$`)},
 	"manifest.artifactSection": {field: "artifacts[]", shape: "a mapping with id and sbom",
-		where: regexp.MustCompile(`^artifacts\[[0-9]+\]$`)},
+		where: regexp.MustCompile(`^(?:artifacts|artifactSets)\[[0-9]+\]$`)},
+	"[]manifest.artifactSetSection": {field: "artifactSets", shape: "a list of artifact set entries", where: regexp.MustCompile(`^artifactSets$`)},
+	"manifest.artifactSetSection":   {field: "artifactSets[]", shape: "a mapping with modules, sbom and idFrom", where: regexp.MustCompile(`^artifactSets\[[0-9]+\]$`)},
 	"manifest.subjectSection": {field: "subject", shape: "a mapping with name and version",
-		where: regexp.MustCompile(`^artifacts\[[0-9]+\]\.subject$`)},
+		where: regexp.MustCompile(`^(?:artifacts|artifactSets)\[[0-9]+\]\.subject$`)},
 	"buildcontext.Binding": {field: "context", shape: "a mapping with file",
-		where: regexp.MustCompile(`^artifacts\[[0-9]+\]\.context$`)},
+		where: regexp.MustCompile(`^(?:artifacts|artifactSets)\[[0-9]+\]\.context$`)},
 	"enrichment.Config": {field: "enrichment", shape: "a mapping",
-		where: regexp.MustCompile(`^(artifacts\[[0-9]+\]\.)?enrichment$`)},
+		where: regexp.MustCompile(`^((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment$`)},
 	"enrichment.Subject": {field: "enrichment.subject", shape: "a mapping",
-		where: regexp.MustCompile(`^(artifacts\[[0-9]+\]\.)?enrichment\.subject$`)},
+		where: regexp.MustCompile(`^((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment\.subject$`)},
 	"enrichment.Organization": {field: "enrichment organization", shape: "a mapping",
-		where: regexp.MustCompile(`^(artifacts\[[0-9]+\]\.)?enrichment\.(producer|subject\.(manufacturer|supplier))$`)},
+		where: regexp.MustCompile(`^((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment\.(producer|subject\.(manufacturer|supplier))$`)},
 	"[]enrichment.Contact": {field: "enrichment contact", shape: "a list of contacts",
-		where: regexp.MustCompile(`^(artifacts\[[0-9]+\]\.)?enrichment\.(producer|subject\.(manufacturer|supplier))\.contact$`)},
+		where: regexp.MustCompile(`^((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment\.(producer|subject\.(manufacturer|supplier))\.contact$`)},
 	"enrichment.Contact": {field: "enrichment contact", shape: "a mapping with name, email or phone",
-		where: regexp.MustCompile(`^(artifacts\[[0-9]+\]\.)?enrichment\.(producer|subject\.(manufacturer|supplier))\.contact\[[0-9]+\]$`)},
+		where: regexp.MustCompile(`^((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment\.(producer|subject\.(manufacturer|supplier))\.contact\[[0-9]+\]$`)},
 	"manifest.outputSection": {field: "output", shape: "a mapping",
 		where: regexp.MustCompile(`^output$`)},
 	"manifest.gateSection": {field: "gate", shape: "a mapping",
 		where: regexp.MustCompile(`^gate$`)},
 	"[]yaml.Node": {field: "transforms", shape: "a list of transforms",
-		where: regexp.MustCompile(`^artifacts\[[0-9]+\]\.transforms$`)},
+		where: regexp.MustCompile(`^(?:artifacts|artifactSets)\[[0-9]+\]\.transforms$`)},
 	"[]string": {field: "gate.require", shape: "a list of strings",
-		where: regexp.MustCompile(`^(gate\.require|artifacts\[[0-9]+\]\.context\.(require|replace)|(artifacts\[[0-9]+\]\.)?enrichment\.(replace|(producer|subject\.(manufacturer|supplier))\.url))$`)},
+		where: regexp.MustCompile(`^(artifactSets\[[0-9]+\]\.exclude|gate\.require|(?:artifacts|artifactSets)\[[0-9]+\]\.context\.(require|replace)|((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment\.(replace|(producer|subject\.(manufacturer|supplier))\.url))$`)},
 	// The one type several keys share, which is why it names none of them
 	// when the lookup below cannot tell which one was meant.
 	"string": {shape: "a string", where: regexp.MustCompile(
-		`^(artifacts\[[0-9]+\]\.(id|sbom|subject\.(name|version)|context\.file)|output\.specVersionFloor|gate\.require\[[0-9]+\]|artifacts\[[0-9]+\]\.context\.(require|replace)\[[0-9]+\]|(artifacts\[[0-9]+\]\.)?enrichment\..+)$`)},
+		`^((?:artifacts|artifactSets)\[[0-9]+\]\.(id|modules|idFrom|sbom|exclude\[[0-9]+\]|subject\.(name|version)|context\.file)|output\.specVersionFloor|gate\.require\[[0-9]+\]|(?:artifacts|artifactSets)\[[0-9]+\]\.context\.(require|replace)\[[0-9]+\]|((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment\..+)$`)},
 }
 
 // yamlDetail reduces a decode failure to go-yaml's own words, without the
@@ -734,8 +741,11 @@ func (l loader) strictStringTypes() error {
 				if path != "" {
 					child = path + "." + key.Value
 				}
-				// Only strict extension mappings opt into strict strings.
-				enabled := inside || ((key.Value == "enrichment" || key.Value == "context") && artifactStrictParent.MatchString(path))
+				// Set selector strings and existing extension mappings are strict.
+				enabled := inside || (path == "" && key.Value == "artifactSets") || ((key.Value == "enrichment" || key.Value == "context") && artifactStrictParent.MatchString(path))
+				if key.Value == "transforms" && strings.HasPrefix(path, "artifactSets[") {
+					enabled = false
+				}
 				visit(value, child, enabled, false, depth+1)
 			}
 		case yaml.SequenceNode:
@@ -754,4 +764,4 @@ func (l loader) strictStringTypes() error {
 	return invalid
 }
 
-var artifactStrictParent = regexp.MustCompile(`^(|artifacts\[[0-9]+\])$`)
+var artifactStrictParent = regexp.MustCompile(`^(|(?:artifacts|artifactSets)\[[0-9]+\])$`)

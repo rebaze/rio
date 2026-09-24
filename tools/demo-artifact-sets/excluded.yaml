@@ -1,0 +1,7 @@
+version: 1
+
+artifactSets:
+  - modules: "services/**/*server/pom.xml"
+    sbom: "target/bom.json"
+    idFrom: module-directory
+    exclude: [services/experimental-server/pom.xml]

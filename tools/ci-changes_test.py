@@ -90,6 +90,19 @@ class ChangesTest(unittest.TestCase):
                 if path.endswith(".sh"):
                     self.assertEqual(result["shell"], "true")
 
+    def test_artifact_sets_demo_changes_run_binary_checks(self):
+        for path in (
+            "tools/demo-artifact-sets/rio.yaml",
+            "tools/demo-artifact-sets/services/billing-server/pom.xml",
+            "tools/demo-artifact-sets/services/billing-server/target/bom.json",
+            "tools/demo-artifact-sets/run.sh",
+        ):
+            with self.subTest(path=path):
+                result = detect(path)
+                self.assertEqual(result["go"], "true")
+                if path.endswith(".sh"):
+                    self.assertEqual(result["shell"], "true")
+
     def test_context_helper_changes_run_python_checks(self):
         self.assertEqual(detect("tools/rio-context.py")["python"], "true")
         self.assertEqual(detect("tools/rio-context_test.py")["python"], "true")
