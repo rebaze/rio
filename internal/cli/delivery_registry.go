@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/delivery/dtrack"
+	"github.com/rebaze/rio/internal/delivery/oci"
 	"github.com/rebaze/rio/internal/delivery/record"
 )
 
@@ -18,7 +19,12 @@ type adapterEntry struct {
 }
 
 var deliveryAdapters = func(dir string) map[string]adapterEntry {
-	return map[string]adapterEntry{"dependency-track": {
+	return map[string]adapterEntry{"oci": {
+		Provider: oci.Provider{Directory: dir}, ValidateIntent: oci.ValidateIntent,
+		ValidateSnapshot: oci.ValidateSnapshot, SamePolicy: oci.SamePolicy,
+		RecordedSubject:            func(delivery.Description) (delivery.Subject, error) { return delivery.Subject{}, nil },
+		ValidateObserverReferences: oci.ValidateObserverReferences,
+	}, "dependency-track": {
 		Provider: dtrack.Provider{Directory: dir},
 		ValidateIntent: func(i record.Intent) error {
 			if len(i.ExpectedReferences) > 0 {

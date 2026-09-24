@@ -132,3 +132,27 @@ func TestAdapterContentOfflineRoutingAndIntentRecovery(t *testing.T) {
 		t.Fatal("submission after recovery allowed")
 	}
 }
+
+func TestAdapterOCIPlanIsOffline(t *testing.T) {
+	ip, cfg := deliveryFixture(t, "https://unused.invalid")
+	raw := []byte("version: 1\nartifacts: [{id: app, sbom: bom.json}]\ndelivery:\n  targets:\n    registry:\n      type: oci\n      registry: registry.example\n      repository: acme/app\n      auth: {usernameEnv: MISSING_USER, passwordEnv: MISSING_PASSWORD}\n      caFile: missing.pem\n")
+	if e := os.WriteFile(cfg, raw, 0600); e != nil {
+		t.Fatal(e)
+	}
+	oldBuild, oldEnv := deliveryBuild, deliveryLookupEnv
+	deliveryBuild = func(delivery.Provider, delivery.Description) (delivery.Target, error) {
+		t.Fatal("plan built client")
+		return nil, nil
+	}
+	deliveryLookupEnv = func(string) (string, bool) { t.Fatal("plan resolved credential"); return "", false }
+	t.Cleanup(func() { deliveryBuild, deliveryLookupEnv = oldBuild, oldEnv })
+	code, r, _ := deliveryRun(t, "delivery", "plan", "--manifest", cfg, "--index", ip)
+	if code != 0 {
+		t.Fatal(code, r)
+	}
+	items := r["items"].([]any)
+	item := items[0].(map[string]any)
+	if len(item["expectedReferences"].([]any)) != 3 {
+		t.Fatal(item)
+	}
+}
