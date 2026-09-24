@@ -55,3 +55,28 @@ func TestManifestDeliveryDeclarationLimitOnly(t *testing.T) {
 		t.Fatal("oversized delivery accepted")
 	}
 }
+
+func TestManifestDeliveryCannotEnterThroughRootMerge(t *testing.T) {
+	base := "version: 1\nartifacts: [{id: app, sbom: missing.json}]\n"
+	for _, tc := range []struct {
+		name, merged string
+		valid        bool
+	}{
+		{"null", "<<: {delivery: null}\n", false},
+		{"single", "<<: {delivery: {targets: {one: {type: dependency-track, url: https://example.test}}}}\n", false},
+		{"ambiguous", "<<: [{delivery: {targets: {one: {type: future}}}}, {delivery: {targets: {two: {type: future}}}}]\n", false},
+		{"nested", "<<: {<<: {delivery: null}}\n", false},
+		{"aliased", "<<: [&base {delivery: null}, *base]\n", false},
+		{"literal overrides merged", "<<: {delivery: null}\ndelivery: {targets: {one: {type: future}}}\n", false},
+		{"intake merge preserved", "<<: {output: {specVersionFloor: '1.6'}}\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := filepath.Join(t.TempDir(), "rio.yaml")
+			os.WriteFile(p, []byte(base+tc.merged), 0600)
+			_, e := Load(p)
+			if (e == nil) != tc.valid {
+				t.Fatalf("Load=%v", e)
+			}
+		})
+	}
+}

@@ -167,6 +167,9 @@ func Load(path string) (*Manifest, error) {
 		root := document.Content[0]
 		found := false
 		for i := 0; i < len(root.Content); i += 2 {
+			if root.Content[i].Tag == "!!merge" && mergedDelivery(root.Content[i+1], map[*yaml.Node]bool{}) {
+				return nil, l.errf("delivery", "must be a literal root field; delivery through YAML merges is ambiguous")
+			}
 			if root.Content[i].Value == "delivery" {
 				if found {
 					return nil, l.errf("delivery", "duplicate field")
@@ -789,3 +792,32 @@ func (l loader) strictStringTypes() error {
 }
 
 var artifactStrictParent = regexp.MustCompile(`^(|(?:artifacts|artifactSets)\[[0-9]+\])$`)
+
+// mergedDelivery follows only mapping inheritance, preserving historical intake
+// merges while preventing delivery from bypassing literal-node validation.
+func mergedDelivery(n *yaml.Node, seen map[*yaml.Node]bool) bool {
+	if n == nil || seen[n] {
+		return false
+	}
+	seen[n] = true
+	switch n.Kind {
+	case yaml.AliasNode:
+		return mergedDelivery(n.Alias, seen)
+	case yaml.SequenceNode:
+		for _, v := range n.Content {
+			if mergedDelivery(v, seen) {
+				return true
+			}
+		}
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			if n.Content[i].Value == "delivery" {
+				return true
+			}
+			if n.Content[i].Tag == "!!merge" && mergedDelivery(n.Content[i+1], seen) {
+				return true
+			}
+		}
+	}
+	return false
+}
