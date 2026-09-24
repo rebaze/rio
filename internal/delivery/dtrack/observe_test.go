@@ -33,3 +33,41 @@ func TestObserve(t *testing.T) {
 		})
 	}
 }
+
+func TestObserveInvalidReferenceSendsNothing(t *testing.T) {
+	calls := 0
+	s := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ }))
+	defer s.Close()
+	target := targetFor(t, s, "project: {name: app, version: '1'}", false).(delivery.Observer)
+	for _, refs := range [][]delivery.Reference{nil, {{Kind: "dependency-track:event-token", Value: "invalid"}}, {{Kind: "dependency-track:event-token", Value: token}, {Kind: "dependency-track:event-token", Value: token}}} {
+		if _, e := target.Observe(context.Background(), refs); e == nil {
+			t.Fatal("invalid reference accepted")
+		}
+	}
+	if calls != 0 {
+		t.Fatal("request with invalid reference")
+	}
+}
+
+func TestObserveCaseVariantCannotOverrideProcessing(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"processing":true,"Processing":false}`)
+	}))
+	defer s.Close()
+	o, e := targetFor(t, s, "project: {name: app, version: '1'}", false).(delivery.Observer).Observe(context.Background(), []delivery.Reference{{Kind: "dependency-track:event-token", Value: token}})
+	if e != nil || o.Value != "processing" {
+		t.Fatal("case variant overrode processing", o, e)
+	}
+}
+
+func TestPersistedActivityRequiresSupportedEvidence(t *testing.T) {
+	for _, o := range []delivery.Observation{
+		{Kind: "activity", Value: "processing", Origin: "receiver", Code: "activity_observed", HTTPStatus: 403, References: []delivery.Reference{}},
+		{Kind: "activity", Value: "not-observed", Origin: "receiver", Code: "invented", HTTPStatus: 200, References: []delivery.Reference{}},
+	} {
+		if e := ValidateEvidence(nil, []delivery.Observation{o}); e == nil {
+			t.Fatal("invented activity evidence accepted")
+		}
+	}
+}

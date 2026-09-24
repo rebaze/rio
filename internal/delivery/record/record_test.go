@@ -74,3 +74,73 @@ func TestEventSizeLimit(t *testing.T) {
 		t.Fatal(s, e)
 	}
 }
+
+func TestJournalRejectsContradictoryEvidence(t *testing.T) {
+	for _, kind := range []string{"payload-output", "payload-source", "identity-digest", "empty-ack"} {
+		t.Run(kind, func(t *testing.T) {
+			p := filepath.Join(t.TempDir(), "record")
+			i := intent()
+			switch kind {
+			case "payload-output":
+				i.Payloads[0].SHA256 = delivery.Digest([]byte("other"))
+			case "payload-source":
+				i.Payloads[0].SourceSHA256 = delivery.Digest([]byte("other"))
+			case "identity-digest":
+				i.Payloads[0].Size = 0
+			}
+			w, e := Create(p, i)
+			if kind != "empty-ack" {
+				if e == nil {
+					w.Close()
+					t.Fatal("inconsistent intent accepted")
+				}
+				return
+			}
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer w.Close()
+			b, _ := json.Marshal(delivery.Submission{Disposition: "accepted", References: []delivery.Reference{}, Observations: []delivery.Observation{}})
+			if e = w.Append("submission", b); e == nil {
+				t.Fatal("unsupported acceptance accepted")
+			}
+		})
+	}
+}
+
+func TestOversizedIntentWritesNoJournal(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "record")
+	i := intent()
+	i.Binding = string(bytes.Repeat([]byte("x"), int(EventLimit)))
+	if w, e := Create(p, i); e == nil {
+		w.Close()
+		t.Fatal("oversized intent accepted")
+	}
+	if _, e := os.Stat(p); !os.IsNotExist(e) {
+		t.Fatal("oversized intent left persistent journal")
+	}
+}
+func TestReadReportsLockCleanupFailure(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "record")
+	w, e := Create(p, intent())
+	if e != nil {
+		t.Fatal(e)
+	}
+	os.WriteFile(filepath.Join(w.lock, "obstruction"), []byte("x"), 0600)
+	if _, e = readLocked(w); e == nil {
+		t.Fatal("lock cleanup failure hidden")
+	}
+}
+
+func TestNullIntentFieldsWriteNoJournal(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "record")
+	i := intent()
+	i.Destination.CredentialRefs = nil
+	if w, e := Create(p, i); e == nil {
+		w.Close()
+		t.Fatal("null required array accepted")
+	}
+	if _, e := os.Stat(p); !os.IsNotExist(e) {
+		t.Fatal("invalid intent left journal")
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -224,6 +225,9 @@ func ValidateDescription(d delivery.Description) (Options, Identity, error) {
 	fresh, e := (Provider{}).Describe(dn, bn, delivery.Subject{Name: id.Project.Name, Version: id.Project.Version})
 	if e != nil {
 		return o, id, e
+	}
+	if !slices.Equal(d.Capabilities, fresh.Capabilities) || !slices.Equal(d.CredentialRefs, fresh.CredentialRefs) {
+		return o, id, delivery.Fail("invalid_destination", "capabilities or credential references")
 	}
 	if string(fresh.Identity) != string(mustJSON(id)) || string(fresh.Options) != string(mustJSON(o)) {
 		return o, id, delivery.Fail("invalid_destination", "noncanonical description")

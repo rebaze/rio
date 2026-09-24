@@ -139,3 +139,74 @@ func TestVerifyParentPath(t *testing.T) {
 		t.Fatal(op, err)
 	}
 }
+
+func TestVerifyLimitsAndOtherArtifactStructure(t *testing.T) {
+	t.Run("index limit", func(t *testing.T) {
+		ip, _ := verifiedFixture(t)
+		f, e := os.OpenFile(ip, os.O_WRONLY, 0600)
+		if e != nil {
+			t.Fatal(e)
+		}
+		f.Truncate(IndexLimit + 1)
+		f.Close()
+		if _, e = Verify(ip, "application", false); e == nil {
+			t.Fatal("oversized index accepted")
+		}
+	})
+	t.Run("payload limit", func(t *testing.T) {
+		ip, op := verifiedFixture(t)
+		f, e := os.OpenFile(op, os.O_WRONLY, 0600)
+		if e != nil {
+			t.Fatal(e)
+		}
+		f.Truncate(PayloadLimit + 1)
+		f.Close()
+		if _, e = Verify(ip, "application", false); e == nil {
+			t.Fatal("oversized payload accepted")
+		}
+	})
+	t.Run("unselected invalid", func(t *testing.T) {
+		ip, _ := verifiedFixture(t)
+		b, _ := os.ReadFile(ip)
+		var m map[string]any
+		json.Unmarshal(b, &m)
+		a := m["artifacts"].([]any)[0].(map[string]any)
+		clone := map[string]any{}
+		for k, v := range a {
+			clone[k] = v
+		}
+		clone["id"] = "other"
+		delete(clone, "schemaValidated")
+		m["artifacts"] = []any{a, clone}
+		b, _ = json.Marshal(m)
+		os.WriteFile(ip, b, 0600)
+		if _, e := Verify(ip, "application", false); e == nil {
+			t.Fatal("unselected malformed row ignored")
+		}
+	})
+}
+
+func TestVerifyCaseVariantCannotOverrideGate(t *testing.T) {
+	ip, _ := verifiedFixture(t)
+	b, _ := os.ReadFile(ip)
+	b = bytes.Replace(b, []byte(`"gate": "ok"`), []byte(`"gate": "fail", "Gate": "ok"`), 1)
+	os.WriteFile(ip, b, 0600)
+	if _, e := Verify(ip, "application", false); e == nil {
+		t.Fatal("case variant bypassed failed gate")
+	}
+	v, e := Verify(ip, "application", true)
+	if e != nil || v.Source().Gate != "fail" {
+		t.Fatal("case variant replaced contract field", v.Source(), e)
+	}
+}
+
+func TestVerifyCaseVariantCannotPromoteSchemaValidation(t *testing.T) {
+	ip, _ := verifiedFixture(t)
+	b, _ := os.ReadFile(ip)
+	b = bytes.Replace(b, []byte(`"schemaValidated": false`), []byte(`"schemaValidated": false, "SchemaValidated": true`), 1)
+	os.WriteFile(ip, b, 0600)
+	v, e := Verify(ip, "application", false)
+	if e != nil || v.Source().SchemaValidated {
+		t.Fatal("case variant promoted validation", v.Source(), e)
+	}
+}

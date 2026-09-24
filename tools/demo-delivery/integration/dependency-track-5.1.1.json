@@ -4,11 +4,10 @@
   "scenarios": [
     {
       "name": "name-version",
-      "payloadSHA256": "e43146b888e84e2d8d0d4da44f59e7e799846262500e69ee2396f6c13541f8cd",
+      "payloadSHA256": "96613e289e89a68eb9d5e3594f5f2ac664ddf43690010a759823578faafec404",
       "interpretation": "accepted",
       "inventoryVerified": true,
       "activities": [
-        "processing",
         "processing",
         "processing",
         "processing",
@@ -32,14 +31,6 @@
           "httpStatus": 200,
           "response": {
             "token": "\u003cevent-token\u003e"
-          }
-        },
-        {
-          "method": "GET",
-          "path": "/api/v1/event/token/\u003cevent-token\u003e",
-          "httpStatus": 200,
-          "response": {
-            "processing": true
           }
         },
         {
@@ -125,7 +116,7 @@
     },
     {
       "name": "uuid",
-      "payloadSHA256": "70ad7601e8e8074bc8cb9207e723b474eb0abc0c0872729d0c0ce735d59d729b",
+      "payloadSHA256": "34ab1d5bf6a5b2377a8ac0c166e4a0b5ab59fc90e45f7f3406d5ad45f0277c1d",
       "interpretation": "accepted",
       "inventoryVerified": true,
       "activities": [
@@ -263,7 +254,7 @@
     },
     {
       "name": "absent-creation-disabled",
-      "payloadSHA256": "ca82615b2693e6373b92ae13fbe2bf7f8505ab680811407d006e2e823c89fcb0",
+      "payloadSHA256": "61b35611b8ef2de9809a2d2dd353e05f82919733be0b5b01c7b38910953736a5",
       "interpretation": "rejected",
       "requests": [
         {
@@ -282,7 +273,7 @@
     },
     {
       "name": "absent-creation-enabled",
-      "payloadSHA256": "ca82615b2693e6373b92ae13fbe2bf7f8505ab680811407d006e2e823c89fcb0",
+      "payloadSHA256": "61b35611b8ef2de9809a2d2dd353e05f82919733be0b5b01c7b38910953736a5",
       "interpretation": "accepted",
       "inventoryVerified": true,
       "requests": [
@@ -304,7 +295,7 @@
     },
     {
       "name": "denied-permissions",
-      "payloadSHA256": "ca82615b2693e6373b92ae13fbe2bf7f8505ab680811407d006e2e823c89fcb0",
+      "payloadSHA256": "61b35611b8ef2de9809a2d2dd353e05f82919733be0b5b01c7b38910953736a5",
       "interpretation": "rejected",
       "requests": [
         {
@@ -321,7 +312,7 @@
     },
     {
       "name": "invalid-credential",
-      "payloadSHA256": "ca82615b2693e6373b92ae13fbe2bf7f8505ab680811407d006e2e823c89fcb0",
+      "payloadSHA256": "61b35611b8ef2de9809a2d2dd353e05f82919733be0b5b01c7b38910953736a5",
       "interpretation": "rejected",
       "requests": [
         {

@@ -68,3 +68,25 @@ func TestDescribeMissingSubject(t *testing.T) {
 		t.Fatal("missing subject version accepted")
 	}
 }
+
+func TestPersistedDescriptionRejectsInventedCapabilities(t *testing.T) {
+	d, e := (Provider{}).Describe(node(t, "url: https://example.test"), node(t, "project: {name: app, version: '1'}"), delivery.Subject{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	d.Capabilities = append(d.Capabilities, "content-verification")
+	if _, _, e = ValidateDescription(d); e == nil {
+		t.Fatal("invented capability accepted")
+	}
+}
+
+func TestPersistedSubmissionRequiresConsistentReceipt(t *testing.T) {
+	for _, s := range []delivery.Submission{
+		{Disposition: "accepted", References: []delivery.Reference{}, Observations: []delivery.Observation{}},
+		{Disposition: "accepted", References: []delivery.Reference{{Kind: "dependency-track:event-token", Value: token}}, Observations: []delivery.Observation{{Kind: "acknowledgment", Value: "accepted", Origin: "receiver", Code: "accepted", HTTPStatus: 403, References: []delivery.Reference{}}}},
+	} {
+		if e := ValidateSubmission(s); e == nil {
+			t.Fatal("contradictory receipt accepted")
+		}
+	}
+}

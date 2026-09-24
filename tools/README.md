@@ -3,7 +3,8 @@
 Things that support rio without being part of it. Nothing here ships in the binary, nothing here is
 covered by rio's compatibility promises, and rio never calls any of it.
 
-Network-facing helpers live here so **rio makes no network calls** and stays static,
+Supporting network-facing helpers live here. **Normalization and planning stay offline**;
+explicit native delivery/reconciliation may use network clients. Rio stays static,
 `CGO_ENABLED=0`. Offline demos also live here: they exercise the binary with inspectable example
 inputs and remain separate from its runtime.
 

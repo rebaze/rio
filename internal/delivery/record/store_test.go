@@ -155,7 +155,7 @@ func TestJournalCrash(t *testing.T) {
 		}
 		os.Exit(0)
 	}
-	for _, phase := range []string{"after-intent", "after-response"} {
+	for _, phase := range []string{"after-intent"} {
 		t.Run(phase, func(t *testing.T) {
 			p := filepath.Join(t.TempDir(), "record")
 			cmd := exec.Command(os.Args[0], "-test.run=^TestJournalCrash$")

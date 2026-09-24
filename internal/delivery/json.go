@@ -24,7 +24,10 @@ func DecodeJSON(b []byte, out any, strict bool) error {
 	if err = shape(value, reflect.TypeOf(out).Elem(), strict); err != nil {
 		return err
 	}
-	if json.Unmarshal(b, out) != nil {
+	// encoding/json accepts case-insensitive aliases. Bind only exact tagged keys
+	// from the validated tree so additive fields cannot overwrite contract fields.
+	exact, marshalErr := json.Marshal(exactJSONValue(value, reflect.TypeOf(out).Elem()))
+	if marshalErr != nil || json.Unmarshal(exact, out) != nil {
 		return Fail("invalid_json", "field type")
 	}
 	return nil
@@ -149,4 +152,38 @@ func JSONEqual(a, b json.RawMessage) bool {
 		return false
 	}
 	return reflect.DeepEqual(av, bv)
+}
+
+func exactJSONValue(v any, t reflect.Type) any {
+	if t == rawType {
+		return v
+	}
+	if t.Kind() == reflect.Pointer {
+		return exactJSONValue(v, t.Elem())
+	}
+	switch t.Kind() {
+	case reflect.Struct:
+		source := v.(map[string]any)
+		result := map[string]any{}
+		for i := 0; i < t.NumField(); i++ {
+			f := t.Field(i)
+			if !f.IsExported() {
+				continue
+			}
+			key := strings.Split(f.Tag.Get("json"), ",")[0]
+			if item, ok := source[key]; ok {
+				result[key] = exactJSONValue(item, f.Type)
+			}
+		}
+		return result
+	case reflect.Slice:
+		source := v.([]any)
+		result := make([]any, len(source))
+		for i, item := range source {
+			result[i] = exactJSONValue(item, t.Elem())
+		}
+		return result
+	default:
+		return v
+	}
 }

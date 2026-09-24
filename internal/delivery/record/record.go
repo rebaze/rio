@@ -65,7 +65,7 @@ func validateIntent(i Intent) error {
 		}
 	}
 	for _, p := range i.Payloads {
-		if p.Role == "" || p.MediaType == "" || !delivery.ValidDigest(p.SHA256) || !delivery.ValidDigest(p.SourceSHA256) || p.Size < 0 || p.Transformation == "" {
+		if p.Role == "" || p.MediaType == "" || !delivery.ValidDigest(p.SHA256) || !delivery.ValidDigest(p.SourceSHA256) || p.Size < 0 || p.Transformation == "" || p.SourceSHA256 != i.Source.OutputSHA256 || (p.Transformation == "identity" && p.SHA256 != p.SourceSHA256) || (p.Size == 0 && p.SHA256 != delivery.Digest(nil)) {
 			return invalid()
 		}
 	}
@@ -149,6 +149,17 @@ func addEvent(s *Snapshot, e Event) error {
 		}
 		for _, o := range sub.Observations {
 			if validateObservation(o) != nil {
+				return invalid()
+			}
+		}
+		if sub.Disposition != "unknown" {
+			ack := false
+			for _, o := range sub.Observations {
+				if o.Kind == "acknowledgment" && o.Value == sub.Disposition && o.Origin == "receiver" {
+					ack = true
+				}
+			}
+			if !ack {
 				return invalid()
 			}
 		}

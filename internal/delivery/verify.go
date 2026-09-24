@@ -22,7 +22,14 @@ var digestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 func ValidDigest(s string) bool { return digestPattern.MatchString(s) }
 func Digest(b []byte) string    { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
 func ReadBounded(path string, limit int64) ([]byte, error) {
-	f, err := os.Open(path)
+	before, err := os.Stat(path)
+	if err != nil {
+		return nil, Fail("read_failed", "input file")
+	}
+	if !before.Mode().IsRegular() {
+		return nil, Fail("invalid_file", "regular file required")
+	}
+	f, err := openRegular(path)
 	if err != nil {
 		return nil, Fail("read_failed", "input file")
 	}
@@ -105,13 +112,26 @@ func Verify(indexPath, artifactID string, allowFailed bool) (Verified, error) {
 	if json.Unmarshal(bom["bomFormat"], &format) != nil || format != "CycloneDX" {
 		return bad("invalid_sbom", "bomFormat")
 	}
-	var meta struct {
-		Component Subject `json:"component"`
-	}
+	var subject Subject
 	if m, ok := bom["metadata"]; ok {
-		if json.Unmarshal(m, &meta) != nil {
-			return bad("invalid_sbom", "metadata.component")
+		var meta map[string]json.RawMessage
+		if DecodeJSON(m, &meta, false) != nil {
+			return bad("invalid_sbom", "metadata")
+		}
+		if component, ok := meta["component"]; ok {
+			var fields map[string]json.RawMessage
+			if DecodeJSON(component, &fields, false) != nil {
+				return bad("invalid_sbom", "metadata.component")
+			}
+			for key, dst := range map[string]*string{"name": &subject.Name, "version": &subject.Version} {
+				if raw, ok := fields[key]; ok {
+					if DecodeJSON(raw, dst, false) != nil {
+						return bad("invalid_sbom", "metadata.component subject field")
+					}
+				}
+			}
 		}
 	}
-	return Verified{source: Source{Digest(b), a.ID, a.Output.SHA256, string(a.Gate), a.SchemaValidated, allowFailed}, subject: meta.Component, payloads: []Payload{{ref: PayloadRef{"sbom", "application/vnd.cyclonedx+json", a.Output.SHA256, int64(len(payload)), a.Output.SHA256, "identity"}, data: payload}}}, nil
+
+	return Verified{source: Source{Digest(b), a.ID, a.Output.SHA256, string(a.Gate), a.SchemaValidated, allowFailed}, subject: subject, payloads: []Payload{{ref: PayloadRef{"sbom", "application/vnd.cyclonedx+json", a.Output.SHA256, int64(len(payload)), a.Output.SHA256, "identity"}, data: payload}}}, nil
 }

@@ -22,7 +22,8 @@ import (
 const token = "f90934f5-cb88-47ce-81cb-db06fc67d4b4"
 const canary = "synthetic-api-key-DO-NOT-LOG"
 
-func payload(t testing.TB) delivery.Verified {
+func payload(t testing.TB) delivery.Verified { v, _ := payloadFixture(t); return v }
+func payloadFixture(t testing.TB) (delivery.Verified, string) {
 	t.Helper()
 	dir := t.TempDir()
 	b, e := os.ReadFile("../testdata/bom.json")
@@ -39,7 +40,7 @@ func payload(t testing.TB) delivery.Verified {
 	if e != nil {
 		t.Fatal(e)
 	}
-	return v
+	return v, filepath.Join(dir, "bom.json")
 }
 func targetFor(t *testing.T, s *httptest.Server, binding string, trust bool) delivery.Target {
 	t.Helper()
@@ -66,7 +67,8 @@ func targetFor(t *testing.T, s *httptest.Server, binding string, trust bool) del
 func TestSubmitExactMultipart(t *testing.T) {
 	for _, binding := range []string{"project: {name: '@literal', version: '<1'}", "project: {uuid: " + token + "}", "project: {fromSubject: true}\nautoCreate: true"} {
 		t.Run(binding, func(t *testing.T) {
-			v := payload(t)
+			v, sourcePath := payloadFixture(t)
+			os.WriteFile(sourcePath, []byte(`{"replaced":true}`), 0600)
 			var calls atomic.Int32
 			s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
@@ -215,5 +217,18 @@ func TestSubmitCancellationAndCardinality(t *testing.T) {
 	}
 	if calls.Load() != 0 {
 		t.Fatal("request on preflight refusal")
+	}
+}
+
+func TestReceiptCaseVariantCannotOverrideToken(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"token":"invalid","Token":"`+token+`"}`)
+	}))
+	defer s.Close()
+	sub, _ := targetFor(t, s, "project: {name: app, version: '1'}", false).Submit(context.Background(), payload(t).Payloads())
+	if sub.Disposition != "unknown" {
+		t.Fatal("case variant fabricated receipt", sub)
 	}
 }

@@ -95,12 +95,81 @@ func ValidateEvidence(refs []delivery.Reference, observations []delivery.Observa
 				return delivery.Fail("invalid_record", "Dependency-Track details")
 			}
 		}
+		if o.Kind == "activity" && (o.Origin != "receiver" || o.HTTPStatus != 200 || o.Code != "activity_observed" || (o.Value != "processing" && o.Value != "not-observed") || len(o.References) != 0) {
+			return delivery.Fail("invalid_record", "Dependency-Track activity")
+		}
+		if o.Kind == "unavailable" {
+			valid := false
+			switch o.Code {
+			case "transport_unavailable", "missing_reference":
+				valid = o.Origin == "local" && o.HTTPStatus == 0
+			case "query_transient":
+				valid = o.Origin == "receiver" && (o.HTTPStatus == 429 || o.HTTPStatus >= 500)
+			case "query_rejected":
+				valid = o.Origin == "receiver" && o.HTTPStatus != 200 && o.HTTPStatus != 429 && o.HTTPStatus < 500
+			case "invalid_response":
+				valid = o.Origin == "receiver" && o.HTTPStatus == 200
+			}
+			if !valid || o.Value != "unavailable" || len(o.References) != 0 {
+				return delivery.Fail("invalid_record", "Dependency-Track unavailable observation")
+			}
+		}
 		if o.Kind == "content" {
 			return delivery.Fail("invalid_record", "unsupported content observation")
 		}
 		if e := ValidateEvidence(o.References, nil); e != nil {
 			return e
 		}
+	}
+	return nil
+}
+
+// ValidateSubmission binds saved disposition to the evidence this adapter can produce.
+func ValidateSubmission(sub delivery.Submission) error {
+	bad := func() error { return delivery.Fail("invalid_record", "inconsistent Dependency-Track submission") }
+	if err := ValidateEvidence(sub.References, sub.Observations); err != nil {
+		return err
+	}
+	if len(sub.Observations) != 1 {
+		return bad()
+	}
+	o := sub.Observations[0]
+	switch sub.Disposition {
+	case "accepted":
+		if len(sub.References) != 1 || o.Kind != "acknowledgment" || o.Value != "accepted" || o.Origin != "receiver" || o.Code != "accepted" || o.HTTPStatus != 200 || len(o.References) != 1 || o.References[0] != sub.References[0] {
+			return bad()
+		}
+	case "rejected":
+		if len(sub.References) != 0 || o.Kind != "acknowledgment" || o.Value != "rejected" || o.Origin != "receiver" || o.Code != "upload_rejected" || len(o.References) != 0 {
+			return bad()
+		}
+		switch o.HTTPStatus {
+		case 400, 401, 403, 404, 413, 415, 422:
+		default:
+			return bad()
+		}
+	case "unknown":
+		if len(sub.References) != 0 || len(o.References) != 0 {
+			return bad()
+		}
+		if o.Kind == "unavailable" {
+			if o.Code != "transport_unavailable" || o.Origin != "local" || o.HTTPStatus != 0 {
+				return bad()
+			}
+		} else {
+			if o.Kind != "acknowledgment" || o.Value != "unknown" || o.Origin != "receiver" {
+				return bad()
+			}
+			if o.Code == "invalid_receipt" {
+				if o.HTTPStatus != 200 {
+					return bad()
+				}
+			} else if o.Code != "unexpected_status" {
+				return bad()
+			}
+		}
+	default:
+		return bad()
 	}
 	return nil
 }

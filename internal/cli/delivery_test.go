@@ -241,3 +241,92 @@ func TestNormalizeAndPlanIgnoreDeliveryCredentials(t *testing.T) {
 		}
 	}
 }
+
+func TestDeliveryPersistenceFailureReportsAcceptance(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "journal")
+	calls := 0
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		io.Copy(io.Discard, r.Body)
+		os.Mkdir(filepath.Join(p, "unexpected"), 0700)
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"token":"f90934f5-cb88-47ce-81cb-db06fc67d4b4"}`)
+	}))
+	defer s.Close()
+	ip, cfg := deliveryFixture(t, s.URL)
+	t.Setenv("DTRACK_API_KEY", "synthetic-key")
+	code, r, _ := deliveryRun(t, "deliver", "--index", ip, "--config", cfg, "--delivery", "app-security", "--record", p)
+	if code != 3 || r["outcome"] != "accepted" || r["persisted"] != false || r["requestMayHaveOccurred"] != true || calls != 1 {
+		t.Fatal(code, r, calls)
+	}
+}
+
+func TestHumanDeliveryPlanShowsVerifiedFacts(t *testing.T) {
+	ip, cfg := deliveryFixture(t, "https://example.test")
+	var out, stderr bytes.Buffer
+	code := Main([]string{"delivery", "plan", "--index", ip, "--config", cfg, "--delivery", "app-security"}, &out, &stderr)
+	text := out.String() + stderr.String()
+	if code != 0 {
+		t.Fatal(code, text)
+	}
+	for _, fact := range []string{"https://example.test", "schemaValidated=false", "gate=ok", "sha256=", "submit", "observe-activity"} {
+		if !strings.Contains(text, fact) {
+			t.Errorf("human output missing %s: %s", fact, text)
+		}
+	}
+}
+
+func TestPreflightUsesOneConfigurationSnapshot(t *testing.T) {
+	ip, cfg := deliveryFixture(t, "https://original.example")
+	c, e := delivery.LoadConfig(cfg)
+	if e != nil {
+		t.Fatal(e)
+	}
+	b, _ := os.ReadFile(cfg)
+	b = bytes.ReplaceAll(b, []byte("original.example"), []byte("replacement.example"))
+	b = bytes.ReplaceAll(b, []byte("artifact: app"), []byte("artifact: other"))
+	os.WriteFile(cfg, b, 0600)
+	_, v, d, _, e := preflightLoaded(c, deliveryOptions{index: ip, config: cfg, binding: "app-security"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if v.Source().ArtifactID != "app" || !strings.Contains(string(d.Identity), "original.example") {
+		t.Fatal("mixed config snapshots", v.Source(), string(d.Identity))
+	}
+}
+
+func TestHumanInspectSeparatesEvidenceAndReportsTemps(t *testing.T) {
+	ip, cfg := deliveryFixture(t, "https://example.test")
+	c, v, d, _, e := preflight(deliveryOptions{index: ip, config: cfg, binding: "app-security", allowFailed: true})
+	if e != nil {
+		t.Fatal(e)
+	}
+	p := filepath.Join(t.TempDir(), "record")
+	w, e := record.Create(p, record.Intent{RioVersion: "test", Source: v.Source(), Payloads: []delivery.PayloadRef{v.Payloads()[0].Ref()}, Binding: "app-security", Destination: d, ConfigSHA256: c.SHA256})
+	if e != nil {
+		t.Fatal(e)
+	}
+	refs := []delivery.Reference{{Kind: "dependency-track:event-token", Value: "f90934f5-cb88-47ce-81cb-db06fc67d4b4"}}
+	sub := delivery.Submission{Disposition: "accepted", References: refs, Observations: []delivery.Observation{{Kind: "acknowledgment", Value: "accepted", Origin: "receiver", Code: "accepted", HTTPStatus: 200, References: refs}}}
+	b, _ := json.Marshal(sub)
+	if e = w.Append("submission", b); e != nil {
+		t.Fatal(e)
+	}
+	b, _ = json.Marshal(record.Reconciliation{ConfigSHA256: c.SHA256, Observation: delivery.Observation{Kind: "activity", Value: "not-observed", Origin: "receiver", Code: "activity_observed", HTTPStatus: 200, References: []delivery.Reference{}}})
+	if e = w.Append("reconciliation", b); e != nil {
+		t.Fatal(e)
+	}
+	w.Close()
+	os.WriteFile(filepath.Join(p, ".event-orphan.tmp"), []byte("uncommitted"), 0600)
+	var out, stderr bytes.Buffer
+	code := Main([]string{"delivery", "inspect", "--record", p}, &out, &stderr)
+	text := out.String() + stderr.String()
+	if code != 0 {
+		t.Fatal(code, text)
+	}
+	for _, fact := range []string{"acknowledgment: accepted", "activity: no processing observed", "schemaValidated=false", "allowFailedGate=true", "orphan temporary files ignored: 1"} {
+		if !strings.Contains(text, fact) {
+			t.Errorf("missing %s: %s", fact, text)
+		}
+	}
+}

@@ -54,6 +54,23 @@ func create(path string, i Intent, setup func(*Writer)) (*Writer, error) {
 	if validateIntent(i) != nil {
 		return nil, invalid()
 	}
+	// Bound the exact worst-length event envelope before persistent directory creation.
+	data, err := json.Marshal(i)
+	if err != nil {
+		return nil, invalid()
+	}
+	var checked Intent
+	if delivery.DecodeJSON(data, &checked, true) != nil {
+		return nil, invalid()
+	}
+	preview := Event{1, 0, strings.Repeat("0", 32), "2000-01-01T00:00:00.123456789Z", "intent", data}
+	encoded, err := json.MarshalIndent(preview, "", "  ")
+	if err != nil {
+		return nil, invalid()
+	}
+	if int64(len(encoded)+1) > EventLimit {
+		return nil, delivery.Fail("size_limit", "maximum event bytes")
+	}
 	w, e := acquire(path)
 	if e != nil {
 		return nil, e
@@ -99,8 +116,7 @@ func Read(path string) (Snapshot, error) {
 	if e != nil {
 		return Snapshot{}, e
 	}
-	defer w.Close()
-	return w.Snapshot()
+	return readLocked(w)
 }
 func (w *Writer) Close() error {
 	if w.closed {
@@ -237,4 +253,13 @@ func (w *Writer) Append(kind string, data json.RawMessage) error {
 		return failed()
 	}
 	return nil
+}
+
+func readLocked(w *Writer) (s Snapshot, err error) {
+	defer func() {
+		if e := w.Close(); e != nil {
+			err = e
+		}
+	}()
+	return w.Snapshot()
 }

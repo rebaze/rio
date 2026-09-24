@@ -32,6 +32,10 @@ func describeConfig(path, binding string, subject delivery.Subject) (delivery.Co
 	if e != nil {
 		return c, delivery.Binding{}, delivery.Description{}, nil, e
 	}
+	return describeLoaded(c, binding, subject)
+}
+func describeLoaded(c delivery.Config, binding string, subject delivery.Subject) (delivery.Config, delivery.Binding, delivery.Description, delivery.Provider, error) {
+	var e error
 	registry := providers(c.Directory)
 	// Validate even unused destinations/bindings, without secrets, CA reads or network.
 	for _, dest := range c.Destinations {
@@ -66,6 +70,9 @@ func preflight(o deliveryOptions) (delivery.Config, delivery.Verified, delivery.
 	if e != nil {
 		return c, delivery.Verified{}, delivery.Description{}, nil, e
 	}
+	return preflightLoaded(c, o)
+}
+func preflightLoaded(c delivery.Config, o deliveryOptions) (delivery.Config, delivery.Verified, delivery.Description, delivery.Provider, error) {
 	b, ok := c.Deliveries[o.binding]
 	if !ok {
 		return c, delivery.Verified{}, delivery.Description{}, nil, delivery.Fail("binding_missing", "selected delivery")
@@ -74,12 +81,23 @@ func preflight(o deliveryOptions) (delivery.Config, delivery.Verified, delivery.
 	if e != nil {
 		return c, v, delivery.Description{}, nil, e
 	}
-	c, _, d, p, e := describeConfig(o.config, o.binding, v.Subject())
+	c, _, d, p, e := describeLoaded(c, o.binding, v.Subject())
 	return c, v, d, p, e
 }
 func validateSnapshot(s record.Snapshot) error {
 	if _, _, e := dtrack.ValidateDescription(s.Intent.Destination); e != nil {
 		return e
+	}
+	for _, event := range s.Events {
+		if event.Kind == "submission" {
+			var sub delivery.Submission
+			if e := delivery.DecodeJSON(event.Data, &sub, true); e != nil {
+				return e
+			}
+			if e := dtrack.ValidateSubmission(sub); e != nil {
+				return e
+			}
+		}
 	}
 	return dtrack.ValidateEvidence(s.References, s.Observations)
 }
@@ -126,6 +144,25 @@ func deliveryFinish(r runner.Result, e error, o deliveryOptions, global *globalO
 			fmt.Fprintf(stderr, " (attempt %s)", r.AttemptID)
 		}
 		fmt.Fprintln(stderr)
+		if r.Source != nil {
+			fmt.Fprintf(stderr, "artifact=%s gate=%s schemaValidated=%t allowFailedGate=%t sha256=%s\n", r.Source.ArtifactID, r.Source.Gate, r.Source.SchemaValidated, r.Source.AllowFailedGate, r.Source.OutputSHA256)
+		}
+		if r.Destination != nil {
+			fmt.Fprintf(stderr, "destination=%s type=%s target=%s capabilities=%v credentialRefs=%v\n", r.Destination.DestinationName, r.Destination.Type, r.Destination.Identity, r.Destination.Capabilities, r.Destination.CredentialRefs)
+		}
+		if r.Acknowledgment != "" {
+			fmt.Fprintf(stderr, "acknowledgment: %s\n", r.Acknowledgment)
+		}
+		if r.Activity != "" {
+			activity := r.Activity
+			if activity == "not-observed" {
+				activity = "no processing observed"
+			}
+			fmt.Fprintf(stderr, "activity: %s\n", activity)
+		}
+		if r.Journal != nil && len(r.Journal.OrphanTemps) > 0 {
+			fmt.Fprintf(stderr, "orphan temporary files ignored: %d\n", len(r.Journal.OrphanTemps))
+		}
 		if r.RequestMayHaveOccurred && r.ExitCode == 3 {
 			fmt.Fprintln(stderr, "A request may already have occurred; remote evidence was not durably recorded. Do not automatically resubmit.")
 		}
