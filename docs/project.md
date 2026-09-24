@@ -64,3 +64,9 @@ is the historical v1 implementation specification; current behavior is documente
 
 [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/rebaze/rio) ·
 [Go module](../go.mod)
+
+`rio record` and `rio record inspect` are offline. Collection selects an index and explicit delivery
+journals, without loading rio.yaml or SBOM files. Inspection needs only the exported file. Both
+preserve supplied producer claims and clearly distinguish internal evidence consistency from
+identity authentication, ingestion, signing or full build-file retention. See the
+[record contract](output.md#consolidated-recordjson-v1).

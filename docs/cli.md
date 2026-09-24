@@ -216,3 +216,48 @@ stop at failure and never roll back. Default journals live below the index direc
 `deliveries/<pair-key>/`; unchanged reruns refuse existing journals. Explicit `--record` requires
 one pair; `--retry-of` additionally requires an explicit fresh record path. See the
 [configuration, recovery and demo guide](../tools/README.md#native-verified-delivery).
+
+## Record collection and inspection
+
+```sh
+rio record --index target/rio/index.json \
+  --delivery-record target/security-attempt \
+  --delivery-record target/security-retry --output record.json --json
+rio record inspect --file record.json --json
+```
+
+Collection is offline and explicit. `--index` defaults to `target/rio/index.json`; `--output`
+defaults to `record.json`. Paths are relative to the calling directory. `--delivery-record` is
+optional and repeatable; commas are literal path characters. Output is a new file in an existing
+parent, with no overwrite/force/auto-numbering option. `inspect --file` is required and reads only
+that file. Both commands reject positional arguments and explicitly inherited `--manifest` or
+`--out`. There are no upload or gate-override flags: recording a failed gate is always permitted.
+
+Without `--json`, stdout is empty and concise recorded-fact summaries go to stderr. `--quiet`
+suppresses summaries, but never requested JSON or errors. With `--json`, one result object appears
+on stdout for success or handled failure; Cobra syntax errors may be stderr-only. Export writes
+the document to the output file. Inspection includes it in the JSON result.
+
+| Field | Result envelope v1 |
+| --- | --- |
+| `schemaVersion` | `1` |
+| `operation` | `record` or `record-inspect` |
+| `outcome` | `written`, `valid`, or `error` |
+| `output` | `{path, sha256, size}`, successful export only |
+| `outputMayExist` | true after final publication, including later failures; false for inspection |
+| `counts` | `{artifacts, deliveries}` when available |
+| `record` | validated document on successful `inspect --json` only |
+| `error` | `{code, message}` on handled failure; no source snippets or credential values |
+
+| Exit | Meaning |
+| --- | --- |
+| 0 | selected evidence exported or record internally consistent, including recorded failed gates/rejection/unknown outcomes |
+| 2 | invalid arguments/source/schema/link, missing requested input, unsupported version/adapter, limit exceeded, existing output or busy lock; no persistent output change |
+| 3 | local output/persistence/lock-cleanup failure; check `outputMayExist` before retrying |
+
+No gate/delivery exits 1/4/5 arise merely from recorded facts. A valid consistency check does not
+authenticate the producer or verify external SBOM bytes/ingestion. Check earlier normalization and
+delivery exits yourself: collecting an old index does not prove a new normalization completed.
+Use a fresh output path after observations change; no automatic collection runs during normalize,
+deliver or reconcile. See [record schema and scope](output.md#consolidated-recordjson-v1) and the
+[installed-binary walkthrough](../tools/README.md#consolidated-record-demo).

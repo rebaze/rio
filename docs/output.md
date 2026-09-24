@@ -162,3 +162,88 @@ rio does not sign statements or make network calls. An unsigned statement record
 is not cryptographic proof of who made it. Signing and verification belong to the surrounding
 pipeline. A signature can authenticate a statement without proving its assertions true; see
 [the planned signing tools](../tools/README.md#signing-and-verifying-normalization-attestations).
+
+## Consolidated record.json v1
+
+`rio record` writes one record of current evidence. It captures the complete normalization index
+and only the delivery journals explicitly selected with `--delivery-record`. Existing index,
+SBOM, statement and journal bytes remain unchanged. `rio record inspect --file record.json`
+checks the file without its original workspace, configuration, SBOM files, credentials or network.
+
+The root has exactly `schemaVersion: 1`, `kind: "rio-evidence-record"`, `tool`, `normalization`,
+`deliveries`, `coverage` and `evidence`. `tool` identifies the collector; the index retains its own
+normalizer version. All fields use lower camel case. Required arrays are always arrays, including
+empty arrays. The encoding is compact JSON, with HTML escaping disabled and a final newline.
+There is no collection timestamp, inferred shared build, worker hostname, Git checkout identity
+or random export ID.
+
+| Section | Contract |
+| --- | --- |
+| `normalization` | `evidenceId: "normalization-index"`, `indexSHA256`, the complete parsed original `index` (including additive fields), and `sbomBytesVerification: "not-performed"` |
+| `deliveries[]` | `attemptId`, `artifactId`, original validated `intent`, all ordered `events`, `journal`, ordered `evidenceIds`, and `summary` |
+| `journal` | `sha256` over concatenated exact committed event bytes, `eventCount`, `lastSequence` |
+| `summary` | `acknowledgment` (`accepted`, `rejected`, or `unknown`); optional `latestActivity` and `lastObservation`, each carrying `sequence`, `observedAt` and the complete `observation` |
+| `evidence[]` | `id`, `kind`, `mediaType: "application/json"`, raw-byte `sha256`, decoded `size`, `encoding: "base64"`, and strict standard-base64 `data` |
+
+Evidence kinds are `normalization-index` and `delivery-event`. The index source ID is
+`normalization-index`; event IDs are `delivery/<attemptId>/<20-digit sequence>`. The exact source
+bytes, including original whitespace, are retained separately from readable JSON. Reformatting
+readable objects is harmless; editing meaningful facts is refused unless the embedded evidence
+supports them. Numbers are compared losslessly, including integers above 2^53.
+
+Deliveries sort by artifact ID, then attempt ID. Evidence starts with the index and follows that
+same delivery/event order. The index's artifact order is preserved. Coverage ID arrays are sorted.
+Identical source bytes, collector version and collector notes produce identical output regardless
+of argument order or source relocation. Each journal is captured under its own lock: this is not a
+single global transactional instant. Later observations require a new snapshot at a new path.
+
+Every selected attempt joins the exact raw index digest, artifact, output/payload digests, gate and
+schema-validation facts. The inspector replays shared journal validation and offline adapter checks,
+reconstructs readable facts and compares them. Failed gates, rejected submissions, intent-only
+unknown histories and unavailable observations are valid evidence. Last activity and last query
+are separate, selected by event sequence rather than wall-clock timestamps. `processing:false`
+does not establish ingestion, vulnerability analysis or content retention.
+
+Retries retain their original references. When the prior attempt is selected, its recorded digest
+must match a valid committed prefix, so later reconciliation of that prior journal remains valid.
+Source, effective target and declared policies must agree; credential/CA reference rotation is
+permitted. A missing selected ancestor remains visible without following its historical path hint.
+Self-links, cycles, duplicate attempts (including copies/aliases) and mismatched sources refuse.
+
+`coverage` always states:
+
+- `deliverySelection: "explicit"` and `selectedDeliveryCount`.
+- `artifactIdsWithoutSelectedDeliveries` and `retryAttemptIdsNotIncluded`.
+- `sbomFiles`, `normalizationInputs`, `normalizationStatements`, `signatures`: `"not-included"`.
+- `workerIdentity: "not-recorded"`, `authenticatedProducerIdentity: "not-established"`.
+- `collectionNotes`: optional entries with `code: "orphan-temporary-files"`, `attemptId`, `count`
+  and `assertion: "collector"`. These are checked collector claims about ignored uncommitted entries;
+  the inspector does not independently establish their historical presence. Temp contents/names
+  are not included.
+
+Zero selected journals means no delivery evidence was selected; it does not establish that no
+upload occurred. Supplied per-artifact source/build claims retain producer assertion status;
+missing context remains absent. Existing `.intoto.json` statements are not collected in v1.
+The record is unsigned: someone can replace both source bytes and hashes consistently. Passing
+inspection establishes internal consistency, not authenticity or tamper-proofness, and does not
+rehash external SBOM bytes. Full input/mapping/SBOM retention and reproduction (#46), signing
+(#14), and OCI evidence (#83) are separate milestones. This file is intended for the same audience
+as its source records: supplied metadata and internal names/URLs are preserved faithfully, without
+reading or adding environment/credential values.
+
+### Record limits and publication
+
+Limits are 16 MiB raw index, 1 MiB per event, 10,000 events per journal and across the entire selected
+set, 256 selected journals, 32 MiB total raw sources, 128 MiB serialized record, and 20,000 directory
+entries per captured journal including ignored temps. Limits refuse; they never truncate evidence.
+
+The existing parent directory is required. An existing output file, directory or symlink refuses,
+as do source/index/journal/output-lock collisions. Rio finishes capture, validation and bounded
+serialization before creating output. A canonical sibling `<output>.lock` directory coordinates
+exporters; existing locks are never automatically broken. Rio writes a unique mode-0600 temporary
+file, syncs/closes it, publishes with a same-directory hard link that cannot replace an existing
+name, syncs the directory where supported, and reads/validates the published bytes. Filesystems
+without hard-link support fail safely. Ordinary exits remove owned temp/lock entries; cleanup
+failure is an execution failure. A final file is never deleted merely because later sync/readback
+fails. Windows has no directory fsync through `os.File`; do not infer universal power-loss
+protection. Inspect a possibly published file before retrying at a new path.
