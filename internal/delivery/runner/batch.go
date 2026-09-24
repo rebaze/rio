@@ -1,0 +1,92 @@
+package runner
+
+import (
+	"context"
+	"errors"
+	"github.com/rebaze/rio/internal/delivery"
+	"github.com/rebaze/rio/internal/delivery/record"
+)
+
+type BatchItem struct {
+	ArtifactID  string               `json:"artifactId"`
+	Target      string               `json:"target"`
+	Record      string               `json:"record"`
+	State       string               `json:"state"`
+	Source      delivery.Source      `json:"source"`
+	Destination delivery.Description `json:"destination"`
+	Result      *Result              `json:"result,omitempty"`
+	Error       *delivery.Error      `json:"error,omitempty"`
+}
+type BatchResult struct {
+	SchemaVersion          int                   `json:"schemaVersion"`
+	Operation              string                `json:"operation"`
+	Outcome                string                `json:"outcome"`
+	IndexSHA256            string                `json:"indexSHA256,omitempty"`
+	ManifestSHA256         string                `json:"manifestSHA256,omitempty"`
+	RequestMayHaveOccurred bool                  `json:"requestMayHaveOccurred"`
+	Items                  []BatchItem           `json:"items"`
+	UnusedRules            []delivery.UnusedRule `json:"unusedRules"`
+	Error                  *delivery.Error       `json:"error,omitempty"`
+	ExitCode               int                   `json:"-"`
+}
+
+func NewBatch(operation string, plan delivery.BatchPlan) BatchResult {
+	r := BatchResult{SchemaVersion: 2, Operation: operation, Outcome: "error", IndexSHA256: plan.IndexSHA256, ManifestSHA256: plan.ManifestSHA256, Items: []BatchItem{}, UnusedRules: plan.UnusedRules}
+	if r.UnusedRules == nil {
+		r.UnusedRules = []delivery.UnusedRule{}
+	}
+	for _, j := range plan.Jobs {
+		state := "unattempted"
+		if operation == "plan" {
+			state = "ready"
+		}
+		r.Items = append(r.Items, BatchItem{ArtifactID: j.ArtifactID, Target: j.Target, Record: j.Record, State: state, Source: j.Verified.Source(), Destination: j.Description})
+	}
+	return r
+}
+func BatchFailure(r BatchResult, e error, code int) (BatchResult, error) {
+	var safe *delivery.Error
+	if !errors.As(e, &safe) {
+		safe = &delivery.Error{Code: "execution_failed", Message: "operation failed"}
+	}
+	r.Error = safe
+	r.ExitCode = code
+	return r, safe
+}
+
+// SubmitBatch owns all reservations and releases the unattempted suffix before return.
+func SubmitBatch(ctx context.Context, r BatchResult, prepared []Prepared, reservations []*record.Reservation) (result BatchResult, err error) {
+	result = r
+	defer func() {
+		for _, res := range reservations {
+			if e := res.Close(); e != nil {
+				result, err = BatchFailure(result, e, 3)
+			}
+		}
+	}()
+	accepted := 0
+	for i, p := range prepared {
+		p.Reservation = reservations[i]
+		one, e := Submit(ctx, p, result.Items[i].Record)
+		item := &result.Items[i]
+		item.Result = &one
+		item.State = one.Outcome
+		item.Error = one.Error
+		result.RequestMayHaveOccurred = result.RequestMayHaveOccurred || one.RequestMayHaveOccurred
+		if e != nil {
+			if !one.RequestMayHaveOccurred {
+				item.State = "error"
+			}
+			result.Outcome = item.State
+			if accepted > 0 {
+				result.Outcome = "partial"
+			} else if one.ExitCode == 3 {
+				result.Outcome = "error"
+			}
+			return BatchFailure(result, e, one.ExitCode)
+		}
+		accepted++
+	}
+	result.Outcome = "accepted"
+	return result, nil
+}

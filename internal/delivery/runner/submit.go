@@ -14,6 +14,7 @@ type Prepared struct {
 	Description delivery.Description
 	Intent      record.Intent
 	Target      delivery.Target
+	Reservation *record.Reservation
 }
 type Result struct {
 	SchemaVersion          int                    `json:"schemaVersion"`
@@ -83,7 +84,13 @@ func Submit(ctx context.Context, p Prepared, path string) (r Result, err error) 
 	for _, payload := range p.Verified.Payloads() {
 		intent.Payloads = append(intent.Payloads, payload.Ref())
 	}
-	w, e := record.Create(path, intent)
+	var w *record.Writer
+	var e error
+	if p.Reservation != nil {
+		w, e = p.Reservation.Create(intent)
+	} else {
+		w, e = record.Create(path, intent)
+	}
 	if e != nil {
 		return Failure(r, e, PreflightCode(e))
 	}

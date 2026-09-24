@@ -1,29 +1,15 @@
 package delivery
 
 import (
-	"bytes"
 	"gopkg.in/yaml.v3"
-	"io"
-	"path/filepath"
 	"regexp"
 	"strings"
 )
 
 type Config struct {
-	Targets      map[string]TargetConfig
-	Directory    string
-	SHA256       string
-	Destinations map[string]Destination
-	Deliveries   map[string]Binding
-}
-type Destination struct {
-	Type    string
-	Options yaml.Node
-}
-type Binding struct {
-	Artifact    string
-	Destination string
-	Options     yaml.Node
+	Directory string
+	SHA256    string
+	Targets   map[string]TargetConfig
 }
 
 // YAMLMap rejects aliases, merge keys, duplicate/non-string keys and unknown keys.
@@ -68,84 +54,6 @@ func YAMLBool(n yaml.Node, field string) (bool, error) {
 		return false, Fail("invalid_config", field)
 	}
 	return b, nil
-}
-func LoadConfig(path string) (Config, error) {
-	var c Config
-	b, e := ReadBounded(path, ConfigLimit)
-	if e != nil {
-		return c, e
-	}
-	d := yaml.NewDecoder(bytes.NewReader(b))
-	var n yaml.Node
-	if d.Decode(&n) != nil || len(n.Content) != 1 {
-		return c, Fail("invalid_config", "YAML document")
-	}
-	var extra yaml.Node
-	if d.Decode(&extra) != io.EOF {
-		return c, Fail("invalid_config", "extra YAML document")
-	}
-	root, e := YAMLMap(*n.Content[0], "version", "destinations", "deliveries")
-	if e != nil {
-		return c, e
-	}
-	v := root["version"]
-	if v.Tag != "!!int" || v.Value != "1" {
-		return c, Fail("unsupported_version", "config.version")
-	}
-	ds, e := YAMLMap(root["destinations"])
-	if e != nil {
-		return c, e
-	}
-	bs, e := YAMLMap(root["deliveries"])
-	if e != nil {
-		return c, e
-	}
-	if len(ds) == 0 || len(bs) == 0 {
-		return c, Fail("invalid_config", "empty destinations or deliveries")
-	}
-	c.Directory, e = filepath.Abs(filepath.Dir(path))
-	if e != nil {
-		return Config{}, Fail("invalid_config", "config directory")
-	}
-	c.SHA256 = Digest(b)
-	c.Destinations = map[string]Destination{}
-	c.Deliveries = map[string]Binding{}
-	for name, n := range ds {
-		m, e := YAMLMap(n, "type", "options")
-		if e != nil {
-			return Config{}, e
-		}
-		typ, e := YAMLString(m["type"], "destination.type")
-		if e != nil {
-			return Config{}, e
-		}
-		if _, e = YAMLMap(m["options"]); e != nil {
-			return Config{}, e
-		}
-		c.Destinations[name] = Destination{typ, m["options"]}
-	}
-	for name, n := range bs {
-		m, e := YAMLMap(n, "artifact", "destination", "options")
-		if e != nil {
-			return Config{}, e
-		}
-		a, e := YAMLString(m["artifact"], "delivery.artifact")
-		if e != nil {
-			return Config{}, e
-		}
-		dest, e := YAMLString(m["destination"], "delivery.destination")
-		if e != nil {
-			return Config{}, e
-		}
-		if _, ok := c.Destinations[dest]; !ok {
-			return Config{}, Fail("invalid_config", "unknown destination reference")
-		}
-		if _, e = YAMLMap(m["options"]); e != nil {
-			return Config{}, e
-		}
-		c.Deliveries[name] = Binding{a, dest, m["options"]}
-	}
-	return c, nil
 }
 
 // TargetConfig holds a flat declaration; no credentials or files are resolved here.

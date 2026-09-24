@@ -7,15 +7,17 @@ import (
 	"github.com/rebaze/rio/internal/delivery/dtrack"
 	"github.com/rebaze/rio/internal/delivery/record"
 	"github.com/rebaze/rio/internal/delivery/runner"
+	"github.com/rebaze/rio/internal/manifest"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 	"io"
 	"os"
 )
 
 type deliveryOptions struct {
-	index, config, binding, record, retry string
-	allowFailed, json                     bool
+	index, record, retry        string
+	legacyConfig, legacyBinding string
+	artifacts, targets          []string
+	allowFailed, json           bool
 }
 
 // These seams let tests prove that offline commands never resolve secrets/build clients.
@@ -27,62 +29,20 @@ var deliveryBuild = func(p delivery.Provider, d delivery.Description) (delivery.
 func providers(dir string) map[string]delivery.Provider {
 	return map[string]delivery.Provider{"dependency-track": dtrack.Provider{Directory: dir}}
 }
-func describeConfig(path, binding string, subject delivery.Subject) (delivery.Config, delivery.Binding, delivery.Description, delivery.Provider, error) {
-	c, e := delivery.LoadConfig(path)
+func loadDeliveryConfig(path string) (delivery.Config, error) {
+	m, e := manifest.Load(path)
 	if e != nil {
-		return c, delivery.Binding{}, delivery.Description{}, nil, e
+		return delivery.Config{}, delivery.Fail("invalid_manifest", "rio.yaml could not be loaded or validated")
 	}
-	return describeLoaded(c, binding, subject)
+	return delivery.ParseConfig(m.Delivery, m.Dir, m.SHA256)
 }
-func describeLoaded(c delivery.Config, binding string, subject delivery.Subject) (delivery.Config, delivery.Binding, delivery.Description, delivery.Provider, error) {
-	var e error
-	registry := providers(c.Directory)
-	// Validate even unused destinations/bindings, without secrets, CA reads or network.
-	for _, dest := range c.Destinations {
-		p, ok := registry[dest.Type]
-		if !ok {
-			return c, delivery.Binding{}, delivery.Description{}, nil, delivery.Fail("unsupported_adapter", "supported types: dependency-track")
-		}
-		var n yaml.Node
-		n.Encode(map[string]any{"project": map[string]any{"name": "validation", "version": "validation"}})
-		if _, e = p.Describe(dest.Options, n, delivery.Subject{}); e != nil {
-			return c, delivery.Binding{}, delivery.Description{}, nil, e
-		}
-	}
-	for _, b := range c.Deliveries {
-		dest := c.Destinations[b.Destination]
-		if _, e = registry[dest.Type].Describe(dest.Options, b.Options, delivery.Subject{Name: "validation", Version: "validation"}); e != nil {
-			return c, b, delivery.Description{}, nil, e
-		}
-	}
-	b, ok := c.Deliveries[binding]
-	if !ok {
-		return c, b, delivery.Description{}, nil, delivery.Fail("binding_missing", "selected delivery")
-	}
-	dest := c.Destinations[b.Destination]
-	p := registry[dest.Type]
-	d, e := p.Describe(dest.Options, b.Options, subject)
-	d.DestinationName = b.Destination
-	return c, b, d, p, e
-}
-func preflight(o deliveryOptions) (delivery.Config, delivery.Verified, delivery.Description, delivery.Provider, error) {
-	c, e := delivery.LoadConfig(o.config)
+func batchPreflight(path string, o deliveryOptions) (delivery.Config, delivery.BatchPlan, error) {
+	c, e := loadDeliveryConfig(path)
 	if e != nil {
-		return c, delivery.Verified{}, delivery.Description{}, nil, e
+		return c, delivery.BatchPlan{}, e
 	}
-	return preflightLoaded(c, o)
-}
-func preflightLoaded(c delivery.Config, o deliveryOptions) (delivery.Config, delivery.Verified, delivery.Description, delivery.Provider, error) {
-	b, ok := c.Deliveries[o.binding]
-	if !ok {
-		return c, delivery.Verified{}, delivery.Description{}, nil, delivery.Fail("binding_missing", "selected delivery")
-	}
-	v, e := delivery.Verify(o.index, b.Artifact, o.allowFailed)
-	if e != nil {
-		return c, v, delivery.Description{}, nil, e
-	}
-	c, _, d, p, e := describeLoaded(c, o.binding, v.Subject())
-	return c, v, d, p, e
+	plan, e := delivery.PlanBatch(c, o.index, delivery.PlanOptions{Artifacts: o.artifacts, Targets: o.targets, AllowFailedGate: o.allowFailed}, providers(c.Directory))
+	return c, plan, e
 }
 func validateSnapshot(s record.Snapshot) error {
 	if _, _, e := dtrack.ValidateDescription(s.Intent.Destination); e != nil {
@@ -179,22 +139,58 @@ func deliveryFlags(cmd *cobra.Command, o *deliveryOptions, selected, recordFlag 
 	f := cmd.Flags()
 	f.BoolVar(&o.json, "json", false, "print one versioned result, including handled failures")
 	if selected {
-		f.StringVar(&o.index, "index", "target/rio/index.json", "normalization index")
-		f.StringVar(&o.config, "config", "delivery.yaml", "delivery configuration")
-		f.StringVar(&o.binding, "delivery", "", "selected delivery binding")
-		cmd.MarkFlagRequired("delivery")
-		f.BoolVar(&o.allowFailed, "allow-failed-gate", false, "explicitly permit a recorded failed gate; digest checks still apply")
+		f.StringVar(&o.index, "index", "target/rio/index.json", "normalization index, relative to cwd")
+		f.StringArrayVar(&o.targets, "target", nil, "target ID filter (repeatable; default all)")
+		f.StringArrayVar(&o.artifacts, "artifact", nil, "indexed artifact ID filter (repeatable; default all)")
+		f.BoolVar(&o.allowFailed, "allow-failed-gate", false, "explicitly permit recorded failed gates; digest checks still apply")
 	}
 	if recordFlag {
 		f.StringVar(&o.record, "record", "", "delivery journal directory")
-		cmd.MarkFlagRequired("record")
+		if !selected {
+			cmd.MarkFlagRequired("record")
+		}
 	}
+	// Parse retired flags only to issue an actionable migration refusal, never as a loader.
+	f.StringVar(&o.legacyConfig, "config", "", "removed: put targets in rio.yaml and use --manifest")
+	f.MarkHidden("config")
+	f.StringVar(&o.legacyBinding, "delivery", "", "removed: use --target")
+	f.MarkHidden("delivery")
 }
 func rejectDeliveryInherited(cmd *cobra.Command) error {
-	for _, f := range []string{"manifest", "out"} {
-		if cmd.Flags().Changed(f) {
-			return delivery.Fail("invalid_flag", "delivery commands do not accept --"+f)
+	if cmd.Flags().Changed("config") || cmd.Flags().Changed("delivery") {
+		return delivery.Fail("removed_flag", "put delivery.targets in rio.yaml; use --manifest and --target")
+	}
+	if cmd.Flags().Changed("out") {
+		return delivery.Fail("invalid_flag", "delivery does not accept --out; use --index")
+	}
+	if cmd.Name() == "inspect" && cmd.Flags().Changed("manifest") {
+		return delivery.Fail("invalid_flag", "inspect reads only --record; --manifest is irrelevant")
+	}
+	return nil
+}
+func batchFinish(r runner.BatchResult, e error, o deliveryOptions, g *globalOptions, stdout, stderr io.Writer) error {
+	if e != nil && r.Error == nil {
+		r, e = runner.BatchFailure(r, e, runner.PreflightCode(e))
+	}
+	if o.json {
+		if err := json.NewEncoder(stdout).Encode(r); err != nil {
+			return internalErrorf("writing delivery batch result")
 		}
+	}
+	if !g.quiet {
+		fmt.Fprintf(stderr, "%s: %s\n", r.Operation, r.Outcome)
+		for _, item := range r.Items {
+			fmt.Fprintf(stderr, "artifact=%s target=%s project=%s state=%s record=%s gate=%s schemaValidated=%t allowFailedGate=%t sha256=%s capabilities=%v\n", item.ArtifactID, item.Target, item.Destination.Identity, item.State, item.Record, item.Source.Gate, item.Source.SchemaValidated, item.Source.AllowFailedGate, item.Source.OutputSHA256, item.Destination.Capabilities)
+		}
+		for _, rule := range r.UnusedRules {
+			fmt.Fprintf(stderr, "unused %s rule: target=%s artifact=%s\n", rule.Rule, rule.Target, rule.ArtifactID)
+		}
+	}
+	if r.ExitCode != 0 {
+		if e == nil {
+			e = delivery.Fail("delivery_failed", "operation failed")
+		}
+		return &exitError{code: r.ExitCode, err: e}
 	}
 	return nil
 }

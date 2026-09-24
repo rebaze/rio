@@ -15,16 +15,15 @@ func newDeliveryReconcileCommand(g *globalOptions, stdout, stderr io.Writer) *co
 	var wait time.Duration
 	cmd := &cobra.Command{Use: "reconcile", Short: "Observe saved receipt activity; never resubmit or claim ingestion", Args: cobra.NoArgs}
 	deliveryFlags(cmd, &o, false, true)
-	cmd.Flags().StringVar(&o.config, "config", "delivery.yaml", "current delivery configuration")
 	cmd.Flags().DurationVar(&wait, "wait", 0, "poll every 3 seconds, up to 10m; false means no processing observed")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
-		r, e := runDeliveryReconcile(cmd, o, wait)
+		r, e := runDeliveryReconcile(cmd, o, g.manifest, wait)
 		return deliveryFinish(r, e, o, g, stdout, stderr)
 	}
 	return cmd
 }
 
-func runDeliveryReconcile(cmd *cobra.Command, o deliveryOptions, wait time.Duration) (r runner.Result, err error) {
+func runDeliveryReconcile(cmd *cobra.Command, o deliveryOptions, manifestPath string, wait time.Duration) (r runner.Result, err error) {
 	r = runner.NewResult("reconcile", o.record)
 	if e := rejectDeliveryInherited(cmd); e != nil {
 		return r, e
@@ -56,11 +55,19 @@ func runDeliveryReconcile(cmd *cobra.Command, o deliveryOptions, wait time.Durat
 	if e != nil {
 		return r, e
 	}
-	c, b, d, p, e := describeConfig(o.config, s.Intent.Binding, delivery.Subject{Name: id.Project.Name, Version: id.Project.Version})
+	c, e := loadDeliveryConfig(manifestPath)
 	if e != nil {
 		return r, e
 	}
-	if b.Artifact != s.Intent.Source.ArtifactID || !samePolicy(s.Intent.Destination, d, true) {
+	registry := providers(c.Directory)
+	if e := delivery.ValidateConfig(c, registry); e != nil {
+		return r, e
+	}
+	d, p, e := delivery.DescribeTarget(c, s.Intent.Destination.DestinationName, s.Intent.Source.ArtifactID, delivery.Subject{Name: id.Project.Name, Version: id.Project.Version}, registry)
+	if e != nil {
+		return r, e
+	}
+	if d.DestinationName != s.Intent.Destination.DestinationName || !samePolicy(s.Intent.Destination, d, true) {
 		return r, delivery.Fail("destination_drift", "binding artifact, target or policy changed")
 	}
 	target, e := deliveryBuild(p, d)
