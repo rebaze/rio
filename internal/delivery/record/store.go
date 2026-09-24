@@ -49,32 +49,88 @@ func acquire(path string) (*Writer, error) {
 	}
 	return &Writer{path: p, lock: lock, clock: time.Now, random: rand.Reader}, nil
 }
-func Create(path string, i Intent) (*Writer, error) { return create(path, i, nil) }
-func create(path string, i Intent, setup func(*Writer)) (result *Writer, err error) {
-	if validateIntent(i) != nil {
-		return nil, invalid()
-	}
-	// Bound the exact worst-length event envelope before persistent directory creation.
-	data, err := json.Marshal(i)
-	if err != nil {
-		return nil, invalid()
-	}
-	var checked Intent
-	if delivery.DecodeJSON(data, &checked, true) != nil {
-		return nil, invalid()
-	}
-	preview := Event{1, 0, strings.Repeat("0", 32), "2000-01-01T00:00:00.123456789Z", "intent", data}
-	encoded, err := json.MarshalIndent(preview, "", "  ")
-	if err != nil {
-		return nil, invalid()
-	}
-	if int64(len(encoded)+1) > EventLimit {
-		return nil, delivery.Fail("size_limit", "maximum event bytes")
-	}
+
+// Reservation owns a journal's exclusive sibling lock without creating an intent.
+type Reservation struct{ writer *Writer }
+
+func Reserve(path string) (*Reservation, error) { return reserve(path, nil) }
+func reserve(path string, setup func(*Writer)) (r *Reservation, err error) {
 	w, e := acquire(path)
 	if e != nil {
 		return nil, e
 	}
+	defer func() {
+		if r == nil {
+			if e := w.Close(); e != nil {
+				err = e
+			}
+		}
+	}()
+	if setup != nil {
+		setup(w)
+	}
+	if _, e := os.Lstat(w.path); e == nil {
+		return nil, delivery.Fail("record_exists", "new journal directory required")
+	} else if !os.IsNotExist(e) {
+		return nil, delivery.Fail("invalid_record_path", "record")
+	}
+	return &Reservation{writer: w}, nil
+}
+func (r *Reservation) Close() error {
+	if r.writer == nil {
+		return nil
+	}
+	w := r.writer
+	r.writer = nil
+	return w.Close()
+}
+func (r *Reservation) Path() string {
+	if r.writer == nil {
+		return ""
+	}
+	return r.writer.path
+}
+func Create(path string, i Intent) (*Writer, error) { return create(path, i, nil) }
+func create(path string, i Intent, setup func(*Writer)) (result *Writer, err error) {
+	if e := checkIntent(i); e != nil {
+		return nil, e
+	}
+	r, e := reserve(path, setup)
+	if e != nil {
+		return nil, e
+	}
+	return r.Create(i)
+}
+func checkIntent(i Intent) error {
+	if validateIntent(i) != nil {
+		return invalid()
+	}
+	// Bound the exact worst-length event envelope before persistent directory creation.
+	data, err := json.Marshal(i)
+	if err != nil {
+		return invalid()
+	}
+	var checked Intent
+	if delivery.DecodeJSON(data, &checked, true) != nil {
+		return invalid()
+	}
+	preview := Event{1, 0, strings.Repeat("0", 32), "2000-01-01T00:00:00.123456789Z", "intent", data}
+	encoded, err := json.MarshalIndent(preview, "", "  ")
+	if err != nil {
+		return invalid()
+	}
+	if int64(len(encoded)+1) > EventLimit {
+		return delivery.Fail("size_limit", "maximum event bytes")
+	}
+	return nil
+}
+func (r *Reservation) Create(i Intent) (result *Writer, err error) {
+	if r.writer == nil {
+		return nil, delivery.Fail("record_closed", "reservation")
+	}
+	w := r.writer
+	r.writer = nil // transfer exactly once; former owner can no longer release this lock
+	var e error
 	defer func() {
 		if result == nil {
 			if closeErr := w.Close(); closeErr != nil {
@@ -82,8 +138,8 @@ func create(path string, i Intent, setup func(*Writer)) (result *Writer, err err
 			}
 		}
 	}()
-	if setup != nil {
-		setup(w)
+	if e = checkIntent(i); e != nil {
+		return nil, e
 	}
 	if _, e = os.Lstat(w.path); e == nil {
 		return nil, delivery.Fail("record_exists", "new journal directory required")
