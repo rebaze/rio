@@ -78,6 +78,18 @@ func SubmitBatch(ctx context.Context, r BatchResult, prepared []Prepared, reserv
 			}
 		}
 	}()
+	// Defend this entry point as well as the CLI: a complete later intent must
+	// never fail its known local validation after an earlier remote request.
+	for i, p := range prepared {
+		if _, e := PrepareIntent(p); e != nil {
+			result.Items[i].State = "error"
+			if safe, ok := e.(*delivery.Error); ok {
+				result.Items[i].Error = safe
+			}
+			result.Outcome = "error"
+			return BatchFailure(result, e, PreflightCode(e))
+		}
+	}
 	accepted := 0
 	for i, p := range prepared {
 		p.Reservation = reservations[i]

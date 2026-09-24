@@ -520,3 +520,43 @@ func TestHumanDeliveryPlanShowsEffectiveCreationPolicy(t *testing.T) {
 		})
 	}
 }
+
+func TestDeliveryBatchOversizedLaterIntentRefusesBeforeAnyRequest(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"token":"f90934f5-cb88-47ce-81cb-db06fc67d4b4"}`)
+	}))
+	defer srv.Close()
+	dir := batchFixture(t, srv.URL)
+	t.Chdir(dir)
+	t.Setenv("DTRACK_API_KEY", "synthetic-key")
+	raw, _ := os.ReadFile("target/rio/index.json")
+	idx, e := delivery.ParseIndex(raw)
+	if e != nil {
+		t.Fatal(e)
+	}
+	huge, _ := json.Marshal(map[string]any{"bomFormat": "CycloneDX", "metadata": map[string]any{"component": map[string]any{"name": strings.Repeat("n", 1126400), "version": "1"}}})
+	os.WriteFile("target/rio/worker.json", huge, 0600)
+	idx.Artifacts[1].Output.SHA256 = delivery.Digest(huge)
+	index.Write("target/rio", &idx)
+	code, r, _ := runBatch(t, "deliver", "--quiet")
+	items := r["items"].([]any)
+	if code != 2 || calls != 0 || len(items) != 3 {
+		t.Fatalf("code=%d requests=%d selected=%d; all complete intents must be checked before submission", code, calls, len(items))
+	}
+	if r["error"].(map[string]any)["code"] != "size_limit" || items[1].(map[string]any)["state"] != "error" {
+		t.Fatal("missing failed intent result")
+	}
+	for _, item := range items {
+		if item.(map[string]any)["result"] != nil {
+			t.Fatal("an attempt began during local preflight")
+		}
+	}
+	entries, _ := os.ReadDir("target/rio/deliveries")
+	if len(entries) != 0 {
+		t.Fatal("intent or lock persisted during preflight refusal")
+	}
+}

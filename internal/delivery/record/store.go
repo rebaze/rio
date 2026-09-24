@@ -101,6 +101,11 @@ func create(path string, i Intent, setup func(*Writer)) (result *Writer, err err
 	}
 	return r.Create(i)
 }
+
+// CheckIntent validates the complete eventual event envelope without filesystem effects.
+// Create repeats this check under its reservation before publication.
+func CheckIntent(i Intent) error { return checkIntent(i) }
+
 func checkIntent(i Intent) error {
 	if validateIntent(i) != nil {
 		return invalid()

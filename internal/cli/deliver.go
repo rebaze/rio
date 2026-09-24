@@ -67,7 +67,16 @@ func runDeliverBatch(cmd *cobra.Command, g *globalOptions, o deliveryOptions) (r
 			}
 			return r, e
 		}
-		prepared = append(prepared, runner.Prepared{Verified: j.Verified, Description: j.Description, Intent: intent, Target: target})
+		p := runner.Prepared{Verified: j.Verified, Description: j.Description, Intent: intent, Target: target}
+		p.Intent, e = runner.PrepareIntent(p)
+		if e != nil {
+			r.Items[i].State = "error"
+			if safe, ok := e.(*delivery.Error); ok {
+				r.Items[i].Error = safe
+			}
+			return r, e
+		}
+		prepared = append(prepared, p)
 		paths = append(paths, j.Record)
 	}
 	if o.record == "" {

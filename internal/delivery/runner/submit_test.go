@@ -8,6 +8,7 @@ import (
 	"github.com/rebaze/rio/internal/index"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -81,5 +82,30 @@ func TestSubmitBusy(t *testing.T) {
 	r, e := Submit(context.Background(), p, path)
 	if r.ExitCode != 2 || e == nil || p.Target.(*fakeTarget).calls != 0 {
 		t.Fatal(r, e)
+	}
+}
+
+func TestSubmitBatchChecksCompleteLaterIntentEnvelope(t *testing.T) {
+	dir := t.TempDir()
+	paths := []string{filepath.Join(dir, "first"), filepath.Join(dir, "second")}
+	first, second := prepared(t, paths[0], false), prepared(t, paths[1], false)
+	// The target description is small; version metadata alone exceeds the event budget.
+	second.Intent.RioVersion = strings.Repeat("v", int(record.EventLimit))
+	reservations, e := record.ReserveAll(paths)
+	if e != nil {
+		t.Fatal(e)
+	}
+	plan := delivery.BatchPlan{Jobs: []delivery.Job{{ArtifactID: "app", Target: "first", Record: paths[0], Verified: first.Verified, Description: first.Description}, {ArtifactID: "app", Target: "second", Record: paths[1], Verified: second.Verified, Description: second.Description}}}
+	result, e := SubmitBatch(context.Background(), NewBatch("deliver", plan), []Prepared{first, second}, reservations)
+	if e == nil || result.ExitCode != 2 || result.Error.Code != "size_limit" || first.Target.(*fakeTarget).calls != 0 || second.Target.(*fakeTarget).calls != 0 {
+		t.Fatal("batch did not reject whole intent before requests", e, result.ExitCode)
+	}
+	for _, p := range paths {
+		if _, e := os.Stat(p); !os.IsNotExist(e) {
+			t.Fatal("intent published")
+		}
+		if _, e := os.Stat(p + ".lock"); !os.IsNotExist(e) {
+			t.Fatal("reservation leaked")
+		}
 	}
 }
