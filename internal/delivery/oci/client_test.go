@@ -464,3 +464,54 @@ func TestClientRejectsDoubleEncodedSessionPath(t *testing.T) {
 		t.Fatal("double-encoded path accepted")
 	}
 }
+func TestClientCallerCancellation(t *testing.T) {
+	started := make(chan struct{})
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { close(started); <-r.Context().Done() }))
+	defer s.Close()
+	c := buildClient(t, clientDescription(t, s.URL, "{anonymous: true}", ""))
+	parent, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx, stop := c.traversal(parent, false)
+	defer stop()
+	done := make(chan error, 1)
+	go func() {
+		resp, e := c.request(ctx, "GET", "/v2/", nil, 0, "")
+		if resp != nil {
+			resp.Body.Close()
+		}
+		done <- e
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("request never started")
+	}
+	cancel()
+	select {
+	case e := <-done:
+		if e == nil {
+			t.Fatal("canceled request succeeded")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("caller cancellation did not terminate request")
+	}
+}
+func TestClientExactStreamingBodyLimit(t *testing.T) {
+	for _, overflow := range []bool{false, true} {
+		raw := bytes.Repeat([]byte("x"), int(ErrorLimit))
+		if overflow {
+			raw = append(raw, 'x')
+		}
+		body := &boundedBody{ReadCloser: io.NopCloser(bytes.NewReader(raw)), remaining: ErrorLimit, cancel: func() {}}
+		resp := &http.Response{ContentLength: -1, Body: body}
+		got, e := readResponse(resp, ErrorLimit)
+		body.Close()
+		if overflow {
+			if e == nil {
+				t.Fatal("stream overflow accepted")
+			}
+		} else if e != nil || int64(len(got)) != ErrorLimit {
+			t.Fatal("exact streaming limit refused", len(got), e)
+		}
+	}
+}

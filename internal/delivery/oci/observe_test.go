@@ -269,3 +269,24 @@ func TestObserveNegotiatesReadScopeBeforeRepositoryRequests(t *testing.T) {
 		t.Fatal("read scope was not negotiated before repository lookup", o, e, tokenRequests)
 	}
 }
+func TestObserveExactDescriptorBudget(t *testing.T) {
+	var body strings.Builder
+	body.WriteString(`{"schemaVersion":2,"mediaType":"` + IndexMediaType + `","manifests":[`)
+	for i := 1; i <= 10000; i++ {
+		if i > 1 {
+			body.WriteByte(',')
+		}
+		fmt.Fprintf(&body, `{"mediaType":%q,"digest":"sha256:%064x","size":1}`, ManifestMediaType, i)
+	}
+	body.WriteString(`]}`)
+	total := 0
+	seen := map[string]bool{}
+	want := Descriptor{ManifestMediaType, "sha256:" + strings.Repeat("f", 64), 1}
+	found, e := parseReferrers([]byte(body.String()), want, &total, seen)
+	if e != nil || found || total != 10000 || len(seen) != 10000 {
+		t.Fatal("exact descriptor budget refused", e, total, len(seen))
+	}
+	if _, e = parseReferrers([]byte(`{"schemaVersion":2,"manifests":[not-json]}`), want, &total, seen); e == nil || !strings.Contains(e.Error(), "referrers_limit") {
+		t.Fatal("cross-page budget decoded an excess element", e)
+	}
+}

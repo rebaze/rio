@@ -175,3 +175,9 @@ func TestDescribeSavedAuthPresence(t *testing.T) {
 		t.Fatal("saved false anonymous accepted with Basic form")
 	}
 }
+func TestDescribeExactSubjectSizeLimit(t *testing.T) {
+	d := describe(t, "subject: {digest: 'sha256:"+strings.Repeat("1", 64)+"', mediaType: '"+ManifestMediaType+"', size: 4194304}\n")
+	if _, _, e := ValidateDescription(d); e != nil {
+		t.Fatal("exact subject limit refused", e)
+	}
+}
