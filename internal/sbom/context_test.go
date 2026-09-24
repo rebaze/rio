@@ -185,6 +185,10 @@ func TestContextRejectsMalformedPriorRecordAtomically(t *testing.T) {
 		{"invalid native lifecycle phase", strings.Replace(base, `"changes":[]`, `"changes":[{"field":"lifecycle","target":"/metadata/lifecycles","before":null,"after":[{"phase":42,"name":"custom"}],"selector":"/artifacts/0/lifecycle","override":false}]`, 1)},
 		{"missing file path", strings.Replace(base, `"path":"old.json",`, "", 1)},
 		{"source missing workspace", strings.Replace(base, `"build":{"id":"42"}`, `"source":{"revision":"`+strings.Repeat("1", 40)+`"},"build":{"id":"42"}`, 1)},
+		{"null ownership", strings.Replace(base, `"changes":[]`, `"changes":[],"ownedReferences":null`, 1)},
+		{"non URL ownership", strings.Replace(base, `"changes":[]`, `"changes":[],"ownedReferences":["build.id"]`, 1)},
+		{"absent URL ownership", strings.Replace(base, `"changes":[]`, `"changes":[],"ownedReferences":["build.url"]`, 1)},
+		{"wrong ownership type", strings.Replace(base, `"changes":[]`, `"changes":[],"ownedReferences":[42]`, 1)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			property, _ := json.Marshal(tc.record)
@@ -319,6 +323,140 @@ func TestContextReplacingBuildURLCannotInheritOldBuildID(t *testing.T) {
 	}
 	if !seen {
 		t.Fatalf("native build URL replacement not audited: %+v", rec.Changes)
+	}
+}
+
+func TestContextURLRemovalPreservesUnownedReferences(t *testing.T) {
+	for _, field := range []struct{ name, kind string }{{"source.repository", "vcs"}, {"build.url", "build-system"}} {
+		for _, scenario := range []string{"added", "added then reapplied", "added legacy audit", "legacy no audit", "preexisting", "preexisting rich", "modified after addition"} {
+			t.Run(field.name+"/"+scenario, func(t *testing.T) {
+				url := "https://example.org/old"
+				ref := map[string]any{"type": field.kind, "url": url}
+				website := map[string]any{"type": "website", "url": "https://example.org"}
+				refs := []any{website}
+				if strings.HasPrefix(scenario, "preexisting") {
+					if scenario == "preexisting rich" {
+						ref["comment"] = "upstream evidence"
+					}
+					refs = append(refs, ref)
+				}
+				d := load(t, []byte(`{"bomFormat":"CycloneDX","specVersion":"1.6","metadata":{"component":{"type":"application","name":"app"}}}`))
+				root := tree(t, mustContextBytes(t, d)).(map[string]any)
+				root["metadata"].(map[string]any)["component"].(map[string]any)["externalReferences"] = refs
+				data, _ := json.Marshal(root)
+				d = load(t, data)
+				fields := []buildcontext.Field{contextField(field.name, url)}
+				if field.name == "source.repository" {
+					fields = append(fields, contextField("source.workspace", "unknown"))
+				}
+				cfg := contextResolved(fields...)
+				if _, err := d.ApplyContext(cfg); err != nil {
+					t.Fatal(err)
+				}
+				d = loadContextOutput(t, d)
+				if strings.Contains(scenario, "legacy") {
+					root = tree(t, mustContextBytes(t, d)).(map[string]any)
+					prop := root["metadata"].(map[string]any)["properties"].([]any)[0].(map[string]any)
+					var record map[string]any
+					if err := json.Unmarshal([]byte(prop["value"].(string)), &record); err != nil {
+						t.Fatal(err)
+					}
+					delete(record, "ownedReferences")
+					if scenario == "legacy no audit" {
+						record["changes"] = []any{}
+					}
+					encoded, _ := json.Marshal(record)
+					prop["value"] = string(encoded)
+					data, _ = json.Marshal(root)
+					d = load(t, data)
+				}
+				if scenario == "added then reapplied" {
+					if _, err := d.ApplyContext(cfg); err != nil {
+						t.Fatal(err)
+					}
+					d = loadContextOutput(t, d)
+				}
+				if scenario == "modified after addition" {
+					root = tree(t, mustContextBytes(t, d)).(map[string]any)
+					ref["comment"] = "later evidence"
+					root["metadata"].(map[string]any)["component"].(map[string]any)["externalReferences"] = []any{website, ref}
+					data, _ = json.Marshal(root)
+					d = load(t, data)
+				}
+				next := contextResolved()
+				if field.name == "source.repository" {
+					next = contextResolved(contextField("source.workspace", "unknown"))
+				}
+				before := mustContextBytes(t, d)
+				if _, err := d.ApplyContext(next); err == nil {
+					t.Fatal("removal without permission accepted")
+				}
+				if !bytes.Equal(before, mustContextBytes(t, d)) {
+					t.Fatal("refusal mutated document")
+				}
+				next.Replace = []string{field.name}
+				rec, err := d.ApplyContext(next)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := []any{website}
+				removed := strings.HasPrefix(scenario, "added")
+				if !removed {
+					want = append(want, ref)
+				}
+				root = tree(t, mustContextBytes(t, d)).(map[string]any)
+				got := root["metadata"].(map[string]any)["component"].(map[string]any)["externalReferences"]
+				if !reflect.DeepEqual(got, want) {
+					t.Fatalf("references = %v, want %v", got, want)
+				}
+				found := false
+				for _, c := range rec.Changes {
+					if c.Field == field.name && c.Target == "/metadata/component/externalReferences" {
+						found = true
+						if !c.Override || c.Selector != "/artifacts/0" || !reflect.DeepEqual(c.Before, []any{website, ref}) || !reflect.DeepEqual(c.After, want) {
+							t.Fatalf("invalid native removal audit: %+v", c)
+						}
+					}
+				}
+				if found != removed {
+					t.Fatalf("native removal audit present = %v, want %v", found, removed)
+				}
+				d = loadContextOutput(t, d)
+				if _, err := d.ApplyContext(next); err != nil {
+					t.Fatalf("removal record cannot be read: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestContextURLReplacementThenRemovalDropsLastNativeReference(t *testing.T) {
+	d := load(t, []byte(`{"bomFormat":"CycloneDX","specVersion":"1.6","metadata":{"component":{"type":"application","name":"app","externalReferences":[{"type":"build-system","url":"https://ci.example/old","comment":"original"}]}}}`))
+	cfg := contextResolved(contextField("build.url", "https://ci.example/new"))
+	cfg.Replace = []string{"build.url"}
+	if _, err := d.ApplyContext(cfg); err != nil {
+		t.Fatal(err)
+	}
+	d = loadContextOutput(t, d)
+	cfg = contextResolved()
+	cfg.Replace = []string{"build.url"}
+	rec, err := d.ApplyContext(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := tree(t, mustContextBytes(t, d)).(map[string]any)
+	if _, exists := root["metadata"].(map[string]any)["component"].(map[string]any)["externalReferences"]; exists {
+		t.Fatal("last owned reference was not removed")
+	}
+	if len(rec.Changes) != 2 || rec.Changes[1].After != nil {
+		t.Fatalf("missing native removal: %+v", rec.Changes)
+	}
+	d = loadContextOutput(t, d)
+	if _, err := d.ApplyContext(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.ApplyContext(contextResolved(contextField("build.url", "https://ci.example/later"))); err != nil {
+		t.Fatalf("removed reference conflicts with later snapshot: %v", err)
 	}
 }
 
