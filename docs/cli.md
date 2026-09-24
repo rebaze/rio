@@ -68,8 +68,8 @@ rio plan [flags]
 rio version
 ```
 
-For a Maven build already configured to produce SBOMs, configure a native delivery binding
-and inject its API key through the environment, then run:
+For a Maven build already configured to produce SBOMs, add a target under `delivery.targets`
+in `rio.yaml` and inject its API key through the environment, then run:
 
 ```sh
 mvn -B verify
@@ -79,8 +79,8 @@ rio deliver --json
 rio deliver --artifact application --target security --record delivery-record --json
 ```
 
-The [direct Dependency-Track example](../README.md#deliver-to-dependency-track) shows the separate
-configuration. Native delivery verifies the recorded output before upload; accepted receipts do
+The [direct Dependency-Track example](../README.md#deliver-to-dependency-track) shows intake and
+delivery targets together in `rio.yaml`. Native delivery verifies the recorded output before upload; accepted receipts do
 not prove ingestion. Each attempt uses a new journal directory. Offline preview and inspection,
 reconciliation, permissions and delivery exit codes are documented in
 [the delivery guide](../tools/README.md#native-verified-delivery).
