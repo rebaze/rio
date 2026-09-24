@@ -21,11 +21,13 @@ type Capture struct {
 }
 
 // CaptureRead locks once, bounds each read by the remaining budget, and releases
-// before returning. A cleanup failure takes precedence over an invalid source.
-func CaptureRead(path string, maxBytes int64) (Capture, error) {
-	return captureRead(path, maxBytes, nil)
+// before returning. Optional maxEvents limits retained events before any event
+// read/replay; omitting it retains the existing per-journal limit. A cleanup
+// failure takes precedence over an invalid source.
+func CaptureRead(path string, maxBytes int64, maxEvents ...int) (Capture, error) {
+	return captureRead(path, maxBytes, nil, maxEvents...)
 }
-func captureRead(path string, maxBytes int64, setup func(*Writer)) (c Capture, err error) {
+func captureRead(path string, maxBytes int64, setup func(*Writer), maxEvents ...int) (c Capture, err error) {
 	w, err := acquire(path)
 	if err != nil {
 		return c, err
@@ -38,7 +40,7 @@ func captureRead(path string, maxBytes int64, setup func(*Writer)) (c Capture, e
 	if setup != nil {
 		setup(w)
 	}
-	return w.capture(false, maxBytes, true)
+	return w.capture(false, maxBytes, true, maxEvents...)
 }
 func emptySnapshot() Snapshot {
 	return Snapshot{Events: []Event{}, References: []delivery.Reference{}, Observations: []delivery.Observation{}, OrphanTemps: []string{}}
@@ -70,12 +72,16 @@ func replayRaw(s *Snapshot, b []byte) error {
 	}
 	return addEvent(s, e)
 }
-func (w *Writer) capture(empty bool, budget int64, retain bool) (c Capture, err error) {
+func (w *Writer) capture(empty bool, budget int64, retain bool, maxEvents ...int) (c Capture, err error) {
 	c = Capture{Snapshot: emptySnapshot(), RawEvents: [][]byte{}}
+	eventCapacity := MaxEvents
+	if len(maxEvents) > 0 {
+		eventCapacity = min(eventCapacity, maxEvents[0])
+	}
 	if w.closed {
 		return c, delivery.Fail("record_closed", "writer")
 	}
-	if budget < 0 {
+	if budget < 0 || eventCapacity < 0 {
 		return c, delivery.Fail("size_limit", "journal capture budget")
 	}
 	st, e := os.Lstat(w.path)
@@ -108,10 +114,10 @@ func (w *Writer) capture(empty bool, budget int64, retain bool) (c Capture, err 
 			if ent.Type()&os.ModeSymlink != 0 || !ent.Type().IsRegular() || len(n) != 25 || !strings.HasSuffix(n, ".json") {
 				return c, invalid()
 			}
-			names = append(names, n)
-			if len(names) > MaxEvents {
-				return c, delivery.Fail("size_limit", "maximum journal events")
+			if len(names) >= eventCapacity {
+				return c, delivery.Fail("size_limit", "remaining journal event capacity")
 			}
+			names = append(names, n)
 		}
 		if e == io.EOF {
 			break

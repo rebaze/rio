@@ -3,6 +3,7 @@ package record
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"github.com/rebaze/rio/internal/delivery"
 	"os"
 	"path/filepath"
@@ -205,5 +206,21 @@ func TestDecodeEventsExactCountAndEventLimit(t *testing.T) {
 	raw = append(raw, raw[len(raw)-1])
 	if _, e := DecodeEvents(raw); e == nil {
 		t.Fatal("count limit ignored")
+	}
+}
+
+func TestCaptureRemainingEventCapacityBeforeRead(t *testing.T) {
+	p, _ := captureFixture(t)
+	os.WriteFile(filepath.Join(p, eventName(1)), []byte("{}"), 0600)
+	for _, capacity := range []int{0, 1} {
+		c, e := CaptureRead(p, EventLimit*2, capacity)
+		var safe *delivery.Error
+		if !errors.As(e, &safe) || safe.Code != "size_limit" || len(c.RawEvents) != 0 || len(c.Snapshot.Events) != 0 {
+			t.Fatalf("capacity=%d retained/replayed events before limit: %+v %v", capacity, c, e)
+		}
+	}
+	os.Remove(filepath.Join(p, eventName(1)))
+	if c, e := CaptureRead(p, EventLimit, 1); e != nil || len(c.RawEvents) != 1 {
+		t.Fatal("exact remaining event capacity refused", e)
 	}
 }

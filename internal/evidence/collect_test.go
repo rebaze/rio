@@ -3,6 +3,7 @@ package evidence
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -375,5 +376,25 @@ func TestMarshalDisablesHTMLEscapingInReadableEvents(t *testing.T) {
 	}
 	if bytes.Contains(b, []byte(`\u0026`)) || bytes.Contains(b, []byte(`\u003c`)) {
 		t.Fatal("readable raw JSON escaped HTML despite canonical output contract")
+	}
+}
+
+func TestCollectEventCapacityPrecedesNextJournalReplay(t *testing.T) {
+	ip, p, q := fixture(t)
+	raw, _ := os.ReadFile(filepath.Join(p, "00000000000000000000.json"))
+	var first record.Event
+	json.Unmarshal(raw, &first)
+	data, _ := json.Marshal(record.Reconciliation{Observation: delivery.Observation{Kind: "unavailable", Value: "unavailable", Origin: "local", Code: "query_failed", References: []delivery.Reference{}}, ConfigSHA256: strings.Repeat("a", 64)})
+	for n := 2; n < MaxEvents; n++ {
+		b, _ := json.Marshal(record.Event{SchemaVersion: 1, Sequence: n, AttemptID: first.AttemptID, ObservedAt: first.ObservedAt, Kind: "reconciliation", Data: data})
+		if e := os.WriteFile(filepath.Join(p, fmt.Sprintf("%020d.json", n)), b, 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	os.WriteFile(filepath.Join(q, "00000000000000000000.json"), []byte("{}"), 0600)
+	_, e := Collect(ip, []string{p, q}, "collector", validateFixture)
+	var safe *delivery.Error
+	if !errors.As(e, &safe) || safe.Code != "size_limit" {
+		t.Fatalf("exhausted event capacity reached next journal replay: %v", e)
 	}
 }

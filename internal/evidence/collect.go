@@ -32,7 +32,7 @@ func Collect(indexPath string, journalPaths []string, toolVersion string, valida
 	events := 0
 	captures := make([]record.Capture, 0, len(journalPaths))
 	for _, path := range journalPaths {
-		c, e := record.CaptureRead(path, remaining)
+		c, e := record.CaptureRead(path, remaining, MaxEvents-events)
 		if e != nil {
 			return Document{}, e
 		}
