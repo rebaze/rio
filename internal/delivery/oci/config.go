@@ -13,6 +13,7 @@ import (
 
 	"github.com/rebaze/rio/internal/delivery"
 	"gopkg.in/yaml.v3"
+	"oras.land/oras-go/v2/registry"
 )
 
 const (
@@ -130,6 +131,10 @@ func validateOptions(o Options) error {
 	}
 	if len(o.Repository) > 255 || !repoRE.MatchString(o.Repository) {
 		return invalid("repository")
+	}
+	ref, e := registry.ParseReference(o.Registry + "/" + o.Repository)
+	if e != nil || ref.Registry != o.Registry || ref.Repository != o.Repository || ref.Reference != "" {
+		return invalid("repository reference")
 	}
 	a := o.Auth
 	forms := 0

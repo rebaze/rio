@@ -30,6 +30,7 @@ func TestOfflinePackagesLinkNoNetworkClient(t *testing.T) {
 		"crypto/tls",
 		"golang.org/x/net/http2",
 		"github.com/rebaze/rio/internal/delivery/dtrack",
+		"github.com/rebaze/rio/internal/delivery/oci",
 		"github.com/rebaze/rio/internal/delivery/runner",
 		"github.com/rebaze/rio/internal/cli",
 	}
