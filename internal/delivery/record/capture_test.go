@@ -224,3 +224,38 @@ func TestCaptureRemainingEventCapacityBeforeRead(t *testing.T) {
 		t.Fatal("exact remaining event capacity refused", e)
 	}
 }
+
+func TestJournalMetadataLockDoesNotReadEvents(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "journal")
+	os.Mkdir(p, 0700)
+	os.WriteFile(filepath.Join(p, eventName(0)), []byte("corrupt and must not be read"), 0600)
+	called := false
+	e := WithJournalLock(p, func(path, lock string) error {
+		called = true
+		if _, e := os.Stat(lock); e != nil {
+			t.Fatal(e)
+		}
+		if w, e := Open(path); e == nil {
+			w.Close()
+			t.Fatal("metadata check did not own shared journal lock")
+		}
+		return nil
+	})
+	if e != nil || !called {
+		t.Fatal("metadata lock read/validated events", e)
+	}
+	if _, e = os.Stat(p + ".lock"); !os.IsNotExist(e) {
+		t.Fatal("metadata lock not released")
+	}
+}
+func TestJournalMetadataLockCleanupOverridesCheck(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "journal")
+	e := WithJournalLock(p, func(_, lock string) error {
+		os.WriteFile(filepath.Join(lock, "obstruction"), nil, 0600)
+		return delivery.Fail("invalid_record", "injected")
+	})
+	var safe *delivery.Error
+	if !errors.As(e, &safe) || safe.Code != "persistence_failed" {
+		t.Fatal("metadata cleanup failure hidden", e)
+	}
+}

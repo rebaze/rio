@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/rebaze/rio/internal/delivery"
+	"github.com/rebaze/rio/internal/delivery/record"
 )
 
 type Output struct {
@@ -205,24 +206,16 @@ func preflightOutput(path, indexPath string, journals []string) (string, error) 
 // This metadata-only preflight never reads events and releases every journal lock
 // before output publication. It also respects case-sensitive directory behavior.
 func journalNamespaceCollision(out, root string) (collision bool, err error) {
-	lock := root + ".lock"
-	if e := os.Mkdir(lock, 0700); e != nil {
-		if os.IsExist(e) {
-			return false, delivery.Fail("record_busy", "journal lock exists; never removed automatically")
-		}
-		return false, persistence("create journal preflight lock")
-	}
-	defer func() {
-		if e := os.Remove(lock); e != nil {
-			err = persistence("remove owned journal preflight lock")
-		}
-	}()
-	for _, candidate := range []string{out, out + ".lock"} {
-		for _, namespace := range []string{root, lock} {
-			if inside(candidate, namespace) || inside(namespace, candidate) {
-				return true, nil
+	err = record.WithJournalLock(root, func(root, lock string) error {
+		for _, candidate := range []string{out, out + ".lock"} {
+			for _, namespace := range []string{root, lock} {
+				if inside(candidate, namespace) || inside(namespace, candidate) {
+					collision = true
+					return nil
+				}
 			}
 		}
-	}
-	return false, nil
+		return nil
+	})
+	return collision, err
 }

@@ -3,8 +3,10 @@ package evidence
 import (
 	"bytes"
 	"errors"
+	"github.com/rebaze/rio/internal/delivery/record"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -153,7 +155,7 @@ func TestPublishActualLockCleanupFailurePreservesFinal(t *testing.T) {
 }
 
 func TestPublishRefusesPhysicalJournalAliases(t *testing.T) {
-	for _, suffix := range []string{"journal/record.json", "JOURNAL/nested/record.json", "journal.lock", "journal.LOCK"} {
+	for _, suffix := range []string{"journal/record.json", "JOURNAL/.event-nested.tmp/record.json", "journal.lock", "journal.LOCK"} {
 		t.Run(suffix, func(t *testing.T) {
 			d, ip, p, _ := collectFixture(t)
 			raw, e := Marshal(d)
@@ -167,8 +169,14 @@ func TestPublishRefusesPhysicalJournalAliases(t *testing.T) {
 			if _, e = os.Stat(filepath.Join(filepath.Dir(root), "journal")); e != nil {
 				t.Skip("case-sensitive filesystem")
 			}
-			if e = os.Mkdir(filepath.Join(root, "nested"), 0700); e != nil {
-				t.Fatal(e)
+			if strings.Contains(suffix, ".event-nested.tmp") {
+				if e = os.Mkdir(filepath.Join(root, ".event-nested.tmp"), 0700); e != nil {
+					t.Fatal(e)
+				}
+			}
+			original, e := record.CaptureRead(root, SourceLimit)
+			if e != nil {
+				t.Fatal("fixture journal is not valid", e)
 			}
 			before, e := os.ReadDir(root)
 			if e != nil {
@@ -188,6 +196,10 @@ func TestPublishRefusesPhysicalJournalAliases(t *testing.T) {
 					t.Fatal("journal entries changed")
 				}
 			}
+			checked, e := record.CaptureRead(root, SourceLimit)
+			if e != nil || checked.Snapshot.SHA256 != original.Snapshot.SHA256 {
+				t.Fatal("source journal no longer valid or changed", e)
+			}
 			if _, e = os.Lstat(root + ".lock"); !os.IsNotExist(e) {
 				t.Fatal("journal lock namespace changed", e)
 			}
@@ -206,5 +218,27 @@ func TestPublishKeepsDistinctCaseSensitiveDirectory(t *testing.T) {
 	out := filepath.Join(other, "record.json")
 	if _, e := Publish(out, ip, []string{root}, raw, validateFixture); e != nil {
 		t.Fatal("distinct case-sensitive directory refused", e)
+	}
+}
+
+func TestPublishRefusesOutputLockAliasOfIndex(t *testing.T) {
+	d, ip, _, _ := collectFixture(t)
+	raw, _ := Marshal(d)
+	source := filepath.Join(filepath.Dir(ip), "Result.LOCK")
+	if e := os.Rename(ip, source); e != nil {
+		t.Fatal(e)
+	}
+	out := filepath.Join(filepath.Dir(ip), "result")
+	if !samePath(out+".lock", source) {
+		t.Skip("case-sensitive filesystem")
+	}
+	before, _ := os.ReadFile(source)
+	r, e := Publish(out, source, nil, raw, validateFixture)
+	if e == nil || r.OutputMayExist {
+		t.Fatal("output lock index alias accepted", r, e)
+	}
+	after, _ := os.ReadFile(source)
+	if !bytes.Equal(before, after) {
+		t.Fatal("source index changed")
 	}
 }

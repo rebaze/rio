@@ -207,7 +207,8 @@ does not establish ingestion, vulnerability analysis or content retention.
 Retries retain their original references. When the prior attempt is selected, its recorded digest
 must match a valid committed prefix, so later reconciliation of that prior journal remains valid.
 Source, effective target and declared policies must agree; credential/CA reference rotation is
-permitted. A missing selected ancestor remains visible without following its historical path hint.
+permitted. Saved CA references retain their original POSIX, Windows drive or UNC spelling during
+offline inspection, without applying the inspecting host's path rules. A missing selected ancestor remains visible without following its historical path hint.
 Self-links, cycles, duplicate attempts (including copies/aliases) and mismatched sources refuse.
 
 `coverage` always states:
@@ -236,11 +237,16 @@ reading or adding environment/credential values.
 Limits are 16 MiB raw index, 1 MiB per event, 10,000 events per journal and across the entire selected
 set, 256 selected journals, 32 MiB total raw sources, 128 MiB serialized record, and 20,000 directory
 entries per captured journal including ignored temps. Limits refuse; they never truncate evidence.
+A streaming envelope preflight checks array counts before retaining their elements, and capture
+applies remaining aggregate event capacity before reading any next-journal event.
 
 The existing parent directory is required. An existing output file, directory or symlink refuses,
 as do source/index/journal/output-lock collisions. Rio finishes capture, validation and bounded
 serialization before creating output. A canonical sibling `<output>.lock` directory coordinates
-exporters; existing locks are never automatically broken. Rio writes a unique mode-0600 temporary
+exporters; existing locks are never automatically broken. Output preflight also briefly takes each
+selected journal's shared sibling lock for metadata-only physical-identity checks, including
+case aliases of a lock name that did not previously exist. These locks are released before
+output locking/publication; no journal events are reopened. Rio writes a unique mode-0600 temporary
 file, syncs/closes it, publishes with a same-directory hard link that cannot replace an existing
 name, syncs the directory where supported, and reads/validates the published bytes. Filesystems
 without hard-link support fail safely. Ordinary exits remove owned temp/lock entries; cleanup

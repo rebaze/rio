@@ -292,3 +292,19 @@ func readLocked(w *Writer) (s Snapshot, err error) {
 	}()
 	return w.Snapshot()
 }
+
+// WithJournalLock runs a metadata check under the same canonical sibling lock as
+// capture and writers, without reading any journal event. Cleanup errors override
+// a check failure. The callback must not retain ownership after it returns.
+func WithJournalLock(path string, check func(canonicalPath, lockPath string) error) (err error) {
+	w, err := acquire(path)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if e := w.Close(); e != nil {
+			err = e
+		}
+	}()
+	return check(w.path, w.lock)
+}
