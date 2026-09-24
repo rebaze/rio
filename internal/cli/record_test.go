@@ -287,3 +287,44 @@ func TestRecordRejectsContradictoryAdapterSubmission(t *testing.T) {
 		t.Fatal("unsupported acceptance evidence exported", code, r)
 	}
 }
+
+func TestRecordPortableSavedCAReferencesRemainOffline(t *testing.T) {
+	oldBuild, oldEnv := deliveryBuild, deliveryLookupEnv
+	builds, lookups := 0, 0
+	deliveryBuild = func(delivery.Provider, delivery.Description) (delivery.Target, error) {
+		builds++
+		return nil, delivery.Fail("unexpected", "build")
+	}
+	deliveryLookupEnv = func(string) (string, bool) { lookups++; return "must-not-be-read", true }
+	defer func() { deliveryBuild = oldBuild; deliveryLookupEnv = oldEnv }()
+	for _, ca := range []string{`/missing/rotated-ca.pem`, `C:\missing\ca.pem`, `C:/missing/../ca.pem`, `\\server\share\ca.pem`} {
+		t.Run(ca, func(t *testing.T) {
+			ip, p, _ := recordFixture(t)
+			file := filepath.Join(p, "00000000000000000000.json")
+			raw, _ := os.ReadFile(file)
+			var ev record.Event
+			json.Unmarshal(raw, &ev)
+			var i record.Intent
+			json.Unmarshal(ev.Data, &i)
+			var options map[string]any
+			json.Unmarshal(i.Destination.Options, &options)
+			options["caFile"] = ca
+			i.Destination.Options, _ = json.Marshal(options)
+			ev.Data, _ = json.Marshal(i)
+			raw, _ = json.Marshal(ev)
+			os.WriteFile(file, raw, 0600)
+			out := filepath.Join(t.TempDir(), "record.json")
+			code, r, stderr := recordRun(t, "record", "--index", ip, "--delivery-record", p, "--output", out)
+			if code != 0 {
+				t.Fatal("foreign saved CA reference refused", ca, code, r, stderr)
+			}
+			code, r, stderr = recordRun(t, "record", "inspect", "--file", out)
+			if code != 0 {
+				t.Fatal("foreign saved CA reference cannot inspect", code, r, stderr)
+			}
+		})
+	}
+	if builds != 0 || lookups != 0 {
+		t.Fatal("offline path reference resolved client or credential")
+	}
+}
