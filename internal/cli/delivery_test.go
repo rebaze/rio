@@ -330,3 +330,33 @@ func TestHumanInspectSeparatesEvidenceAndReportsTemps(t *testing.T) {
 		}
 	}
 }
+
+func TestReconcileReportsCleanupFailureBeforeJSON(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Error("unexpected reconciliation request")
+		}
+		io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"token":"f90934f5-cb88-47ce-81cb-db06fc67d4b4"}`)
+	}))
+	defer s.Close()
+	ip, cfg := deliveryFixture(t, s.URL)
+	p := filepath.Join(t.TempDir(), "record")
+	t.Setenv("DTRACK_API_KEY", "synthetic-key")
+	if code, _, _ := deliveryRun(t, "deliver", "--index", ip, "--config", cfg, "--delivery", "app-security", "--record", p); code != 0 {
+		t.Fatal(code)
+	}
+	old := deliveryBuild
+	defer func() { deliveryBuild = old }()
+	deliveryBuild = func(delivery.Provider, delivery.Description) (delivery.Target, error) {
+		if e := os.WriteFile(filepath.Join(p+".lock", "obstruction"), []byte("x"), 0600); e != nil {
+			t.Fatal(e)
+		}
+		return nil, delivery.Fail("invalid_credential", "injected preflight failure")
+	}
+	code, r, _ := deliveryRun(t, "delivery", "reconcile", "--record", p, "--config", cfg)
+	if code != 3 || r["requestMayHaveOccurred"] != false || r["error"].(map[string]any)["code"] != "persistence_failed" {
+		t.Fatal(code, r)
+	}
+}

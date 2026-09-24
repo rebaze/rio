@@ -179,3 +179,28 @@ func TestJournalCrash(t *testing.T) {
 		})
 	}
 }
+
+func TestOpenInvalidSnapshotReportsCleanupFailure(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "record")
+	os.Mkdir(p, 0700)
+	w, e := open(p, func(w *Writer) {
+		if err := os.WriteFile(filepath.Join(w.lock, "obstruction"), []byte("x"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if w != nil || e == nil || !strings.Contains(e.Error(), "persistence_failed") {
+		t.Fatal("cleanup error hidden", w, e)
+	}
+}
+func TestCreateExistingRecordReportsCleanupFailure(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "record")
+	os.Mkdir(p, 0700)
+	w, e := create(p, intent(), func(w *Writer) {
+		if err := os.WriteFile(filepath.Join(w.lock, "obstruction"), []byte("x"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if w != nil || e == nil || !strings.Contains(e.Error(), "persistence_failed") {
+		t.Fatal("cleanup error hidden", w, e)
+	}
+}

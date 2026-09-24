@@ -50,7 +50,7 @@ func acquire(path string) (*Writer, error) {
 	return &Writer{path: p, lock: lock, clock: time.Now, random: rand.Reader}, nil
 }
 func Create(path string, i Intent) (*Writer, error) { return create(path, i, nil) }
-func create(path string, i Intent, setup func(*Writer)) (*Writer, error) {
+func create(path string, i Intent, setup func(*Writer)) (result *Writer, err error) {
 	if validateIntent(i) != nil {
 		return nil, invalid()
 	}
@@ -75,38 +75,50 @@ func create(path string, i Intent, setup func(*Writer)) (*Writer, error) {
 	if e != nil {
 		return nil, e
 	}
+	defer func() {
+		if result == nil {
+			if closeErr := w.Close(); closeErr != nil {
+				err = closeErr
+			}
+		}
+	}()
 	if setup != nil {
 		setup(w)
 	}
 	if _, e = os.Lstat(w.path); e == nil {
-		w.Close()
 		return nil, delivery.Fail("record_exists", "new journal directory required")
 	} else if !os.IsNotExist(e) {
-		w.Close()
 		return nil, delivery.Fail("invalid_record_path", "record")
 	}
 	if e = os.Mkdir(w.path, 0700); e != nil {
-		w.Close()
 		return nil, delivery.Fail("persistence_failed", "create journal")
 	}
 	b, _ := json.Marshal(i)
 	if e = w.Append("intent", b); e != nil {
-		w.Close()
 		return nil, e
 	}
 	if _, e = w.Snapshot(); e != nil {
-		w.Close()
 		return nil, e
 	}
 	return w, nil
 }
-func Open(path string) (*Writer, error) {
+func Open(path string) (*Writer, error) { return open(path, nil) }
+func open(path string, setup func(*Writer)) (result *Writer, err error) {
 	w, e := acquire(path)
 	if e != nil {
 		return nil, e
 	}
+	defer func() {
+		if result == nil {
+			if closeErr := w.Close(); closeErr != nil {
+				err = closeErr
+			}
+		}
+	}()
+	if setup != nil {
+		setup(w)
+	}
 	if _, e = w.Snapshot(); e != nil {
-		w.Close()
 		return nil, e
 	}
 	return w, nil
