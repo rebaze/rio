@@ -7,14 +7,21 @@
 [![Go](https://img.shields.io/github/go-mod/go-version/rebaze/rio)](go.mod)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rebaze/rio/badge)](https://scorecard.dev/viewer/?uri=github.com/rebaze/rio)
 
-**Rio normalizes CycloneDX SBOMs and records their inputs, supplied metadata and changes.**
+**Rio normalizes CycloneDX SBOMs, delivers verified outputs, and records the evidence for both.**
 
 Set a spec-version floor, attach product and pipeline metadata, and get normalized SBOMs plus an
-`index.json` linking original inputs, output digests, the manifest and check results. Normalization
-runs offline; explicit delivery can send verified outputs directly to Dependency-Track. Both run
-in one binary, on your workstation or in CI.
+`index.json` linking original inputs, output digests, the manifest and check results.
 
-[Quick start](#quick-start) · [Dependency-Track](#deliver-to-dependency-track) · [Configuration](#configure-your-project) · [For agents](#for-agents) · [Reference](#reference)
+Native delivery checks that the SBOM matches that record, sends the exact verified bytes, and
+keeps a separate **delivery journal**: what Rio attempted, what the destination acknowledged,
+and what later checks observed. Lost responses remain visible as uncertainty, with no automatic
+resubmission. Normalization stays offline; delivery uses the network explicitly. Both run in one
+binary, on your workstation or in CI.
+
+Delivery destinations include analysis platforms and artifact registries. **Dependency-Track is
+implemented today; [OCI registry delivery is planned](https://github.com/rebaze/rio/issues/83).**
+
+[Quick start](#quick-start) · [Verified delivery](#deliver-to-dependency-track) · [Configuration](#configure-your-project) · [For agents](#for-agents) · [Reference](#reference)
 
 ## When to use Rio
 
@@ -23,8 +30,9 @@ in one binary, on your workstation or in CI.
 - **Keep lineage and pipeline context.** Record input/output digests and normalization details;
   attach supplied product, source, build and generator metadata with its origins and changes.
   Source/build details remain labeled as producer assertions.
-- **Deliver verified outputs to Dependency-Track.** Upload directly by project name and version,
-  with a retained receipt and later activity checks. No project UUID lookup is required.
+- **Deliver verified SBOMs with an inspectable history.** Upload directly to Dependency-Track by
+  project name/version or UUID. Retain the intended destination, payload digest, acknowledgment
+  and later activity observations in a delivery journal, including unknown outcomes.
 - **Cover every selected module.** Include each qualifying module's SBOM automatically, with a
   failure when a selected module has not produced its output.
 - **Optionally repair Eclipse/OSGi p2 coordinates.** Convert eligible package URLs to Maven
@@ -32,9 +40,23 @@ in one binary, on your workstation or in CI.
   [Repair reference](docs/p2-repair.md) · [Focused example](tools/README.md#first-repair-sample).
 
 The records provide evidence for later release controls: which SBOM was processed, what changed,
-and which supplied build assertions belong to it. Rio's gate checks SBOM fields; broader
+which supplied build assertions belong to it, and what is known about each delivery attempt.
+Rio's gate checks SBOM fields; broader
 [release-rule evaluation is planned](docs/project.md#direction). SBOM generation and vulnerability
 scanning remain separate steps.
+
+### Where the evidence lives
+
+| Record | What it captures |
+|---|---|
+| `index.json` | Normalization inputs, output digests, transforms and gate results |
+| `<artifact>.intoto.json`, with `rio normalize --attest` | An **unsigned in-toto Statement** describing the normalization |
+| The directory passed to `rio deliver --record` | Separate journal events for delivery intent, receipt when available, and later reconciliation observations |
+
+Delivery history is not added to `index.json` or the normalization statements. These records
+support traceability; they do not authenticate the producer or prove successful ingestion.
+`rio delivery inspect` reads a journal offline; `rio delivery reconcile` queries the destination
+and appends new observations without uploading again.
 
 ## Install
 
@@ -128,7 +150,8 @@ rio delivery inspect --record "$demo_dir/delivery-record"
 Rio checks the recorded gate and output digest, then sends the exact verified SBOM bytes directly
 by project name/version. The upload replaces that project's component inventory. Project creation
 is disabled by default, and each attempt needs a new journal directory. An accepted receipt means
-submission was acknowledged; it does not prove successful ingestion.
+submission was acknowledged; it does not prove successful ingestion. The directory at
+`$demo_dir/delivery-record` retains the delivery history independently of the normalized files.
 
 Use `rio delivery plan` to preview offline and `rio delivery reconcile` to query saved receipt
 activity without resubmitting. See [delivery configuration and the runnable demo](tools/README.md#native-verified-delivery)
@@ -219,6 +242,7 @@ Reading an extracted release archive? [Open these references on GitHub](https://
 | Supply product and organization metadata | [Enrichment](docs/enrichment.md) |
 | Attach supplied source/build context | [Context](docs/context.md) |
 | Read the index, repair records or unsigned statements | [Output records](docs/output.md) |
+| Deliver verified SBOMs and inspect delivery journals | [Native delivery](tools/README.md#native-verified-delivery) |
 | Repair Eclipse p2 package URLs | [p2 repair](docs/p2-repair.md) |
 | Run demos, prepare mapping tables or upload to DependencyTrack | [Tools and examples](tools/README.md) |
 | Integrate a project with a coding agent | [Agent integration](docs/agent-integration.md) |
