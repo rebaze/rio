@@ -14,10 +14,12 @@ import (
 
 // Exit codes (§1).
 const (
-	ExitOK       = 0 // every artifact processed, no gate failure under --gate fail
-	ExitGate     = 1 // at least one artifact failed the gate under --gate fail
-	ExitUsage    = 2 // usage or configuration error; nothing was written
-	ExitInternal = 3 // internal error
+	ExitOK               = 0 // every artifact processed, no gate failure under --gate fail
+	ExitGate             = 1 // at least one artifact failed the gate under --gate fail
+	ExitUsage            = 2 // usage or configuration error; nothing was written
+	ExitInternal         = 3 // internal error
+	ExitDeliveryUnknown  = 4 // remote outcome unknown or observation unavailable
+	ExitDeliveryRejected = 5 // supported receiver rejection
 )
 
 // Injected at build time via ldflags (see Makefile and .goreleaser.yaml).
@@ -89,6 +91,8 @@ func newRootCommand(opts *globalOptions, stdout, stderr io.Writer) *cobra.Comman
 	root.AddCommand(newNormalizeCommand(opts, stdout, stderr))
 	root.AddCommand(newPlanCommand(opts, stdout))
 	root.AddCommand(newVersionCommand(stdout))
+	root.AddCommand(newDeliverCommand(opts, stdout, stderr))
+	root.AddCommand(newDeliveryCommand(opts, stdout, stderr))
 	return root
 }
 

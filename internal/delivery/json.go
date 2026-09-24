@@ -141,3 +141,12 @@ func shape(v any, t reflect.Type, strict bool) error {
 	}
 	return nil
 }
+
+// JSONEqual compares validated JSON identities independently of record indentation.
+func JSONEqual(a, b json.RawMessage) bool {
+	var av, bv any
+	if DecodeJSON(a, &av, false) != nil || DecodeJSON(b, &bv, false) != nil {
+		return false
+	}
+	return reflect.DeepEqual(av, bv)
+}
