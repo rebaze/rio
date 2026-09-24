@@ -777,3 +777,8 @@ evidence; synthetic demo responses alone do not establish a tested server versio
 Run the [synthetic installed-binary demo](demo-delivery/README.md) with
 `python3 tools/demo-delivery/run.py /absolute/path/to/rio`. It uses only a loopback stub,
 retains inspectable evidence, and needs no Go toolchain.
+
+The adapter's real-server contract is tested against **Dependency-Track 5.1.1**. Retained
+[sanitized integration evidence and opt-in test instructions](demo-delivery/integration/README.md)
+cover both selectors, creation policies and denial/status behavior. Other versions are not
+advertised as tested. The integration harness uses additional read permissions only for testing.
