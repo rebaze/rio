@@ -103,6 +103,15 @@ class ChangesTest(unittest.TestCase):
                 if path.endswith(".sh"):
                     self.assertEqual(result["shell"], "true")
 
+    def test_first_repair_sample_runs_binary_checks(self):
+        for path in (
+            "tools/demo-repair/bom.json",
+            "tools/demo-repair/rio.yaml",
+            "tools/demo-repair/run.sh",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(detect(path)["go"], "true")
+
     def test_onboarding_guide_and_examples_run_binary_checks(self):
         for path in (
             "docs/agent-integration.md",
