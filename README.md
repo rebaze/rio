@@ -552,6 +552,15 @@ An omitted prior field is an auditable removal with `after: null`; absent revisi
 build ID values are never silently inherited from a prior snapshot. The index artifact and
 statement artifact carry identical context records.
 
+The record's `ownedReferences` array lists `source.repository` and/or `build.url` only when
+Rio added the corresponding bare native reference. Ownership survives unchanged snapshots.
+An authorized omission removes that exact reference and records the native before/after
+arrays as well as the logical removal. Pre-existing references, unrelated references and
+references subsequently augmented with comments or hashes remain. Earlier v1 context records
+without `ownedReferences` are accepted: Rio derives ownership only from an explicit native
+addition in their change audit; otherwise it preserves the reference because ownership is
+unknown. This extends the unreleased context record; context input files remain unchanged.
+
 The generator claim describes the producer's reported generator. Rio preserves original
 `metadata.tools` and separately records itself as the normalizer; it never re-labels the
 generator as a tool that edited the original SBOM. A supplied lifecycle fills an empty native

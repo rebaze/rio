@@ -83,6 +83,20 @@ class ContextProducerTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(result.stdout, "")
 
+    def test_control_characters_emit_no_partial_json(self):
+        for codepoint in (0x01, 0x1F, 0x7F, 0x80, 0x85, 0x9F):
+            with self.subTest(codepoint=codepoint):
+                result = self.run_helper("--build-id", "run" + chr(codepoint) + "42")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("controls", result.stderr)
+
+    def test_unicode_text_is_preserved(self):
+        result = self.run_helper("--build-id", "Büild–東京\u00a042")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["artifacts"][0]["build"]["id"],
+                         "Büild–東京\u00a042")
+
     @unittest.skipUnless(os.environ.get("RIO_BIN"), "set RIO_BIN to run Rio interoperability smoke")
     def test_generated_document_normalizes_with_rio(self):
         rio = os.environ["RIO_BIN"]

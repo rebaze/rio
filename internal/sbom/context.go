@@ -26,6 +26,9 @@ type ContextRecord struct {
 	Defaulted []string              `json:"defaulted"`
 	Changes   []ContextChange       `json:"changes"`
 	Assertion string                `json:"assertion"`
+	// OwnedReferences lists URL fields whose bare native reference Rio added.
+	// Unlike Changes, it survives reapplication of an unchanged snapshot.
+	OwnedReferences []string `json:"ownedReferences"`
 }
 
 type ContextChange struct {
@@ -55,6 +58,7 @@ func (d *Document) ApplyContext(cfg *buildcontext.Resolved) (*ContextRecord, err
 		return nil, err
 	}
 	rec := &ContextRecord{Version: 1, File: cfg.File, Selector: cfg.Selector, Effective: cfg.Artifact, Defaulted: append([]string{}, cfg.Defaulted...), Changes: []ContextChange{}, Assertion: "producer"}
+	rec.OwnedReferences = []string{}
 	replacement := map[string]bool{}
 	for _, field := range cfg.Replace {
 		replacement[field] = true
@@ -109,16 +113,26 @@ func (d *Document) ApplyContext(cfg *buildcontext.Resolved) (*ContextRecord, err
 		name, kind string
 	}{{"source.repository", "vcs"}, {"build.url", "build-system"}} {
 		value, ok := current[native.name]
+		parent := working.metadataComponent(false)
 		if !ok {
+			if contextOwnsReference(prior, native.name, native.kind, old[native.name]) {
+				before, after, changed := removeContextReference(parent, native.kind, old[native.name])
+				if changed {
+					rec.Changes = append(rec.Changes, ContextChange{Field: native.name, Target: "/metadata/component/externalReferences", Before: before, After: after, Selector: cfg.Selector, Override: true})
+				}
+			}
 			continue
 		}
-		parent := working.metadataComponent(false)
 		if parent == nil {
 			return nil, fmt.Errorf("context %s requires metadata.component subject", native.name)
 		}
 		before, after, changed, err := mergeReference(parent, native.kind, value, replacement[native.name])
 		if err != nil {
 			return nil, fmt.Errorf("context %s conflicts with existing %s external reference; explicitly list %s in context.replace", native.name, native.kind, native.name)
+		}
+		if !hasReferenceURL(before, native.kind, value) ||
+			(old[native.name] == value && contextOwnsReference(prior, native.name, native.kind, value) && hasBareReference(after, native.kind, value)) {
+			rec.OwnedReferences = append(rec.OwnedReferences, native.name)
 		}
 		if changed {
 			override := referenceConflict(before, native.kind, value)
@@ -222,7 +236,13 @@ func parsePriorContext(value, id string) (*ContextRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	root, err := recordObject(raw, "record", "version", "file", "selector", "effective", "defaulted", "changes", "assertion")
+	keys := []string{"version", "file", "selector", "effective", "defaulted", "changes", "assertion"}
+	if object, ok := raw.(map[string]any); ok {
+		if _, exists := object["ownedReferences"]; exists {
+			keys = append(keys, "ownedReferences")
+		}
+	}
+	root, err := recordObject(raw, "record", keys...)
 	if err != nil {
 		return nil, err
 	}
@@ -276,6 +296,24 @@ func parsePriorContext(value, id string) (*ContextRecord, error) {
 	if effective.Source != nil && effective.Source.Workspace == nil {
 		return nil, fmt.Errorf("effective.source.workspace is missing from prior snapshot")
 	}
+	leaves := effectiveLeaves(effective)
+	var owned []string // nil distinguishes older records lacking ownership data.
+	if value, exists := root["ownedReferences"]; exists {
+		list, ok := value.([]any)
+		if !ok {
+			return nil, fmt.Errorf("ownedReferences must be an array")
+		}
+		owned = []string{}
+		seen := map[string]bool{}
+		for _, item := range list {
+			field, ok := item.(string)
+			if !ok || (field != "source.repository" && field != "build.url") || leaves[field] == "" || seen[field] {
+				return nil, fmt.Errorf("ownedReferences must contain distinct active URL fields")
+			}
+			seen[field] = true
+			owned = append(owned, field)
+		}
+	}
 	rawDefaulted, ok := root["defaulted"].([]any)
 	if !ok {
 		return nil, fmt.Errorf("defaulted must be an array")
@@ -318,12 +356,79 @@ func parsePriorContext(value, id string) (*ContextRecord, error) {
 		if !ok {
 			return nil, fmt.Errorf("%s.override must be a boolean", label)
 		}
-		if !validChangeSelector(selector, source, field, target, change["after"], defaulted) || !validContextChange(field, target, change["before"], change["after"]) {
+		nativeRemoval := target == "/metadata/component/externalReferences" && leaves[field] == "" && source == selector
+		if (!nativeRemoval && !validChangeSelector(selector, source, field, target, change["after"], defaulted)) || !validContextChange(field, target, change["before"], change["after"]) {
 			return nil, fmt.Errorf("%s has invalid target or selector", label)
 		}
 		changes = append(changes, ContextChange{Field: field, Target: target, Before: change["before"], After: change["after"], Selector: source, Override: override})
 	}
-	return &ContextRecord{Version: 1, File: buildcontext.FileRef{Path: path, SHA256: digest}, Selector: selector, Effective: effective, Defaulted: defaulted, Changes: changes, Assertion: assertion}, nil
+	return &ContextRecord{Version: 1, File: buildcontext.FileRef{Path: path, SHA256: digest}, Selector: selector, Effective: effective, Defaulted: defaulted, Changes: changes, Assertion: assertion, OwnedReferences: owned}, nil
+}
+
+func contextOwnsReference(prior *ContextRecord, field, kind, url string) bool {
+	if prior == nil || url == "" {
+		return false
+	}
+	if prior.OwnedReferences != nil {
+		for _, name := range prior.OwnedReferences {
+			if name == field {
+				return true
+			}
+		}
+		return false
+	}
+	// Older v1 records can prove ownership through their last mutation only.
+	// A matching effective claim alone does not establish who added a reference.
+	for _, change := range prior.Changes {
+		if change.Field == field && change.Target == "/metadata/component/externalReferences" &&
+			!hasReferenceURL(change.Before, kind, url) && hasBareReference(change.After, kind, url) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasReferenceURL(value any, kind, url string) bool {
+	refs, _ := value.([]any)
+	for _, raw := range refs {
+		ref, _ := raw.(map[string]any)
+		if ref["type"] == kind && ref["url"] == url {
+			return true
+		}
+	}
+	return false
+}
+
+func hasBareReference(value any, kind, url string) bool {
+	refs, _ := value.([]any)
+	for _, raw := range refs {
+		if reflect.DeepEqual(raw, map[string]any{"type": kind, "url": url}) {
+			return true
+		}
+	}
+	return false
+}
+
+func removeContextReference(parent map[string]any, kind, url string) (before, after any, changed bool) {
+	before = parent["externalReferences"]
+	refs, _ := before.([]any)
+	next := make([]any, 0, len(refs))
+	for _, raw := range refs {
+		if !changed && reflect.DeepEqual(raw, map[string]any{"type": kind, "url": url}) {
+			changed = true
+			continue
+		}
+		next = append(next, raw)
+	}
+	if !changed {
+		return before, before, false
+	}
+	if len(next) == 0 {
+		delete(parent, "externalReferences")
+		return before, nil, true
+	}
+	parent["externalReferences"] = next
+	return before, next, true
 }
 
 func validChangeSelector(entry, source, field, target string, after any, defaulted []string) bool {

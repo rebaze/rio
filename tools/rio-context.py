@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import sys
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -21,7 +22,7 @@ PHASES = ("design", "pre-build", "build", "post-build", "operations", "discovery
 
 
 def validate(label, value):
-    if not value or value != value.strip() or any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+    if not value or value != value.strip() or any(unicodedata.category(ch) == "Cc" for ch in value):
         raise ValueError("%s must be a nonblank string without surrounding whitespace or controls" % label)
     if label in ("source-repository", "build-url"):
         try:
