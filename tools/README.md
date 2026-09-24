@@ -323,7 +323,7 @@ CI runs it, along with `shellcheck`, whenever a `.sh` file changes.
 ## Signing and verifying normalization attestations
 
 `rio normalize --attest` writes unsigned `<artifact-id>.intoto.json` statements beside the
-normalized SBOMs. The [statement contract](../README.md#normalization-attestations) describes
+normalized SBOMs. The [statement contract](../docs/output.md#normalization-attestations) describes
 their subjects, digests and normalization evidence. rio produces these files locally; signing
 and verification belong to the surrounding pipeline.
 
@@ -521,7 +521,7 @@ merge entries. Available flags cover all v1 leaves: `--source-repository`,
 `--build-system-version`, `--generator-name`, `--generator-version`, and `--lifecycle`.
 `--artifact-id` and `--sbom` are mandatory. The helper checks obvious format errors before
 writing any JSON; Rio remains the final validator of the context and manifest binding. See
-the [native context contract](../README.md#build-and-source-context) for field meaning and
+the [native context contract](../docs/context.md) for field meaning and
 authority limits.
 
 ## feature-video
@@ -579,7 +579,7 @@ marker exclusion; and refuses overlapping sets before output.
 
 The copied reporting SBOM deliberately keeps its original subject: directory names define Rio
 output IDs, not software identity. Markers are selected by filename; their XML is never parsed.
-See [manifest semantics and limitations](../README.md#discovering-module-artifacts), including
+See [manifest semantics and limitations](../docs/manifest.md#discovering-module-artifacts), including
 context/transform path rules and stale-file behavior. The current `index.json`, rather than every
 file in a reused directory, defines membership.
 

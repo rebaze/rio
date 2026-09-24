@@ -56,7 +56,7 @@ decision pending. A missing answer is not approval to exclude a deliverable.
 
 ## 3. Choose the smallest configuration that expresses the policy
 
-Use the [manifest reference](../README.md#the-manifest) for field semantics. Start with selection
+Use the [manifest reference](manifest.md) for field semantics. Start with selection
 and existing processing settings; add transforms or metadata only when the project needs them.
 
 | Project situation | Configuration | Copyable example |
@@ -110,7 +110,7 @@ manifest with a stock template or weaken its gate to make the first run green.
 Rio output IDs are not software coordinates. Keep input SBOM names, versions, purls and component
 membership intact unless a specific configured operation is justified. Native Maven purls do not
 need a p2 repair transform just because the build uses Maven. Where p2 repair is needed, follow the
-[transform reference](../README.md#the-manifest) and existing mapping configuration.
+[transform reference](p2-repair.md) and existing mapping configuration.
 
 Add enrichment only from supplied or established project metadata. Preserve existing subject
 replacement decisions; do not invent new ones from directory names. Add context only when an
