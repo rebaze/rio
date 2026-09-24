@@ -577,15 +577,15 @@ under the existing plan/index/predicate v1 contracts; manifests without `context
 previous output shape. The [offline context demo](tools/README.md#ci-build-context-demo) and
 [explicit producer helper](tools/README.md#rio-contextpy) are documented with the other tools.
 
-#### Watch the walkthrough
+#### Walkthrough recording
 
 A narrated walkthrough of everything above — the manifest bindings, both products, the three
 refusals and the audited replacement — is recorded from real command output and paced for
-reading. **It is not published yet, so there is no link here to follow.** The video, its
-captions, its transcript and a self-contained viewing page are produced from committed
-authoring sources by [`tools/feature-video`](tools/feature-video/README.md); watching it needs
-nothing beyond a browser, and running the same commands yourself needs only rio and a POSIX
-shell.
+reading. **Public hosting is pending; this repository does not yet provide a viewing link.**
+The MP4, captions, transcript and portable browser viewer are delivered separately. A fresh
+checkout contains the [authoring sources](tools/feature-video/README.md), not the rendered
+video. The offline example itself needs only rio and a POSIX shell; the recorded authoring
+and inspection commands also use Go, Python and jq.
 
 ### Manifest enrichment
 

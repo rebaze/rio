@@ -240,20 +240,25 @@ def render(shot, local, total, meta):
     draw.text((1690, 978), tl.timestamp(elapsed) + " / " + tl.timestamp(total),
               font=font(20, "mono"), fill=C["ink"])
     draw.line((42, 1038, 1878, 1038), fill=C["border"], width=5)
-    draw.line((42, 1038, 42 + 1836 * min(1, elapsed / total), 1038), fill=C["mint"], width=5)
+    draw.line((42, 1038, 42 + progress_pixels(elapsed, total), 1038), fill=C["mint"], width=5)
     return image
 
 
-def frame_key(shot, local):
+def progress_pixels(elapsed, total):
+    return int(1836 * min(1, elapsed / total))
+
+
+def frame_key(shot, local, total):
     """Frames that would be drawn identically are drawn once and written twice."""
+    progress = progress_pixels(shot["start"] + local, total)
     if shot["kind"] != "step":
-        return (int(shot["start"] + local),)
+        return (int(shot["start"] + local), progress)
     command = shot["step"]["command"]
     chars = min(len(command), max(0, int((local - tl.TYPING_LEAD) / shot["typing"] * len(command))))
     lines = (min(len(shot["out"]),
                  max(0, math.ceil((local - shot["output_start"]) / shot["reveal"] * len(shot["out"]))))
              if shot["reveal"] else 0)
-    return (chars, lines, int(local * 2) % 2, int(shot["start"] + local),
+    return (chars, lines, int(local * 2) % 2, int(shot["start"] + local), progress,
             local >= shot["typing_end"], local >= shot["output_start"], local >= shot["output_end"])
 
 
@@ -336,7 +341,7 @@ def main(argv=None):
             cache = {}
             for number in range(round(shot["duration"] * FPS)):
                 local = number / FPS
-                key = frame_key(shot, local)
+                key = frame_key(shot, local, total)
                 if key not in cache:
                     cache = {key: render(shot, local, total, meta).tobytes()}
                 encoder.stdin.write(cache[key])

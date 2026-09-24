@@ -12,9 +12,11 @@ import io
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 import warnings
 import wave
+from unittest import mock
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -238,6 +240,44 @@ class NarrationCache(unittest.TestCase):
             self.assertIsNone(clips)
             self.assertEqual(1, usage["requestsThisRun"])
             self.assertEqual(1, len([c for c in calls if "interactions" in c]))
+
+    def test_export_records_the_validated_cached_voice(self):
+        with TempCache() as cache, stubbed_api():
+            for key_reader in (lambda: "key", broken_key):
+                result, _ = narrate.narrate([("intro", "a")], cache,
+                                           key_reader=key_reader, log=lambda *a: None)
+                self.assertEqual("google", result[0].get("provider"))
+                self.assertEqual("gemini-3.1-flash-tts-preview", result[0].get("model"))
+                self.assertEqual("Charon", result[0].get("voice"))
+
+    def test_identical_text_can_reuse_audio_under_distinct_clip_names(self):
+        with TempCache() as cache, stubbed_api():
+            narrate.narrate([("original", "Shared words.")], cache,
+                            key_reader=lambda: "key", log=lambda *a: None)
+            result, usage = narrate.narrate(
+                [("intro", "Shared words."), ("outro", "Shared words.")], cache,
+                key_reader=broken_key, log=lambda *a: None)
+            self.assertEqual(["intro", "outro"], [clip["clip"] for clip in result])
+            self.assertEqual(result[0]["path"], result[1]["path"])
+            self.assertEqual(0, usage["requestsThisRun"])
+
+    def test_export_refuses_mismatching_or_missing_cache_voice_metadata(self):
+        with TempCache() as cache, stubbed_api():
+            narrate.narrate([("intro", "a")], cache, key_reader=lambda: "key", log=lambda *a: None)
+            path = cache.meta_path(narrate.cache_key(narrate.spoken_form("a")))
+            original = path.read_text()
+            for field in ("provider", "model", "voice", "text", "spoken"):
+                for missing in (False, True):
+                    with self.subTest(field=field, missing=missing):
+                        metadata = json.loads(original)
+                        if missing:
+                            del metadata[field]
+                        else:
+                            metadata[field] = "wrong"
+                        path.write_text(json.dumps(metadata))
+                        with self.assertRaisesRegex(narrate.NarrationError, "cache metadata"):
+                            narrate.narrate([("intro", "a")], cache, key_reader=broken_key,
+                                            log=lambda *a: None)
 
     def test_a_complete_pass_reuses_the_cache_on_a_second_run(self):
         with TempCache() as cache, stubbed_api() as calls:
@@ -561,17 +601,26 @@ class Verification(unittest.TestCase):
         self.assertIn("expected 0.00s", " ".join(verify.check_chapters(drifted, expected, 9.0)))
         self.assertIn("is titled", " ".join(verify.check_chapters(renamed, expected, 9.0)))
 
+    def test_every_chapter_end_must_match_the_timeline(self):
+        expected = [{"start": 0.0, "title": "One", "end": 5.0},
+                    {"start": 5.0, "title": "Two", "end": 9.0}]
+        for end in (3.0, 7.0):
+            with self.subTest(end=end):
+                found = [{"start_time": "0", "end_time": str(end), "tags": {"title": "One"}},
+                         {"start_time": "5", "end_time": "9", "tags": {"title": "Two"}}]
+                self.assertIn("chapter 1 ends", " ".join(verify.check_chapters(found, expected, 9)))
+
     def test_clips_paced_like_their_script_pass(self):
         clips = [{"clip": "intro", "text": "one two three four five", "seconds": 2.0}]
         self.assertEqual([], verify.check_speaking_rates(verify.speaking_rates(clips)))
 
-    def test_a_clip_with_an_added_preamble_is_caught(self):
-        # Five words that took twenty seconds: the synthesizer said more than it was given.
+    def test_an_implausibly_slow_clip_is_flagged_for_review(self):
+        # Five written words over twenty seconds warrant listening, not a word-count claim.
         clips = [{"clip": "intro", "text": "one two three four five", "seconds": 20.0}]
         problems = verify.check_speaking_rates(verify.speaking_rates(clips))
         self.assertIn("may have gained words", problems[0])
 
-    def test_a_clip_missing_a_sentence_is_caught(self):
+    def test_an_implausibly_fast_clip_is_flagged_for_review(self):
         clips = [{"clip": "intro", "text": " ".join(["word"] * 100), "seconds": 5.0}]
         problems = verify.check_speaking_rates(verify.speaking_rates(clips))
         self.assertIn("may have lost words", problems[0])
@@ -585,6 +634,136 @@ class Verification(unittest.TestCase):
         problems = verify.check_chapters(expected[:1] and [
             {"start_time": "0.000", "end_time": "9.000", "tags": {"title": "One"}}], expected, 9.0)
         self.assertIn("1 chapters in the file, 2 in the timeline", " ".join(problems))
+
+
+class VerificationArtifacts(unittest.TestCase):
+    """Exercise verifier decisions with files; replace only the external media tools."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.work = Path(temporary.name)
+        base = storyboard.VIDEO_ID
+        for name in (base + ".mp4", "poster.png", "transcript.json", "commands.sh",
+                     "command-output.txt", "chapters.txt", "usage.json"):
+            (self.work / name).write_text("fixture")
+        (self.work / "timeline.json").write_text(json.dumps([dict(start=0, duration=10)]))
+        (self.work / "chapters.json").write_text(json.dumps([
+            dict(start=0, end=10, title="One")]))
+        self.clips = [dict(clip=name, text=text, seconds=len(text.split()) / 150 * 60,
+                           provider="google", model="gemini-3.1-flash-tts-preview", voice="Charon")
+                      for name, text in storyboard.narration_clips()]
+        (self.work / "narration.txt").write_text("\n".join(c["text"] for c in self.clips))
+        self.write_clips()
+        (self.work / (base + ".srt")).write_text(timeline.srt([(1, 2, "A caption.")]))
+        (self.work / (base + ".vtt")).write_text(timeline.vtt([(1, 2, "A caption.")]))
+        info = dict(format=dict(duration="10"), streams=[
+            dict(codec_type="video", codec_name="h264", pix_fmt="yuv420p", width=1920,
+                 height=1080, avg_frame_rate="%s/1" % timeline.FPS),
+            dict(codec_type="audio", codec_name="aac"), dict(codec_type="subtitle")],
+            chapters=[dict(start_time="0", end_time="10", tags=dict(title="One"))])
+        for name, result in (("decodes", (True, "")), ("probe", info),
+                             ("faststart", True), ("loudness", dict(lufs=-18, peak=-2))):
+            patcher = mock.patch.object(verify, name, return_value=result)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def write_clips(self):
+        (self.work / "narration.json").write_text(json.dumps(self.clips))
+
+    def problems(self):
+        return "\n".join(verify.verify(self.work, log=lambda _: None))
+
+    def test_complete_approved_metadata_passes(self):
+        self.assertEqual("", self.problems())
+
+    def test_each_voice_field_is_verified(self):
+        for field in ("provider", "model", "voice"):
+            with self.subTest(field=field):
+                original = self.clips[0][field]
+                self.clips[0][field] = "unapproved"
+                self.write_clips()
+                self.assertIn("approved voice", self.problems())
+                self.clips[0][field] = original
+
+    def test_duplicate_unknown_and_changed_script_clips_fail(self):
+        original = self.clips[0].copy()
+        for change in (dict(clip=self.clips[1]["clip"]), dict(clip="unknown"),
+                       dict(text="A different sentence.")):
+            with self.subTest(change=change):
+                self.clips[0] = dict(original, **change)
+                self.write_clips()
+                self.assertIn("narration metadata", self.problems())
+        self.clips[0] = original
+
+    def test_missing_or_malformed_narration_is_a_reported_failure(self):
+        path = self.work / "narration.json"
+        for value in (None, "not JSON", "{}", "[null]", "[]"):
+            with self.subTest(value=value):
+                if value is None:
+                    path.unlink()
+                else:
+                    path.write_text(value)
+                self.assertIn("narration metadata", self.problems())
+
+    def test_invalid_measured_duration_is_a_reported_failure(self):
+        for seconds in (0, -1, None, "12", float("nan"), float("inf"), True):
+            with self.subTest(seconds=seconds):
+                self.clips[0]["seconds"] = seconds
+                self.write_clips()
+                self.assertIn("narration metadata", self.problems())
+
+    def test_legacy_manifest_requires_matching_cache_metadata(self):
+        for clip in self.clips:
+            clip["spoken"] = narrate.spoken_form(clip["text"])
+            clip["key"] = narrate.cache_key(clip["spoken"])
+            audio = self.work / (clip["key"] + ".wav")
+            clip["path"] = str(audio)
+            audio.with_suffix(".json").write_text(json.dumps(clip))
+            for field in ("provider", "model", "voice"):
+                del clip[field]
+        self.write_clips()
+        self.assertEqual("", self.problems())
+        path = self.work / (self.clips[0]["key"] + ".json")
+        metadata = json.loads(path.read_text())
+        metadata["clip"] = "old-scene-name"
+        path.write_text(json.dumps(metadata))
+        self.assertEqual("", self.problems())
+        for field in ("provider", "model", "voice", "text", "spoken"):
+            with self.subTest(field=field):
+                original = path.read_text()
+                metadata = json.loads(original)
+                metadata[field] = "wrong"
+                path.write_text(json.dumps(metadata))
+                self.assertIn("narration metadata", self.problems())
+                path.write_text(original)
+        path.unlink()
+        self.assertIn("narration metadata", self.problems())
+
+    def test_legacy_metadata_must_use_the_expected_content_key(self):
+        clip = self.clips[0]
+        clip["spoken"] = narrate.spoken_form(clip["text"])
+        clip["key"] = "unrelated-key"
+        path = self.work / "unrelated-key.wav"
+        clip["path"] = str(path)
+        path.with_suffix(".json").write_text(json.dumps(clip))
+        for field in ("provider", "model", "voice"):
+            del clip[field]
+        self.write_clips()
+        self.assertIn("narration metadata", self.problems())
+
+    def test_vtt_end_and_text_must_agree_with_srt(self):
+        path = self.work / (storyboard.VIDEO_ID + ".vtt")
+        for cues in ([(1, 3, "A caption.")], [(1, 2, "Different words.")],
+                     [(1, 12, "A caption.")]):
+            with self.subTest(cues=cues):
+                path.write_text(timeline.vtt(cues))
+                self.assertIn("SRT and WebVTT agree", self.problems())
+
+    def test_caption_line_wrapping_does_not_change_the_words(self):
+        (self.work / (storyboard.VIDEO_ID + ".vtt")).write_text(
+            timeline.vtt([(1, 2, "A\ncaption.")]))
+        self.assertEqual("", self.problems())
 
 
 class EndScreen(unittest.TestCase):

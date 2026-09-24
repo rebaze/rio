@@ -18,6 +18,7 @@ when it was first made.
 | `transcript.json` | every command, its real output, its exit code and how long it took |
 | `commands.sh`, `command-output.txt` | the same thing as flat files, to diff or replay by hand |
 | `narration.txt` | the spoken script |
+| `narration.json` | clip identities, timing and recorded voice metadata |
 | `chapters.txt`, `chapters.json` | chapter names and boundaries |
 | `timeline.json` | every shot, when it starts and when its narration does |
 | `usage.json` | what the narration pass requested and what it is estimated to have cost |
@@ -27,7 +28,7 @@ when it was first made.
 They land in `target/feature-video/`, which is not tracked. The video is tens of megabytes
 and regenerable; what is committed is the thing that regenerates it.
 
-## The four steps
+## The five steps
 
 ```sh
 python3 tools/feature-video/capture.py     # run the commands, record what they printed
@@ -109,6 +110,14 @@ them collapsed to zero length, that captions are ordered and end inside the vide
 narration is audible, on target and does not clip, and that the captions read as prose rather
 than as the letters the synthesizer was handed.
 
+It compares every chapter start/end and both caption tracks' starts, ends and text. Each
+narration entry must match its scripted clip and the approved provider/model/voice metadata;
+older manifests obtain those settings from their matching cache sidecars. This checks recorded
+metadata, not the identity of the audible speaker. The 90–200 words-per-minute guard catches
+implausible durations; the original recording's measured 111.94–155.17 range is an observation,
+not an acceptance band. Neither check proves that every word was spoken correctly; that needs
+listening to the recording.
+
 Every one of these failed in a draft at least once. The chapter check exists because ffmpeg
 picks a movie timescale that rounds chapter boundaries into each other unless
 `-movie_timescale 1000` is passed, and the result looks fine until a player shows the wrong
@@ -136,6 +145,12 @@ it is not a fair test of playback.
 
 `bundle.py` also writes a `SHA256SUMS` covering exactly the files it shipped, so
 `shasum -a 256 -c SHA256SUMS` works inside the folder someone was handed.
+It assembles a fresh directory before replacing the previous generated bundle, so stale files
+are not carried into delivery. A custom `--out` must be empty or an existing generated bundle;
+the rendered source directory cannot be used as the output. Bundling copies the existing MP4
+and never renders video or generates narration. It consolidates legacy voice metadata from
+validated cache sidecars into the bundle's `narration.json`, so checking that metadata does
+not depend on the author's workstation. The original manifest and audio remain unchanged.
 
 ### endscreen.py
 
@@ -171,6 +186,7 @@ the encoded walkthrough.
 | `verify.py` | Python 3.9+, ffmpeg and ffprobe |
 | `bundle.py` | Python 3.9+ |
 | `feature_video_test.py` | Python 3.9+ only |
+| `tooling_test.py` | Python 3.9+, bash and `ps` |
 
 None of these is a rio runtime dependency, and none is needed to *watch* the video or to run
 the [demo the video walks through](../demo-context/README.md), which needs rio and a POSIX
@@ -180,12 +196,22 @@ shell.
 
 ```sh
 python3 tools/feature-video/feature_video_test.py
+python3 tools/feature-video/tooling_test.py
 ```
 
 They cover the pacing rules, the cache, the audio decoding and the failure paths, and they
 run in CI. They make no network calls and read no credentials: the synthesizer is replaced
 with a local stub, so a test run never spends anything. What they cannot check is whether the
 result sounds right — that needs someone to watch it.
+
+## Existing recording and publication
+
+The existing recording was captured from `b8395098615ea2aaae35dfa8ad111ec7f077c415`.
+Its MP4 and narration are retained unchanged at the owner's request. The renderer's progress
+cache correction applies to future renders; it does not change the already encoded progress
+indicator. The portable bundle can be rebuilt from the existing assets without re-rendering.
+Public hosting and a README viewing link remain pending by the owner's decision; a fresh
+checkout contains authoring sources, not the video assets.
 
 ## Re-recording against a release
 

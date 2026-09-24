@@ -369,7 +369,20 @@ def narrate(clips, cache, only=None, force=False, key_reader=read_credential, lo
         if not cache.has(item["key"]):
             continue
         wav = cache.read(item["key"])
-        result.append(dict(item, seconds=wav_duration(wav), path=str(cache.path(item["key"]))))
+        try:
+            metadata = json.loads(cache.meta_path(item["key"]).read_text())
+        except (OSError, ValueError) as error:
+            raise NarrationError("%s cache metadata is unreadable: %s" % (item["clip"], error)) from error
+        approved = dict(provider=storyboard.VOICE_PROVIDER, model=storyboard.VOICE_MODEL,
+                        voice=storyboard.VOICE_NAME)
+        # The cache is addressed by content and voice settings; its original
+        # scene label may differ when a line is moved or reused.
+        expected = dict(approved, text=item["text"], spoken=item["spoken"])
+        if not isinstance(metadata, dict) or any(metadata.get(k) != v for k, v in expected.items()):
+            raise NarrationError("%s cache metadata does not match the approved voice and script"
+                             % item["clip"])
+        result.append(dict(item, **approved, seconds=wav_duration(wav),
+                           path=str(cache.path(item["key"]))))
     input_tokens = reported + estimated_tokens
     if missing:
         log("%d clip(s) still have no audio: %s" % (len(missing), ", ".join(missing)))

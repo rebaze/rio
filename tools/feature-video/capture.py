@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import select
+import signal
 import subprocess
 import sys
 import time
@@ -77,6 +78,7 @@ def run_steps(steps, root, timeout=DEFAULT_TIMEOUT, log=print):
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         env=env,
+        start_new_session=True,
     )
     records = []
     try:
@@ -87,7 +89,8 @@ def run_steps(steps, root, timeout=DEFAULT_TIMEOUT, log=print):
             shell.stdin.flush()
             data = b""
             while marker.encode() not in data:
-                ready, _, _ = select.select([shell.stdout], [], [], 1)
+                remaining = max(0, timeout - (time.monotonic() - start))
+                ready, _, _ = select.select([shell.stdout], [], [], min(1, remaining))
                 if ready:
                     chunk = os.read(shell.stdout.fileno(), 65536)
                     if not chunk:
@@ -114,24 +117,29 @@ def run_steps(steps, root, timeout=DEFAULT_TIMEOUT, log=print):
             )
             log("%02d exit=%d %s" % (index + 1, rc, step["title"]))
     finally:
-        # Ask bash to leave, then close both pipes: closing stdin is the EOF that ends it
-        # even when the write above could not be delivered. Leaving them to the garbage
-        # collector leaks two descriptors per run and warns under -W error.
+        # Every command belongs to this session. Terminate the whole group so a timed
+        # out foreground command (or a background child) cannot outlive the capture.
         try:
-            shell.stdin.write(b"exit\n")
-            shell.stdin.flush()
-        except (OSError, ValueError):
+            os.killpg(shell.pid, signal.SIGTERM)
+        except ProcessLookupError:
             pass
+        try:
+            shell.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass
+        finally:
+            # Bash may exit before a child that ignores SIGTERM. Kill stragglers even
+            # when wait() succeeded, and always reap our direct child.
+            try:
+                os.killpg(shell.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            shell.wait()
         for stream in (shell.stdin, shell.stdout):
             try:
                 stream.close()
             except (OSError, ValueError):
                 pass
-        try:
-            shell.wait(timeout=20)
-        except subprocess.TimeoutExpired:
-            shell.kill()
-            shell.wait(timeout=5)
     return records
 
 

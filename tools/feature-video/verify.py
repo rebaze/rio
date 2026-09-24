@@ -13,6 +13,7 @@ Needs ffmpeg and ffprobe.
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -22,13 +23,14 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+import narrate  # noqa: E402
 import storyboard  # noqa: E402
 import timeline as tl  # noqa: E402
 
-# A synthesizer that ignores "read the transcript exactly" shows up as a clip that takes
-# far longer or shorter to say than its word count allows — an added preamble, a dropped
-# sentence. The direction asks for about 150 wpm; this band is wide enough that ordinary
-# variation between lines passes and only a real discrepancy fails.
+# A broad duration plausibility guard around the direction's roughly 150 wpm.
+# The recorded pass's observed 111.94–155.17 wpm range is not an acceptance band.
+# Word count / duration cannot establish what was actually spoken: omitted words,
+# additions or substitutions can still fall inside these limits. Listen to the audio.
 MIN_WPM = 90.0
 MAX_WPM = 200.0
 
@@ -46,13 +48,19 @@ def parse_caption_time(text):
             + int(fraction) / (10 ** len(fraction)))
 
 
-def parse_cues(text):
-    """Start and end of every cue in an SRT or WebVTT file."""
+def parse_cues(text, include_text=False):
+    """Read cue boundaries, optionally including whitespace-normalized caption text."""
     cues = []
-    for line in text.splitlines():
-        if "-->" in line:
-            start, _, end = line.partition("-->")
-            cues.append((parse_caption_time(start), parse_caption_time(end)))
+    for block in re.split(r"\n\s*\n", text.strip()):
+        lines = block.splitlines()
+        for index, line in enumerate(lines):
+            if "-->" in line:
+                start, _, end = line.partition("-->")
+                cue = (parse_caption_time(start), parse_caption_time(end))
+                if include_text:
+                    cue += (" ".join(" ".join(lines[index + 1:]).split()),)
+                cues.append(cue)
+                break
     return cues
 
 
@@ -84,6 +92,10 @@ def check_chapters(chapters, expected, duration):
         if abs(start - want["start"]) > 0.5:
             problems.append("chapter %d starts at %.2fs, expected %.2fs"
                             % (index, start, want["start"]))
+        end = float(found["end_time"])
+        if abs(end - want["end"]) > 0.5:
+            problems.append("chapter %d ends at %.2fs, expected %.2fs"
+                            % (index, end, want["end"]))
         if found.get("tags", {}).get("title") != want["title"]:
             problems.append("chapter %d is titled %r, expected %r"
                             % (index, found.get("tags", {}).get("title"), want["title"]))
@@ -94,6 +106,71 @@ def check_chapters(chapters, expected, duration):
     if chapters and abs(float(chapters[-1]["end_time"]) - duration) > 1.0:
         problems.append("the last chapter ends %.2fs from the end of the video"
                         % abs(float(chapters[-1]["end_time"]) - duration))
+    return problems
+
+
+
+def check_narration(clips, work):
+    """Validate recorded metadata, not the audible speaker or spoken words.
+
+    Older manifests keep provider/model/voice in the WAV's cache sidecar. Require
+    that sidecar to match the content key and text before trusting its voice fields.
+    A run-wide usage summary cannot establish which voice produced each clip.
+    """
+    if not isinstance(clips, list):
+        return ["narration must be a list of clips"]
+    expected = dict(storyboard.narration_clips())
+    approved = dict(provider=storyboard.VOICE_PROVIDER, model=storyboard.VOICE_MODEL,
+                    voice=storyboard.VOICE_NAME)
+    problems = []
+    seen = set()
+    for index, clip in enumerate(clips, 1):
+        if not isinstance(clip, dict):
+            problems.append("clip %d is not an object" % index)
+            continue
+        name = clip.get("clip")
+        if not isinstance(name, str) or name not in expected:
+            problems.append("clip %d has an unknown identity" % index)
+            continue
+        if name in seen:
+            problems.append("duplicate clip %s" % name)
+        seen.add(name)
+        if clip.get("text") != expected[name]:
+            problems.append("%s text does not match its scripted line" % name)
+        seconds = clip.get("seconds")
+        if (type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds <= 0):
+            problems.append("%s has no finite positive measured duration" % name)
+        metadata = clip
+        missing = [field for field in approved if field not in clip]
+        if missing:
+            # Never let a sidecar override a conflicting field in the manifest.
+            for field in approved:
+                if field in clip and clip[field] != approved[field]:
+                    problems.append("%s %s is not the approved voice setting" % (name, field))
+            path = clip.get("path")
+            try:
+                if not isinstance(path, str) or not path:
+                    raise ValueError("no cache path")
+                sidecar = Path(path).with_suffix(".json")
+                if not sidecar.is_absolute():
+                    sidecar = work / sidecar
+                metadata = json.loads(sidecar.read_text())
+                if not isinstance(metadata, dict):
+                    raise ValueError("not an object")
+            except (OSError, ValueError) as error:
+                problems.append("%s is missing approved voice metadata: %s" % (name, error))
+                continue
+            spoken = narrate.spoken_form(expected[name])
+            key = narrate.cache_key(spoken)
+            if (clip.get("key") != key or sidecar.stem != key
+                    or metadata.get("text") != expected[name] or metadata.get("spoken") != spoken):
+                problems.append("%s cache metadata does not match its content key and script" % name)
+        for field, value in approved.items():
+            if metadata.get(field) != value:
+                problems.append("%s %s is not the approved voice setting" % (name, field))
+    missing = sorted(set(expected) - seen)
+    if missing:
+        problems.append("missing clips: %s" % ", ".join(missing))
     return problems
 
 
@@ -109,7 +186,7 @@ def speaking_rates(clips):
 
 
 def check_speaking_rates(rates, low=MIN_WPM, high=MAX_WPM):
-    """Flag any clip whose length does not match the words it was given."""
+    """Flag implausible durations; this does not verify the words in the audio."""
     problems = []
     for name in sorted(rates):
         rate = rates[name]
@@ -212,14 +289,20 @@ def verify(work, log=print):
     chapter_problems = check_chapters(info.get("chapters", []), expected, duration)
     check("chapters match the timeline", not chapter_problems, "; ".join(chapter_problems[:3]))
 
-    srt_cues = parse_cues((work / (base + ".srt")).read_text())
-    vtt_cues = parse_cues((work / (base + ".vtt")).read_text())
-    check("captions are well formed", not check_cues(srt_cues, duration),
-          "; ".join(check_cues(srt_cues, duration)[:3]))
+    srt_text = (work / (base + ".srt")).read_text()
+    vtt_text = (work / (base + ".vtt")).read_text()
+    srt_cues = parse_cues(srt_text)
+    vtt_cues = parse_cues(vtt_text)
+    caption_problems = (["SRT: " + p for p in check_cues(srt_cues, duration)]
+                        + ["WebVTT: " + p for p in check_cues(vtt_cues, duration)])
+    check("captions are well formed", not caption_problems,
+          "; ".join(caption_problems[:3]))
     check("SRT and WebVTT agree",
           len(srt_cues) == len(vtt_cues)
-          and all(abs(a[0] - b[0]) < 0.01 for a, b in zip(srt_cues, vtt_cues)),
-          "%d vs %d cues" % (len(srt_cues), len(vtt_cues)))
+          and all(abs(a[0] - b[0]) < 0.01 and abs(a[1] - b[1]) < 0.01 and a[2] == b[2]
+                  for a, b in zip(parse_cues(srt_text, include_text=True),
+                                  parse_cues(vtt_text, include_text=True))),
+          "%d vs %d cues; comparing starts, ends and text" % (len(srt_cues), len(vtt_cues)))
 
     levels = loudness(video)
     check("audio is audible", levels.get("lufs", 0.0) < -1 and levels.get("lufs", -99) > -40,
@@ -230,16 +313,23 @@ def verify(work, log=print):
     check("audio does not clip", levels.get("peak", 99) <= MAX_TRUE_PEAK,
           "%.1f dBTP" % levels.get("peak", float("nan")))
 
-    clips = json.loads((work / "narration.json").read_text())
-    rates = speaking_rates(clips)
+    try:
+        clips = json.loads((work / "narration.json").read_text())
+        narration_problems = check_narration(clips, work)
+    except (OSError, ValueError) as error:
+        clips = []
+        narration_problems = [str(error)]
+    check("narration metadata uses approved voice and script", not narration_problems,
+          "; ".join(narration_problems[:3]))
+    # Malformed or incomplete metadata must not yield an empty, passing rate check.
+    rates = speaking_rates(clips) if not narration_problems else {}
     rate_problems = check_speaking_rates(rates)
     ordered = sorted(rates.values())
-    check("every clip is paced like its script", not rate_problems,
-          "%d-%d wpm, median %d" % (min(ordered), max(ordered), ordered[len(ordered) // 2])
-          if ordered else "no clips")
-    check("every clip uses the approved voice",
-          all(c.get("clip") for c in clips) and len(clips) == len(storyboard.narration_clips()),
-          "%d of %d clips" % (len(clips), len(storyboard.narration_clips())))
+    check("clip durations pass the pacing heuristic", bool(rates) and not rate_problems,
+          ("%.1f-%.1f wpm, median %.1f; guard %.0f-%.0f" % (
+              min(ordered), max(ordered), ordered[len(ordered) // 2], MIN_WPM, MAX_WPM)
+           + ("; " + "; ".join(rate_problems[:3]) if rate_problems else ""))
+          if ordered else "no valid complete narration metadata")
 
     narration = (work / "narration.txt").read_text()
     spoken = [text for _, text in storyboard.narration_clips()]
@@ -256,6 +346,8 @@ def verify(work, log=print):
                                         "command-output.txt", "chapters.txt", "chapters.json",
                                         "narration.txt", "timeline.json", "usage.json",
                                         "narration.json")]
+    if (work / ".rio-feature-video-bundle").exists():
+        assets += [work / "index.html", work / ".rio-feature-video-bundle"]
     present = [p for p in assets if p.exists()]
     check("every deliverable is present", len(present) == len(assets),
           ", ".join(p.name for p in assets if not p.exists()))
