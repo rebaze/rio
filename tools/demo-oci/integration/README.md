@@ -15,6 +15,8 @@ Required environment for Basic/PAT credentials:
 - `RIO_OCI_TEST_CA_FILE` for a custom CA, when needed
 - `RIO_OCI_TEST_PRODUCT`, `RIO_OCI_TEST_VERSION`, `RIO_OCI_TEST_IMAGE_DIGEST` for setup metadata
 - `RIO_OCI_TEST_EVIDENCE`: new path for sanitized observed evidence
+- `RIO_OCI_TEST_REFERRERS=required` (default) or explicit `unsupported` for a known negative profile
+- `RIO_OCI_TEST_DENIED_CAN_READ=1` when the separately supplied account must prove read success and write denial
 
 Anonymous development runs require the explicit alternate auth mode `RIO_OCI_TEST_AUTH=anonymous`.
 Missing Basic credentials never silently select anonymity. A registry with enforced tag immutability
@@ -27,18 +29,27 @@ Do not enable shell tracing or print/source the private file into logs.
 go test ./internal/delivery/oci -run '^TestIntegrationOCI$' -count=1 -v
 ```
 
-The harness seeds a tiny synthetic OCI image and image index, obtains and hashes their real descriptors,
+The harness creates four small synthetic indexed SBOMs so conflict, denial and crash attempts have
+fresh immutable identities in the same dedicated repository. It seeds a tiny OCI image and image index,
+obtains and hashes their real descriptors,
 and exercises standalone and attached delivery, exact raw-byte read-back, Referrers discovery,
-already-present handling, conflicts, denied credentials and controlled dropped-response recovery.
+already-present handling, conflicts, denied credentials and actual child-process termination behind a controlled response-dropping proxy.
 It verifies portable evidence using recorded source bytes. Every run uses fresh synthetic input
-identities. Partial remote content is retained for inspection; cleanup removes only the owned
+identities. The child is killed only after the proxy observes the real registry’s HTTP 201, before the response
+reaches Rio. The journal remains intent-only; the known-exited child’s lock is explicitly removed,
+the original index/selected SBOM are deleted, and reconciliation verifies content while acknowledgment
+remains unknown. Proxy-observed HTTP status is a separate field from Rio’s acknowledgment.
+Partial remote content is retained for inspection; cleanup removes only the owned
 container/data volumes, not individual shared registry blobs.
 
 ## Pinned Distribution with TLS and Basic authentication
 
 `compose.yaml` pins the actual Distribution publisher image and multi-platform digest. The unavailable
-illustrative `registry:3.1.2` reference is not used. Referrers support is verified by the harness, not
-inferred from image availability. CI uses this real container independently of the synthetic demo.
+illustrative `registry:3.1.2` reference is not used. Distribution 3.1.2 has no Referrers API route: its real profile verifies standalone storage/read-back,
+and asserts that both attachment forms refuse before mutation. This was observed at runtime and
+confirmed in [its versioned routes](https://github.com/distribution/distribution/blob/v3.1.2/registry/api/v2/routes.go).
+The `unsupported` expectation is explicit; the harness does not turn an unexpected 404 into a pass.
+CI also starts pinned zot for positive Referrers coverage, independently of the synthetic demo.
 
 ```sh
 python3 tools/demo-oci/integration/setup.py /absolute/new/private/fixture-root --port 15000
@@ -76,3 +87,26 @@ routing, read offloading, fallback referrer tags, Xray/Lifecycle ingestion and r
 are not implied. An unavailable vendor instance remains an explicit open acceptance item; a skipped
 opt-in test is not compatibility evidence. No Artifactory instance or license acceptance is created
 by this harness.
+
+
+## Observed configurations
+
+| Registry | Observed transport/auth | Storage/read-back | Attachment / Referrers | Additional observed policy |
+|---|---|---|---|---|
+| Distribution 3.1.2, pinned multiarch image | Loopback TLS, custom CA, bcrypt Basic | Passed | API absent; both forms correctly refused without writes | Mutable synthetic tags; denied authentication; real intent-only crash recovery |
+| zot 2.1.21, pinned arm64 image | Loopback TLS, custom CA, bcrypt Basic | Passed | Image and index subjects passed | Mutable synthetic tags; denied authentication; attached crash recovery |
+| Nexus 3.94.0-12 Community, pinned image | Explicit loopback HTTP, Basic-to-Bearer negotiation, native OCI hosted path routing | Passed | Image and index subjects passed | ALLOW_ONCE tag rejection; valid read-only account can read and cannot write; attached crash recovery |
+| Artifactory | No disposable endpoint/version/scoped credentials supplied | Not run | Not run | Required acceptance remains open |
+
+Version-specific JSON evidence is retained in this directory after actual successful runs. Its
+`complete` flag means the declared profile passed, not that all registry features or other vendors
+were verified. Setup-reported version/image metadata was checked against the running containers;
+server response bodies, credentials and token/upload-session URLs are not retained. Read-back hashes
+were recomputed over fetched bytes. The Nexus check covers this native OCI hosted recipe, not older
+Docker repositories, TLS-fronted Nexus deployments or Xray/Lifecycle analysis.
+
+The Compose `zot` profile adds the pinned amd64 image for CI. An arm64 local run can explicitly set
+`RIO_OCI_ZOT_ARCH=arm64` and its documented platform digest. Both services share only this disposable
+fixture's auth/CA files and use separate labeled volumes. `zot.json` disables garbage collection;
+no extension, scanning or retention behavior is claimed. Native CI must actually execute its selected
+platform; cross-building does not establish interoperability.

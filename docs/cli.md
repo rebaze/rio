@@ -250,6 +250,8 @@ repository, registry, subject, publication, HTTP policy or trusted-token-origin 
 | 4 | Ambiguous publication, unusable receipt, conflict/drift, incomplete content or required discovery |
 | 5 | Trustworthy supported-endpoint rejection of publication |
 
+A manifest receipt may use a same-origin mounted URI preserving the configured repository namespace;
+Rio validates it without following it. Read-back and all uploads still use the configured repository.
 A positive HTTP 201 with an unusable digest/location or missing attachment acknowledgment is retained
 as an observed HTTP acceptance; it does not become a usable receipt. Inspecting a valid unresolved
 journal still exits 0. No reconciliation repairs tags, uploads blobs or maintains fallback indexes.

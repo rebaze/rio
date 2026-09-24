@@ -62,7 +62,7 @@ def main():
     values = {"RIO_OCI_INTEGRATION": "1", "RIO_OCI_TEST_REGISTRY": "127.0.0.1:%d" % args.port,
               "RIO_OCI_TEST_REPOSITORY": "rio-integration/synthetic", "RIO_OCI_TEST_USERNAME": user,
               "RIO_OCI_TEST_PASSWORD": password, "RIO_OCI_TEST_CA_FILE": str(root / "tls/cert.pem"),
-              "RIO_OCI_TEST_ALLOW_HTTP": "0", "RIO_OCI_TEST_DENIED_USERNAME": "rio-synthetic-denied",
+              "RIO_OCI_TEST_ALLOW_HTTP": "0", "RIO_OCI_TEST_REFERRERS": "unsupported", "RIO_OCI_TEST_DENIED_USERNAME": "rio-synthetic-denied",
               "RIO_OCI_TEST_DENIED_PASSWORD": secrets.token_urlsafe(32),
               "RIO_OCI_TEST_PRODUCT": "Distribution", "RIO_OCI_TEST_VERSION": "3.1.2",
               "RIO_OCI_TEST_IMAGE_DIGEST": "sha256:d106962e6fe3fa69c178cec77eeeee5edb626b8df6535b7bd6b95e658a0a5ca9"}

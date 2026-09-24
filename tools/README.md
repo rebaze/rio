@@ -949,9 +949,21 @@ The installed-binary synthetic walkthrough and the opt-in real-registry harness 
 are not vendor compatibility evidence. Actual versions, repository recipe/routing, auth, immutability
 and observed descriptor/read-back facts belong in version-specific integration evidence.
 
-Distribution 3.1.2, zot 2.1.21, Nexus native OCI 3.94.0+, and Artifactory OCI with Referrers 7.90.1+
-are the planned integration targets. These floors are documented capabilities, not a claim that all
-versions or deployment modes have been tested. In particular, older Nexus Docker repository support
-is not proof of the required native OCI/Referrers contract. Nexus and Artifactory registry storage and
-discovery do not imply security-analysis ingestion. Consult the observed-evidence support matrix
-before claiming a tested configuration; unavailable vendor evidence remains explicitly open.
+Real checks passed for standalone storage/read-back on Distribution 3.1.2 with TLS/Basic auth;
+its absent Referrers API makes attachment explicitly unsupported in Rio’s required-API mode.
+zot 2.1.21 (arm64, TLS/Basic) and Nexus 3.94.0-12 Community (native OCI hosted path routing, explicit
+loopback HTTP, Basic/Bearer auth and ALLOW_ONCE tags) passed image/index attachment, Referrers and
+actual process-crash recovery as well. These are narrowly tested configurations, not all newer
+versions or deployment modes. Artifactory has not been run because no disposable instance/scoped
+credentials were supplied; its required acceptance remains open. See the [observed support matrix
+and evidence](demo-oci/integration/README.md#observed-configurations).
+
+Nexus’s manifest receipt uses a same-origin mounted URI with its configured repository key before
+`/v2/`. Rio validates that the ordered namespace parts still match and that the digest/tag is exact;
+it never follows that receipt URI. Upload sessions, paging and read-back retain their stricter
+configured repository paths. Authentication negotiates the least-required scope through a read-only
+base request before content queries. Bounded standard-code flat or wrapped errors are recognized;
+an empty 401 is a rejection only with a validated authentication challenge. No raw error is retained.
+
+Older Nexus Docker repositories are not covered. Registry storage/discovery does not imply
+Xray/Lifecycle ingestion, and unavailable vendor evidence is never replaced by synthetic results.

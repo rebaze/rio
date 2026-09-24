@@ -17,7 +17,24 @@ services:
       - data:/var/lib/registry
     labels:
       io.rebaze.rio.disposable: rio-83-oci
+  zot:
+    profiles: [zot]
+    image: ghcr.io/project-zot/zot-linux-${RIO_OCI_ZOT_ARCH:-amd64}:v2.1.21@${RIO_OCI_ZOT_DIGEST:-sha256:8258443838e95989c13c891f78a02bc1c391b5a00591ffef24cb8c17cde28038}
+    user: "0:0"
+    command: [serve, /etc/zot/config.json]
+    ports:
+      - "127.0.0.1:${RIO_OCI_ZOT_PORT:-15001}:5000"
+    volumes:
+      - "./zot.json:/etc/zot/config.json:ro"
+      - "${RIO_OCI_FIXTURE_ROOT:?set an isolated fixture root}/tls:/tls:ro"
+      - "${RIO_OCI_FIXTURE_ROOT:?set an isolated fixture root}/auth:/auth:ro"
+      - zot-data:/var/lib/zot
+    labels:
+      io.rebaze.rio.disposable: rio-83-oci
 volumes:
   data:
+    labels:
+      io.rebaze.rio.disposable: rio-83-oci
+  zot-data:
     labels:
       io.rebaze.rio.disposable: rio-83-oci
