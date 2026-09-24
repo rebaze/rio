@@ -12,6 +12,8 @@ inputs and remain separate from its runtime.
 | [`build-p2-table.py`](#build-p2-tablepy) | builds the bundle-symbolic-name → Maven coordinate table rio repairs purls with | occasionally, on a workstation |
 | [`rio-dtrack-upload.sh`](#rio-dtrack-uploadsh) | uploads normalized SBOMs to DependencyTrack | after every `rio normalize`, in a pipeline |
 | [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | offline, with an installed rio release |
+| [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, refusals and owned-claim replacement | offline, with an installed rio release |
+| [`rio-context.py`](#rio-contextpy) | emits one explicit build-context entry bound to original SBOM bytes | in a producing CI job |
 
 ---
 
@@ -465,3 +467,56 @@ output files; an explicit `replace` list then permits just the named fields to c
 shows plans and subject before/after values and retains the complete inputs, plans, conflict log,
 SBOMs, indexes and unsigned statements in a fresh temporary directory printed at exit. See the
 [demo README](demo-enrichment/README.md) for expected values, inspection paths and limits.
+
+## CI build context demo
+
+The [standalone context demo](demo-context/README.md) contains two synthetic CycloneDX SBOMs
+from different repositories, a shared context JSON file, three refusal cases, a prior-claim
+replacement case and a POSIX shell runner. Use an installed Rio release containing #62 and the
+matching tagged source archive; no Go toolchain, source build, Python, jq or network is needed:
+
+```sh
+./tools/demo-context/run.sh
+RIO_BIN=/absolute/path/to/rio ./tools/demo-context/run.sh
+```
+
+The runner first plans while the context file is absent, then normalizes both artifacts, reruns
+to compare output bytes, checks stale-digest/missing-required-field/prior-revision refusals, and
+applies explicit replacement for revision plus omitted workspace and build ID. It retains every
+input, plan, output and diagnostic in a unique temporary directory printed at exit.
+
+## rio-context.py
+
+`rio-context.py` is an optional Python 3.9+ standard-library helper for a CI producer. It hashes
+the **original local SBOM bytes** and prints one complete `contextVersion: 1` document containing
+one artifact entry. The caller supplies every asserted value explicitly as flags. There is no
+Git, CI-provider or environment discovery, clock default, network call, JSON merge, or call to
+Rio. Redirect stdout to a temporary file and move it into place after the command succeeds:
+
+```sh
+set -eu
+if python3 tools/rio-context.py \
+  --artifact-id console --sbom target/console.cdx.json \
+  --source-repository "$CI_SOURCE_URL" --source-revision "$CI_REVISION" \
+  --source-workspace "$CI_WORKSPACE" --build-url "$CI_RUN_URL" \
+  --build-id "$CI_RUN_ID" --generator-name 'CycloneDX Gradle Plugin' \
+  > build-context.tmp.json; then
+  mv build-context.tmp.json build-context.json
+else
+  rm -f build-context.tmp.json
+  exit 1
+fi
+rio normalize --manifest rio.yaml
+```
+
+Pass only variables your CI job has actually established; the helper never reads these names
+itself. For multiple artifacts, call it per artifact and have a producer assemble the one strict
+JSON file required by Rio, or author that file directly with a JSON encoder. The helper does not
+merge entries. Available flags cover all v1 leaves: `--source-repository`,
+`--source-revision`, `--source-subdirectory`, `--source-ref`, `--source-workspace`,
+`--build-url`, `--build-id`, `--build-timestamp`, `--build-system-name`,
+`--build-system-version`, `--generator-name`, `--generator-version`, and `--lifecycle`.
+`--artifact-id` and `--sbom` are mandatory. The helper checks obvious format errors before
+writing any JSON; Rio remains the final validator of the context and manifest binding. See
+the [native context contract](../README.md#build-and-source-context) for field meaning and
+authority limits.

@@ -27,6 +27,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/rebaze/rio/internal/buildcontext"
 	"github.com/rebaze/rio/internal/enrichment"
 	"github.com/rebaze/rio/internal/sbom"
 	"github.com/rebaze/rio/internal/transform"
@@ -76,6 +77,10 @@ type Manifest struct {
 type Artifact struct {
 	ID   string
 	SBOM string
+	// Context optionally binds producer-supplied build assertions to this
+	// artifact. Loading a manifest validates this declaration but never opens
+	// the context file.
+	Context *buildcontext.Binding
 	// Subject overrides metadata.component when the generator described the
 	// building module rather than the shipped artifact (§4.3d). Nil when the
 	// manifest does not override it.
@@ -174,7 +179,7 @@ func Load(path string) (*Manifest, error) {
 		return nil, l.yamlError(err)
 	}
 
-	if err := l.enrichmentTypes(); err != nil {
+	if err := l.strictStringTypes(); err != nil {
 		return nil, err
 	}
 
@@ -207,10 +212,11 @@ type fileSection struct {
 }
 
 type artifactSection struct {
-	ID         string             `yaml:"id"`
-	SBOM       string             `yaml:"sbom"`
-	Subject    *subjectSection    `yaml:"subject"`
-	Enrichment *enrichment.Config `yaml:"enrichment"`
+	ID         string                `yaml:"id"`
+	SBOM       string                `yaml:"sbom"`
+	Context    *buildcontext.Binding `yaml:"context"`
+	Subject    *subjectSection       `yaml:"subject"`
+	Enrichment *enrichment.Config    `yaml:"enrichment"`
 	// Transforms stay as nodes: each entry is a single-key mapping whose key
 	// is the transform name, which no Go struct describes.
 	Transforms []yaml.Node `yaml:"transforms"`
@@ -298,6 +304,16 @@ func (l loader) artifacts(f *fileSection, m *Manifest) error {
 		}
 
 		out := Artifact{ID: a.ID, SBOM: a.SBOM}
+		if err := buildcontext.ValidateBinding(a.Context); err != nil {
+			return l.errf(field+".context", "%v", err)
+		}
+		if a.Context != nil {
+			out.Context = &buildcontext.Binding{
+				File:    a.Context.File,
+				Require: append([]string(nil), a.Context.Require...),
+				Replace: append([]string(nil), a.Context.Replace...),
+			}
+		}
 		resolved, err := enrichment.Resolve(f.Enrichment, a.Enrichment, field)
 		if err != nil {
 			return l.errf("", "%v", err)
@@ -428,6 +444,8 @@ var yamlTargets = map[string]struct {
 		where: regexp.MustCompile(`^artifacts\[[0-9]+\]$`)},
 	"manifest.subjectSection": {field: "subject", shape: "a mapping with name and version",
 		where: regexp.MustCompile(`^artifacts\[[0-9]+\]\.subject$`)},
+	"buildcontext.Binding": {field: "context", shape: "a mapping with file",
+		where: regexp.MustCompile(`^artifacts\[[0-9]+\]\.context$`)},
 	"enrichment.Config": {field: "enrichment", shape: "a mapping",
 		where: regexp.MustCompile(`^(artifacts\[[0-9]+\]\.)?enrichment$`)},
 	"enrichment.Subject": {field: "enrichment.subject", shape: "a mapping",
@@ -445,11 +463,11 @@ var yamlTargets = map[string]struct {
 	"[]yaml.Node": {field: "transforms", shape: "a list of transforms",
 		where: regexp.MustCompile(`^artifacts\[[0-9]+\]\.transforms$`)},
 	"[]string": {field: "gate.require", shape: "a list of strings",
-		where: regexp.MustCompile(`^(gate\.require|(artifacts\[[0-9]+\]\.)?enrichment\.(replace|(producer|subject\.(manufacturer|supplier))\.url))$`)},
+		where: regexp.MustCompile(`^(gate\.require|artifacts\[[0-9]+\]\.context\.(require|replace)|(artifacts\[[0-9]+\]\.)?enrichment\.(replace|(producer|subject\.(manufacturer|supplier))\.url))$`)},
 	// The one type several keys share, which is why it names none of them
 	// when the lookup below cannot tell which one was meant.
 	"string": {shape: "a string", where: regexp.MustCompile(
-		`^(artifacts\[[0-9]+\]\.(id|sbom|subject\.(name|version))|output\.specVersionFloor|gate\.require\[[0-9]+\]|(artifacts\[[0-9]+\]\.)?enrichment\..+)$`)},
+		`^(artifacts\[[0-9]+\]\.(id|sbom|subject\.(name|version)|context\.file)|output\.specVersionFloor|gate\.require\[[0-9]+\]|artifacts\[[0-9]+\]\.context\.(require|replace)\[[0-9]+\]|(artifacts\[[0-9]+\]\.)?enrichment\..+)$`)},
 }
 
 // yamlDetail reduces a decode failure to go-yaml's own words, without the
@@ -672,9 +690,10 @@ func describe(n *yaml.Node) string {
 	}
 }
 
-// enrichmentTypes prevents YAML from silently converting numbers and booleans
-// to metadata strings. The typed decoder still owns shape and unknown-key checks.
-func (l loader) enrichmentTypes() error {
+// strictStringTypes prevents YAML from silently converting numbers and
+// booleans inside strict extension mappings. The typed decoder still owns
+// shape and unknown-key checks.
+func (l loader) strictStringTypes() error {
 	var doc yaml.Node
 	if err := yaml.Unmarshal(l.src, &doc); err != nil {
 		return l.yamlError(err)
@@ -715,8 +734,8 @@ func (l loader) enrichmentTypes() error {
 				if path != "" {
 					child = path + "." + key.Value
 				}
-				// Only the schema's root/artifact enrichment blocks opt into strict strings.
-				enabled := inside || (key.Value == "enrichment" && (path == "" || artifactEnrichmentParent.MatchString(path)))
+				// Only strict extension mappings opt into strict strings.
+				enabled := inside || ((key.Value == "enrichment" || key.Value == "context") && artifactStrictParent.MatchString(path))
 				visit(value, child, enabled, false, depth+1)
 			}
 		case yaml.SequenceNode:
@@ -735,4 +754,4 @@ func (l loader) enrichmentTypes() error {
 	return invalid
 }
 
-var artifactEnrichmentParent = regexp.MustCompile(`^artifacts\[[0-9]+\]$`)
+var artifactStrictParent = regexp.MustCompile(`^(|artifacts\[[0-9]+\])$`)
