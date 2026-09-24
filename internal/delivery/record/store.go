@@ -2,7 +2,6 @@ package record
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -10,7 +9,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 )
@@ -203,50 +201,8 @@ func (w *Writer) Close() error {
 }
 func (w *Writer) Snapshot() (Snapshot, error) { return w.read(false) }
 func (w *Writer) read(empty bool) (Snapshot, error) {
-	s := Snapshot{Events: []Event{}, References: []delivery.Reference{}, Observations: []delivery.Observation{}, OrphanTemps: []string{}}
-	if w.closed {
-		return s, delivery.Fail("record_closed", "writer")
-	}
-	entries, e := os.ReadDir(w.path)
-	if e != nil {
-		return s, invalid()
-	}
-	names := []string{}
-	for _, ent := range entries {
-		n := ent.Name()
-		if strings.HasPrefix(n, ".event-") && strings.HasSuffix(n, ".tmp") {
-			s.OrphanTemps = append(s.OrphanTemps, n)
-			continue
-		}
-		if ent.Type()&os.ModeSymlink != 0 || !ent.Type().IsRegular() || len(n) != 25 || !strings.HasSuffix(n, ".json") {
-			return s, invalid()
-		}
-		names = append(names, n)
-	}
-	if len(names) > MaxEvents || len(names) == 0 && !empty {
-		return s, invalid()
-	}
-	sort.Strings(names)
-	h := sha256.New()
-	for n, name := range names {
-		if name != eventName(n) {
-			return s, invalid()
-		}
-		b, e := delivery.ReadBounded(filepath.Join(w.path, name), EventLimit)
-		if e != nil {
-			return s, e
-		}
-		var event Event
-		if delivery.DecodeJSON(b, &event, true) != nil {
-			return s, invalid()
-		}
-		if e = addEvent(&s, event); e != nil {
-			return s, e
-		}
-		h.Write(b)
-	}
-	s.SHA256 = hex.EncodeToString(h.Sum(nil))
-	return s, nil
+	c, err := w.capture(empty, EventLimit*MaxEvents, false)
+	return c.Snapshot, err
 }
 func (w *Writer) failure(point string) error {
 	if w.fail != nil {
