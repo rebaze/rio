@@ -7,20 +7,31 @@
 [![Go](https://img.shields.io/github/go-mod/go-version/rebaze/rio)](go.mod)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rebaze/rio/badge)](https://scorecard.dev/viewer/?uri=github.com/rebaze/rio)
 
-**Rio normalizes and checks the CycloneDX SBOMs your build produces.**
+**Rio normalizes CycloneDX SBOMs and records their inputs, supplied metadata and changes.**
 
-Give it a `rio.yaml` and local SBOM files. It writes one normalized SBOM per artifact and an
-`index.json` with hashes and check results. Rio runs offline as a single binary,
-on your workstation or in CI.
-
-For example, the built-in mapping repairs this package URL and records the original:
-
-```text
-pkg:p2/com.google.gson@2.8.9?classifier=osgi.bundle
-  → pkg:maven/com.google.code.gson/gson@2.8.9
-```
+Set a spec-version floor, attach product and pipeline metadata, and get normalized SBOMs plus an
+`index.json` linking original inputs, output digests, the manifest and check results. Rio runs
+offline as a single binary, on your workstation or in CI.
 
 [Quick start](#quick-start) · [Configuration](#configure-your-project) · [For agents](#for-agents) · [Reference](#reference)
+
+## When to use Rio
+
+- **Normalize versions and check quality.** Raise older SBOMs to your chosen CycloneDX floor,
+  preserve dependency membership, and check required names, versions and package URLs.
+- **Keep lineage and pipeline context.** Record input/output digests and normalization details;
+  attach supplied product, source, build and generator metadata with its origins and changes.
+  Source/build details remain labeled as producer assertions.
+- **Cover every selected module.** Include each qualifying module's SBOM automatically, with a
+  failure when a selected module has not produced its output.
+- **Optionally repair Eclipse/OSGi p2 coordinates.** Convert eligible package URLs to Maven
+  coordinates using explicit coordinate evidence and maintained mappings.
+  [Repair reference](docs/p2-repair.md) · [Focused example](tools/README.md#first-repair-sample).
+
+The records provide evidence for later release controls: which SBOM was processed, what changed,
+and which supplied build assertions belong to it. Rio's gate checks SBOM fields; broader
+[release-rule evaluation is planned](docs/project.md#direction). SBOM generation and vulnerability
+scanning remain separate steps.
 
 ## Install
 
@@ -42,44 +53,39 @@ Documentation follows `main`; check feature prerequisites when using an older re
 
 ## Quick start
 
-With Rio installed, try this **synthetic sample**. No project build, account or custom mapping table
-is needed. These commands download two sample files; Rio's processing is offline.
+With **Rio v0.4.0 or newer** installed, try this synthetic CycloneDX 1.5 input. It needs no project
+build or account. Download the existing sample and manifest, then normalize and inspect the index:
 
 ```sh
 demo_dir=$(mktemp -d "${TMPDIR:-/tmp}/rio-sample.XXXXXXXX") &&
-sample_url=https://raw.githubusercontent.com/rebaze/rio/main/tools/demo-repair &&
-curl -fsSL "$sample_url/bom.json" -o "$demo_dir/bom.json" &&
-curl -fsSL "$sample_url/rio.yaml" -o "$demo_dir/rio.yaml" &&
-rio normalize --manifest "$demo_dir/rio.yaml" --out "$demo_dir/out" --gate fail &&
-sed -n '/"purl":/p' "$demo_dir/out/sample.cdx.json" &&
+sample_url=https://raw.githubusercontent.com/rebaze/rio/v0.4.0/tools/demo-agent-integration &&
+mkdir -p "$demo_dir/desktop/target" &&
+curl -fsSL "$sample_url/projects/explicit/seed.cdx.json" -o "$demo_dir/desktop/target/bom.json" &&
+curl -fsSL "$sample_url/examples/explicit.yaml" -o "$demo_dir/rio.yaml" &&
+rio normalize --manifest "$demo_dir/rio.yaml" --out "$demo_dir/out" --gate fail --quiet &&
+cat "$demo_dir/out/index.json" &&
 printf 'Inspect the input and results in: %s\n' "$demo_dir"
 ```
 
-Expected output from v0.3.0:
+The index shows the version change (excerpt):
 
-```text
-sample  1 components   repaired 1    unmapped 0    gate ok
-1 artifact, no gate failures
-      "purl": "pkg:maven/com.google.code.gson/gson@2.8.9",
+```json
+"specVersion": {
+  "input": "1.5",
+  "output": "1.6"
+}
 ```
 
-Compare `bom.json` with `out/sample.cdx.json`: Gson now has the Maven URL shown above, and the
-repair record preserves the before/after values. The input is unchanged. `out/index.json` records
-file hashes and the result. The sample demonstrates coordinate repair, not vulnerability scanning.
+It also records the input and output SHA-256 digests, manifest digest, tool version and `gate: "ok"`.
+Compare `desktop/target/bom.json` with `out/desktop.cdx.json`: the spec version is normalized and
+the dependency inventory is preserved. The original file stays unchanged.
+
+To carry pipeline lineage alongside those records, bind a producer-supplied [context file](docs/context.md)
+by artifact ID and original SBOM digest. The [context example](tools/README.md#ci-build-context-demo)
+shows source/build metadata appearing in the SBOM and index; Rio does not infer it from this sample.
 
 If `rio` is not found, use its installed path or [add its directory to PATH](docs/cli.md#install).
-For an offline run from a checkout, use the [sample runner](tools/README.md#first-repair-sample).
-
-## When to use Rio
-
-- Your Eclipse/Tycho SBOMs need p2 package URLs repaired to Maven coordinates.
-- You want a consistent CycloneDX version and checks for missing names, versions or package URLs.
-- You need to supply product metadata or bind explicit build context while recording changes.
-- You want every qualifying module's SBOM included, with a failure when a selected module's output is missing.
-
-Rio fits between your SBOM generator and downstream tools such as DependencyTrack. SBOM generation
-and vulnerability scanning remain separate steps. Each input inventory stays separate, and its
-component membership is preserved.
+The [offline onboarding examples](tools/README.md#agent-integration-examples) run from a checkout.
 
 ## Configure your project
 
@@ -93,9 +99,9 @@ artifacts:
     sbom: target/bom.json
 ```
 
-This minimal manifest normalizes and checks the input. To apply the demonstrated p2 repair,
-keep the sample's `transforms` block too; see [p2 repair](docs/p2-repair.md). Ordinary Maven
-package URLs do not need that transform.
+This minimal manifest uses the default 1.6 spec floor and checks the input. Add
+[enrichment](docs/enrichment.md) for supplied product metadata and [context](docs/context.md) for
+producer-provided source/build assertions. Their source and change records travel with the outputs.
 
 Preview the selection, then normalize into a fresh directory:
 
@@ -124,7 +130,7 @@ artifactSets:
 This selects module markers first. `services/orders-server/pom.xml` produces an `orders-server`
 artifact from that module's `target/bom.json`; a selected module without an SBOM fails the run.
 Rio matches marker paths, not Maven artifact IDs. Explicit artifacts and sets can share a manifest.
-Module discovery requires an `artifactSets`-capable release; it is not available in v0.3.0.
+Module discovery, enrichment and context are available in v0.4.0 and newer.
 
 [Manifest reference](docs/manifest.md) covers exclusions, naming rules, paths, transforms and
 shared settings. [Module discovery](docs/manifest.md#discovering-module-artifacts) explains the full
@@ -163,10 +169,10 @@ Reading an extracted release archive? [Open these references on GitHub](https://
 |---|---|
 | Look up CLI flags, exit codes or the plan JSON contract | [Commands](docs/cli.md) |
 | Configure explicit artifacts or module discovery | [Manifest](docs/manifest.md) |
-| Repair Eclipse p2 package URLs | [p2 repair](docs/p2-repair.md) |
 | Supply product and organization metadata | [Enrichment](docs/enrichment.md) |
 | Attach supplied source/build context | [Context](docs/context.md) |
 | Read the index, repair records or unsigned statements | [Output records](docs/output.md) |
+| Repair Eclipse p2 package URLs | [p2 repair](docs/p2-repair.md) |
 | Run demos, prepare mapping tables or upload to DependencyTrack | [Tools and examples](tools/README.md) |
 | Integrate a project with a coding agent | [Agent integration](docs/agent-integration.md) |
 

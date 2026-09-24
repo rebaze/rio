@@ -9,12 +9,12 @@ inputs and remain separate from its runtime.
 
 | tool | what it does | when you run it |
 |---|---|---|
-| [`demo-repair/`](#first-repair-sample) | shows one package URL repaired with an unchanged input and an audit record | first try, with an installed Rio release |
 | [`build-p2-table.py`](#build-p2-tablepy) | builds the bundle-symbolic-name → Maven coordinate table rio repairs purls with | occasionally, on a workstation |
 | [`rio-dtrack-upload.sh`](#rio-dtrack-uploadsh) | uploads normalized SBOMs to DependencyTrack | after every `rio normalize`, in a pipeline |
 | [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | offline, with an installed rio release |
 | [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, refusals and owned-claim replacement | offline, with an installed rio release |
 | [`demo-artifact-sets/`](#artifact-sets-demo) | discovers module SBOMs, adds/removes membership and refuses missing or overlapping inputs | offline, with an installed rio release |
+| [`demo-repair/`](#first-repair-sample) | shows optional p2 repair with an unchanged input and an audit record | when evaluating Eclipse/OSGi coordinate repair |
 | [`demo-agent-integration/`](#agent-integration-examples) | tests project onboarding configurations and a CI collection step | offline, with an installed rio release |
 | [`rio-context.py`](#rio-contextpy) | emits one explicit build-context entry bound to original SBOM bytes | in a producing CI job |
 | [`feature-video/`](#feature-video) | records, narrates and encodes the context feature walkthrough | when the feature or its demo changes |
@@ -655,7 +655,7 @@ the shipped reference configurations; use the separate evaluation procedure to a
 
 ## First repair sample
 
-[`demo-repair/`](demo-repair/) is the README's first-run example: one synthetic CycloneDX SBOM
+[`demo-repair/`](demo-repair/) is a focused example of optional p2 repair: one synthetic CycloneDX SBOM
 with a Gson p2 package URL, plus a manifest selecting the built-in p2 repair. It works with the
 published v0.3.0 binary and requires no project build or external mapping table.
 
@@ -667,8 +667,8 @@ With the files available locally, run:
 
 The runner needs only an installed Rio, POSIX shell and standard utilities. It makes a temporary
 copy, shows the before/after package URLs, and leaves the input, normalized SBOM and index for
-inspection. It performs no network access and needs no Go, Maven, Python or jq. The README offers
-an alternative that downloads just the manifest and synthetic SBOM before invoking Rio directly.
+inspection. It performs no network access and needs no Go, Maven, Python or jq. The [README quick start](../README.md#quick-start) demonstrates general version normalization
+and input/output records; this example adds the ecosystem-specific repair transform.
 
 Expected repair: `pkg:p2/com.google.gson@2.8.9?classifier=osgi.bundle` becomes
 `pkg:maven/com.google.code.gson/gson@2.8.9`, with one repair, zero unmapped components and `gate ok`.
