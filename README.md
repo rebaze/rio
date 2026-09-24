@@ -10,10 +10,11 @@
 **Rio normalizes CycloneDX SBOMs and records their inputs, supplied metadata and changes.**
 
 Set a spec-version floor, attach product and pipeline metadata, and get normalized SBOMs plus an
-`index.json` linking original inputs, output digests, the manifest and check results. Rio runs
-offline as a single binary, on your workstation or in CI.
+`index.json` linking original inputs, output digests, the manifest and check results. Normalization
+runs offline; explicit delivery can send verified outputs directly to Dependency-Track. Both run
+in one binary, on your workstation or in CI.
 
-[Quick start](#quick-start) · [Configuration](#configure-your-project) · [For agents](#for-agents) · [Reference](#reference)
+[Quick start](#quick-start) · [Dependency-Track](#deliver-to-dependency-track) · [Configuration](#configure-your-project) · [For agents](#for-agents) · [Reference](#reference)
 
 ## When to use Rio
 
@@ -22,6 +23,8 @@ offline as a single binary, on your workstation or in CI.
 - **Keep lineage and pipeline context.** Record input/output digests and normalization details;
   attach supplied product, source, build and generator metadata with its origins and changes.
   Source/build details remain labeled as producer assertions.
+- **Deliver verified outputs to Dependency-Track.** Upload directly by project name and version,
+  with a retained receipt and later activity checks. No project UUID lookup is required.
 - **Cover every selected module.** Include each qualifying module's SBOM automatically, with a
   failure when a selected module has not produced its output.
 - **Optionally repair Eclipse/OSGi p2 coordinates.** Convert eligible package URLs to Maven
@@ -86,6 +89,50 @@ shows source/build metadata appearing in the SBOM and index; Rio does not infer 
 
 If `rio` is not found, use its installed path or [add its directory to PATH](docs/cli.md#install).
 The [offline onboarding examples](tools/README.md#agent-integration-examples) run from a checkout.
+
+## Deliver to Dependency-Track
+
+Native delivery requires a Rio build with `rio deliver` available; it is not included in the
+v0.4.0 sample release above. To deliver the normalized quick-start sample, save this as
+`$demo_dir/delivery.yaml`, replacing the server URL and project name/version with an existing
+test project:
+
+```yaml
+version: 1
+destinations:
+  security:
+    type: dependency-track
+    options:
+      url: https://dtrack.example.com
+      apiKeyEnv: DTRACK_API_KEY
+deliveries:
+  application-security:
+    artifact: desktop
+    destination: security
+    options:
+      project:
+        name: acme-desktop
+        version: "1.0.0"
+      autoCreate: false
+```
+
+Inject `DTRACK_API_KEY` into the environment through your secret manager or CI, then upload:
+
+```sh
+rio deliver --index "$demo_dir/out/index.json" \
+  --config "$demo_dir/delivery.yaml" --delivery application-security \
+  --record "$demo_dir/delivery-record" --json
+rio delivery inspect --record "$demo_dir/delivery-record"
+```
+
+Rio checks the recorded gate and output digest, then sends the exact verified SBOM bytes directly
+by project name/version. The upload replaces that project's component inventory. Project creation
+is disabled by default, and each attempt needs a new journal directory. An accepted receipt means
+submission was acknowledged; it does not prove successful ingestion.
+
+Use `rio delivery plan` to preview offline and `rio delivery reconcile` to query saved receipt
+activity without resubmitting. See [delivery configuration and the runnable demo](tools/README.md#native-verified-delivery)
+for UUID/subject targeting, optional creation, TLS, retry behavior and the tested server version.
 
 ## Configure your project
 
@@ -181,16 +228,3 @@ Reading an extracted release archive? [Open these references on GitHub](https://
 
 Maintained by [rebaze](https://www.rebaze.de/), licensed under [Apache-2.0](LICENSE).
 [Roadmap, scope and contributing](docs/project.md) · [Report an issue](https://github.com/rebaze/rio/issues)
-
-### Verified delivery
-
-After normalization, `rio deliver --delivery application-security --record delivery-record`
-checks the selected output against `index.json` and sends that exact snapshot to Dependency-Track.
-Configure direct project name/version in a separate `delivery.yaml`; UUID and explicit
-subject-derived targeting are alternatives. Project creation is disabled by default.
-`rio delivery plan` previews offline, `rio delivery inspect` reads retained evidence offline,
-and `rio delivery reconcile` queries saved receipt activity without resubmitting.
-Accepted means submission acknowledged, never successful ingestion.
-
-See the [delivery configuration, evidence and runnable demo](tools/README.md#native-verified-delivery)
-for setup, permissions, exit codes, limitations and migration from the shell uploader.
