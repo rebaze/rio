@@ -13,6 +13,7 @@ inputs and remain separate from its runtime.
 | [`rio-dtrack-upload.sh`](#rio-dtrack-uploadsh) | uploads normalized SBOMs to DependencyTrack | after every `rio normalize`, in a pipeline |
 | [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | offline, with an installed rio release |
 | [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, refusals and owned-claim replacement | offline, with an installed rio release |
+| [`demo-artifact-sets/`](#artifact-sets-demo) | discovers module SBOMs, adds/removes membership and refuses missing or overlapping inputs | offline, with an installed rio release |
 | [`rio-context.py`](#rio-contextpy) | emits one explicit build-context entry bound to original SBOM bytes | in a producing CI job |
 | [`feature-video/`](#feature-video) | records, narrates and encodes the context feature walkthrough | when the feature or its demo changes |
 
@@ -555,3 +556,28 @@ anything is spent.
 `python3 tools/feature-video/feature_video_test.py` covers the pacing rules, the cache, the
 audio decoding and the failure paths. It runs in CI, makes no network calls and reads no
 credentials — the synthesizer is stubbed, so a test run never spends anything.
+
+## Artifact sets demo
+
+[`demo-artifact-sets/`](demo-artifact-sets/) supplies synthetic marker files, SBOMs, manifests and a
+POSIX-shell runner. Use an installed Rio release containing #71, a shell and standard utilities;
+no Go toolchain, Maven, Python, jq or network is needed:
+
+```sh
+./tools/demo-artifact-sets/run.sh
+# Or choose the installed binary explicitly:
+./tools/demo-artifact-sets/run.sh /path/to/rio
+```
+
+The runner copies fixtures into a temporary directory and retains the inputs, logs and outputs
+for inspection. Every normalize run uses a fresh output directory. It checks explicit-only,
+sets-only and mixed manifests; excludes a client through the marker selector; adds a server
+without changing `rio.yaml`; removes only that server's SBOM to demonstrate exit 2 in both plan
+and normalize; removes the marker to demonstrate absence from the new index; applies an explicit
+marker exclusion; and refuses overlapping sets before output.
+
+The copied reporting SBOM deliberately keeps its original subject: directory names define Rio
+output IDs, not software identity. Markers are selected by filename; their XML is never parsed.
+See [manifest semantics and limitations](../README.md#discovering-module-artifacts), including
+context/transform path rules and stale-file behavior. The current `index.json`, rather than every
+file in a reused directory, defines membership.

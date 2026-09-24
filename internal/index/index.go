@@ -95,10 +95,21 @@ type GateFinding struct {
 	Missing []string `json:"missing"`
 }
 
+// Selection records filesystem membership, not build or software provenance.
+// Paths are relative to the manifest and always forward-slashed.
+type Selection struct {
+	Version int    `json:"version"`
+	Kind    string `json:"kind"`
+	Source  string `json:"source"`
+	Module  string `json:"module"`
+	Marker  string `json:"marker"`
+}
+
 // Artifact is one manifest artifact's row in the index. ID is the stable key
 // (§4.2).
 type Artifact struct {
 	ID              string            `json:"id"`
+	Selection       *Selection        `json:"selection,omitempty"`
 	Input           FileRef           `json:"input"`
 	Output          FileRef           `json:"output"`
 	SpecVersion     SpecVersions      `json:"specVersion"`

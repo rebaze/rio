@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/rebaze/rio/internal/buildcontext"
-	"github.com/rebaze/rio/internal/discover"
 	"github.com/rebaze/rio/internal/gate"
 	"github.com/rebaze/rio/internal/index"
 	"github.com/rebaze/rio/internal/manifest"
@@ -54,6 +53,7 @@ func newNormalizeCommand(opts *globalOptions, stdout, stderr io.Writer) *cobra.C
 
 // artifact is one manifest artifact carried through the five steps of §5.
 type artifact struct {
+	selection  *index.Selection
 	spec       manifest.Artifact
 	transforms []transform.Transform
 
@@ -85,12 +85,18 @@ func runNormalize(opts *globalOptions, gateMode string, attest bool, stdout, std
 		return usageErrorf("%v", err)
 	}
 
+	resolved, err := resolveArtifacts(man)
+	if err != nil {
+		return err
+	}
+
 	// Steps 1 to 4 for every artifact before anything is written. Exit 2
 	// conditions abort the whole run before any file is created (§5, §10).
-	artifacts := make([]*artifact, 0, len(man.Artifacts))
+	artifacts := make([]*artifact, 0, len(resolved))
 	contextFiles := map[string]*buildcontext.File{}
-	for _, spec := range man.Artifacts {
-		a, err := prepare(man, spec)
+	for _, input := range resolved {
+		spec := input.Spec
+		a, err := prepare(man, input)
 		if err != nil {
 			return err
 		}
@@ -134,9 +140,10 @@ func runNormalize(opts *globalOptions, gateMode string, attest bool, stdout, std
 	return report(artifacts, gateMode, opts.quiet, stdout, stderr)
 }
 
-// prepare is step 1: resolve the glob, read the file, hash it, and decode it.
-func prepare(man *manifest.Manifest, spec manifest.Artifact) (*artifact, error) {
-	a := &artifact{spec: spec}
+// prepare reads, hashes and decodes a concrete input from shared preflight.
+func prepare(man *manifest.Manifest, input resolvedArtifact) (*artifact, error) {
+	spec := input.Spec
+	a := &artifact{spec: spec, selection: input.Selection}
 
 	// Build the transforms first: an unknown transform name or a bad transform
 	// config is a configuration error, and finding it before touching the
@@ -149,10 +156,7 @@ func prepare(man *manifest.Manifest, spec manifest.Artifact) (*artifact, error) 
 		a.transforms = append(a.transforms, t)
 	}
 
-	path, err := discover.Resolve(man.Dir, spec.ID, spec.SBOM)
-	if err != nil {
-		return nil, usageErrorf("%v", err)
-	}
+	path := input.Input
 	a.inputPath = path
 	rel, err := index.RelPath(man.Dir, path)
 	if err != nil {
@@ -381,6 +385,7 @@ func writeAll(man *manifest.Manifest, artifacts []*artifact, outDir string, atte
 
 		idx.Artifacts = append(idx.Artifacts, index.Artifact{
 			ID:                a.spec.ID,
+			Selection:         a.selection,
 			Input:             index.FileRef{Path: a.inputRel, SHA256: a.inputSHA},
 			Output:            index.FileRef{Path: name, SHA256: sum},
 			SpecVersion:       index.SpecVersions{Input: a.inputSpec, Output: a.outputSpec},
