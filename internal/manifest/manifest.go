@@ -28,6 +28,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/rebaze/rio/internal/buildcontext"
+	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/enrichment"
 	"github.com/rebaze/rio/internal/sbom"
 	"github.com/rebaze/rio/internal/transform"
@@ -57,6 +58,7 @@ var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 
 // Manifest is a loaded, validated rio.yaml.
 type Manifest struct {
+	Delivery     yaml.Node
 	Version      int
 	Artifacts    []Artifact
 	ArtifactSets []ArtifactSet
@@ -156,6 +158,26 @@ func Load(path string) (*Manifest, error) {
 
 	l := loader{path: path, src: data}
 
+	// Validate the raw delivery subtree before typed decoding can echo its scalar values.
+	var document yaml.Node
+	if err := yaml.Unmarshal(data, &document); err != nil && bytes.Contains(data, []byte("delivery")) {
+		return nil, l.errf("delivery", "invalid YAML document")
+	}
+	if len(document.Content) == 1 && document.Content[0].Kind == yaml.MappingNode {
+		root := document.Content[0]
+		found := false
+		for i := 0; i < len(root.Content); i += 2 {
+			if root.Content[i].Value == "delivery" {
+				if found {
+					return nil, l.errf("delivery", "duplicate field")
+				}
+				found = true
+				if _, err := delivery.ParseConfig(*root.Content[i+1], m.Dir, m.SHA256); err != nil {
+					return nil, l.errf("delivery", "%v", err)
+				}
+			}
+		}
+	}
 	var f fileSection
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	// Unknown keys are errors: a misspelled key would otherwise be dropped
@@ -180,6 +202,7 @@ func Load(path string) (*Manifest, error) {
 		return nil, l.yamlError(err)
 	}
 
+	m.Delivery = f.Delivery
 	if err := l.strictStringTypes(); err != nil {
 		return nil, err
 	}
@@ -206,6 +229,7 @@ func Load(path string) (*Manifest, error) {
 // validated result cannot express states the validation rejected, and so
 // "absent" is distinguishable from "present and empty".
 type fileSection struct {
+	Delivery yaml.Node `yaml:"delivery"`
 	// Version is a Node rather than an int so a missing version and a
 	// non-numeric one both get a message naming the field.
 	Version      yaml.Node            `yaml:"version"`
