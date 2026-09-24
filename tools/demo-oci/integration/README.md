@@ -98,7 +98,17 @@ by this harness.
 | Nexus 3.94.0-12 Community, pinned image | Explicit loopback HTTP, Basic-to-Bearer negotiation, native OCI hosted path routing | Passed | Image and index subjects passed | ALLOW_ONCE tag rejection; valid read-only account can read and cannot write; attached crash recovery |
 | Artifactory | No disposable endpoint/version/scoped credentials supplied | Not run | Not run | Required acceptance remains open |
 
-Version-specific JSON evidence is retained in this directory after actual successful runs. Its
+Version-specific evidence from actual race-enabled runs on source commit `ea96e43`:
+
+- [Distribution 3.1.2](distribution-3.1.2.json): 10 scenarios, 79 sanitized request observations;
+  standalone storage plus explicit no-write attachment refusal and actual standalone crash recovery.
+- [zot 2.1.21 arm64](zot-2.1.21-arm64.json): 12 scenarios, 115 observations; positive image/index
+  Referrers and attached crash recovery over TLS/Basic.
+- [Nexus 3.94.0-12 Community](nexus-community-3.94.0-12.json): 12 scenarios, 138 observations;
+  Basic and Bearer modes observed, native mounted path routing, ALLOW_ONCE, authenticated read
+  success/write denial, and attached crash recovery.
+
+The image/edition/routing settings are deliberately narrow. The evidence’s
 `complete` flag means the declared profile passed, not that all registry features or other vendors
 were verified. Setup-reported version/image metadata was checked against the running containers;
 server response bodies, credentials and token/upload-session URLs are not retained. Read-back hashes
