@@ -90,3 +90,11 @@ func TestPersistedSubmissionRequiresConsistentReceipt(t *testing.T) {
 		}
 	}
 }
+
+func TestDescribeRejectsAPIEndpointAsBaseURL(t *testing.T) {
+	for _, url := range []string{"https://example.test/api/v1", "https://example.test/prefix/api/v1/", "https://example.test/prefix/api/%761"} {
+		if _, e := (Provider{}).Describe(node(t, "url: "+url), node(t, "project: {name: app, version: '1'}"), delivery.Subject{}); e == nil {
+			t.Fatalf("API endpoint accepted as base: %s", url)
+		}
+	}
+}

@@ -72,6 +72,9 @@ func canonicalURL(s string, allow bool) (string, error) {
 	}
 	u.Host = host
 	u.Path = strings.TrimRight(u.Path, "/")
+	if strings.HasSuffix(u.Path, "/api/v1") {
+		return "", delivery.Fail("invalid_config", "destination.url must be the server base before /api/v1")
+	}
 	u.RawPath = ""
 	return u.String(), nil
 }
