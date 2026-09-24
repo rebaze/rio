@@ -9,6 +9,7 @@ inputs and remain separate from its runtime.
 
 | tool | what it does | when you run it |
 |---|---|---|
+| [`demo-repair/`](#first-repair-sample) | shows one package URL repaired with an unchanged input and an audit record | first try, with an installed Rio release |
 | [`build-p2-table.py`](#build-p2-tablepy) | builds the bundle-symbolic-name → Maven coordinate table rio repairs purls with | occasionally, on a workstation |
 | [`rio-dtrack-upload.sh`](#rio-dtrack-uploadsh) | uploads normalized SBOMs to DependencyTrack | after every `rio normalize`, in a pipeline |
 | [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | offline, with an installed rio release |
@@ -651,3 +652,28 @@ subjects/components, existing mixed-project settings, automatic inclusion, missi
 and exact archive contents. Build, plan, gate and archive failures must never produce a completed bundle. CI builds
 Rio and runs both the walkthrough and tests when the guide or examples change. These checks assess
 the shipped reference configurations; use the separate evaluation procedure to assess an agent.
+
+## First repair sample
+
+[`demo-repair/`](demo-repair/) is the README's first-run example: one synthetic CycloneDX SBOM
+with a Gson p2 package URL, plus a manifest selecting the built-in p2 repair. It works with the
+published v0.3.0 binary and requires no project build or external mapping table.
+
+With the files available locally, run:
+
+```sh
+./tools/demo-repair/run.sh /path/to/rio
+```
+
+The runner needs only an installed Rio, POSIX shell and standard utilities. It makes a temporary
+copy, shows the before/after package URLs, and leaves the input, normalized SBOM and index for
+inspection. It performs no network access and needs no Go, Maven, Python or jq. The README offers
+an alternative that downloads just the manifest and synthetic SBOM before invoking Rio directly.
+
+Expected repair: `pkg:p2/com.google.gson@2.8.9?classifier=osgi.bundle` becomes
+`pkg:maven/com.google.code.gson/gson@2.8.9`, with one repair, zero unmapped components and `gate ok`.
+The original input stays unchanged; the normalized SBOM records both URLs. This synthetic example
+shows coordinate normalization, not the safety or vulnerability status of Gson.
+
+To use your own input, create a manifest selecting its path and retain this transform only if
+that SBOM needs p2 repair. See the [README's project configuration](../README.md#configure-your-project).
