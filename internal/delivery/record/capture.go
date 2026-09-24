@@ -78,6 +78,10 @@ func (w *Writer) capture(empty bool, budget int64, retain bool) (c Capture, err 
 	if budget < 0 {
 		return c, delivery.Fail("size_limit", "journal capture budget")
 	}
+	st, e := os.Lstat(w.path)
+	if e != nil || !st.IsDir() {
+		return c, invalid()
+	}
 	f, e := os.Open(w.path)
 	if e != nil {
 		return c, invalid()
