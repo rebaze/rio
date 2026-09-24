@@ -328,3 +328,45 @@ func TestRecordPortableSavedCAReferencesRemainOffline(t *testing.T) {
 		t.Fatal("offline path reference resolved client or credential")
 	}
 }
+
+func TestRecordRejectsExplicitEmptyJournalPath(t *testing.T) {
+	ip, p, _ := recordFixture(t)
+	out := filepath.Join(t.TempDir(), "empty.json")
+	before, e := record.CaptureRead(p, 1<<20)
+	if e != nil {
+		t.Fatal(e)
+	}
+	indexBefore, e := os.ReadFile(ip)
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Chdir(p)
+	code, r, stderr := recordRun(t, "record", "--index", ip, "--delivery-record", "", "--output", out)
+	if code != 2 || r["outcome"] != "error" || r["outputMayExist"] != false || r["output"] != nil {
+		t.Fatalf("empty path implicitly exported CWD: code=%d result=%v stderr=%s", code, r, stderr)
+	}
+	for _, path := range []string{out, out + ".lock", p + ".lock"} {
+		if _, e = os.Lstat(path); !os.IsNotExist(e) {
+			t.Fatal("empty selection changed output or locks", path, e)
+		}
+	}
+	after, e := record.CaptureRead(p, 1<<20)
+	if e != nil {
+		t.Fatal(e)
+	}
+	indexAfter, e := os.ReadFile(ip)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if before.Snapshot.SHA256 != after.Snapshot.SHA256 || !bytes.Equal(indexBefore, indexAfter) {
+		t.Fatal("empty selection changed sources")
+	}
+	code, r, stderr = recordRun(t, "record", "--index", ip, "--delivery-record", ".", "--output", out)
+	if code != 0 || r["outcome"] != "written" {
+		t.Fatal("deliberate dot selection refused", code, r, stderr)
+	}
+	code, r, stderr = recordRun(t, "record", "--index", ip, "--output", out+".none")
+	if code != 0 || r["counts"].(map[string]any)["deliveries"] != json.Number("0") {
+		t.Fatal("omitted selection scanned CWD", code, r, stderr)
+	}
+}

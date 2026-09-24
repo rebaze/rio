@@ -398,3 +398,64 @@ func TestCollectEventCapacityPrecedesNextJournalReplay(t *testing.T) {
 		t.Fatalf("exhausted event capacity reached next journal replay: %v", e)
 	}
 }
+
+func TestCollectRejectsExplicitEmptyJournalPath(t *testing.T) {
+	ip, p, _ := fixture(t)
+	before, e := record.CaptureRead(p, SourceLimit)
+	if e != nil {
+		t.Fatal(e)
+	}
+	indexBefore, e := os.ReadFile(ip)
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Chdir(p)
+	_, e = Collect(ip, []string{""}, "collector", validateFixture)
+	var safe *delivery.Error
+	if !errors.As(e, &safe) || safe.Code != "invalid_record_path" {
+		t.Fatalf("empty selection implicitly selected valid CWD journal: %v", e)
+	}
+	if _, e = os.Lstat(p + ".lock"); !os.IsNotExist(e) {
+		t.Fatal("empty selection left a source lock", e)
+	}
+	after, e := record.CaptureRead(p, SourceLimit)
+	if e != nil {
+		t.Fatal(e)
+	}
+	indexAfter, e := os.ReadFile(ip)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if before.Snapshot.SHA256 != after.Snapshot.SHA256 || !bytes.Equal(indexBefore, indexAfter) {
+		t.Fatal("source records changed")
+	}
+	for _, tc := range []struct {
+		paths []string
+		want  int
+	}{{nil, 0}, {[]string{"."}, 1}} {
+		d, e := Collect(ip, tc.paths, "collector", validateFixture)
+		if e != nil || len(d.Deliveries) != tc.want {
+			t.Fatalf("legitimate selection %v changed: count=%d error=%v", tc.paths, len(d.Deliveries), e)
+		}
+	}
+}
+func TestCollectPreservesWhitespaceJournalPath(t *testing.T) {
+	for _, name := range []string{" ", " journal"} {
+		t.Run(name, func(t *testing.T) {
+			ip, p, _ := fixture(t)
+			parent := filepath.Dir(p)
+			space := filepath.Join(parent, name)
+			if e := os.Rename(p, space); e != nil {
+				if name == " " {
+					t.Skip("filesystem does not support a literal all-space name", e)
+				}
+				t.Fatal(e)
+			}
+			t.Chdir(parent)
+			d, e := Collect(ip, []string{name}, "collector", validateFixture)
+			if e != nil || len(d.Deliveries) != 1 {
+				t.Fatal("legitimate whitespace pathname was trimmed or rejected", e)
+			}
+		})
+	}
+}

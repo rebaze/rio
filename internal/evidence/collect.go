@@ -21,6 +21,11 @@ func Collect(indexPath string, journalPaths []string, toolVersion string, valida
 	if len(journalPaths) > MaxJournals {
 		return Document{}, limitError()
 	}
+	for _, path := range journalPaths {
+		if path == "" {
+			return Document{}, delivery.Fail("invalid_record_path", "delivery journal path must not be empty")
+		}
+	}
 	raw, e := delivery.ReadBounded(indexPath, delivery.IndexLimit)
 	if e != nil {
 		return Document{}, e
