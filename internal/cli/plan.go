@@ -82,6 +82,16 @@ type planArtifact struct {
 	Transforms []planTransform `json:"transforms"`
 	// Enrichment is an optional, independently versioned additive extension.
 	Enrichment *enrichment.Resolved `json:"enrichment,omitempty"`
+	// Context is an optional producer-assertion binding. Its file is described
+	// from the manifest only; plan must not open it.
+	Context *planContext `json:"context,omitempty"`
+}
+
+type planContext struct {
+	Version int      `json:"version"`
+	File    string   `json:"file"`
+	Require []string `json:"require"`
+	Replace []string `json:"replace"`
 }
 
 type planFile struct {
@@ -224,6 +234,14 @@ func describeArtifact(man *manifest.Manifest, spec manifest.Artifact) (planArtif
 		Output:     planFile{Path: spec.ID + ".cdx.json"},
 		Transforms: make([]planTransform, 0, len(spec.Transforms)),
 	}
+	if spec.Context != nil {
+		a.Context = &planContext{
+			Version: 1,
+			File:    filepath.ToSlash(spec.Context.File),
+			Require: append([]string{}, spec.Context.Require...),
+			Replace: append([]string{}, spec.Context.Replace...),
+		}
+	}
 
 	// A plan that succeeded on a manifest normalize refuses would describe a
 	// run that cannot happen, so an unknown transform name or a bad transform
@@ -283,6 +301,11 @@ func writePlanText(p plan, man *manifest.Manifest, opts *globalOptions, stdout i
 				for _, field := range a.Enrichment.Fields {
 					fmt.Fprintf(stdout, "    %s = %s (source %s, replace=%t)\n", field.Field, field.Value, field.Source, field.Replace)
 				}
+			}
+			if a.Context != nil {
+				fmt.Fprintf(stdout, "  context  %s\n", a.Context.File)
+				fmt.Fprintf(stdout, "    require %s\n", requireList(a.Context.Require))
+				fmt.Fprintf(stdout, "    replace %s\n", requireList(a.Context.Replace))
 			}
 			for _, t := range a.Transforms {
 				fmt.Fprintf(stdout, "  %s\n", describeTransformLine(t, man.Dir))
