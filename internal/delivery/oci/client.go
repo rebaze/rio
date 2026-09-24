@@ -30,10 +30,12 @@ type client struct {
 }
 type traversalKey struct{}
 type traversalState struct {
-	mu     sync.Mutex
-	write  bool
-	realms map[string]bool
-	status int
+	mu              sync.Mutex
+	write           bool
+	realms          map[string]bool
+	status          int
+	manifestReceipt *receiptFacts
+	rejected        bool
 }
 
 func validSecret(v string) bool {
@@ -235,6 +237,10 @@ func (t *safeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	ctx, cancel := context.WithTimeout(req.Context(), 30*time.Second)
 	clone := req.Clone(ctx)
+	state.mu.Lock()
+	state.status = 0
+	state.rejected = false
+	state.mu.Unlock()
 	resp, e := t.base.RoundTrip(clone)
 	if e != nil {
 		cancel()
@@ -242,6 +248,10 @@ func (t *safeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	state.mu.Lock()
 	state.status = resp.StatusCode
+	if req.Method == "PUT" && req.URL.Path == "/v2/"+t.options.Repository+"/manifests/"+t.options.Publication.Tag {
+		_, locationErr := validLocation(resp.Header.Get("Location"), req.URL, t.options, "manifest")
+		state.manifestReceipt = &receiptFacts{Status: resp.StatusCode, Digest: resp.Header.Get("Docker-Content-Digest") == t.options.Publication.Manifest.Digest, Location: locationErr == nil, Subject: t.options.Subject == nil || resp.Header.Get("OCI-Subject") == t.options.Subject.Digest}
+	}
 	state.mu.Unlock()
 	refuse := func(code string) (*http.Response, error) {
 		resp.Body.Close()
@@ -283,6 +293,20 @@ func (t *safeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			state.realms[originURL(realm)+realm.Path] = true
 			state.mu.Unlock()
 		}
+	}
+	if !token && resp.StatusCode >= 400 {
+		raw, readErr := readResponse(resp, ErrorLimit)
+		if readErr != nil {
+			return refuse("invalid_error_response")
+		}
+		resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(raw))
+		resp.ContentLength = int64(len(raw))
+		rejected := supportedRejection(resp)
+		resp.Body = io.NopCloser(bytes.NewReader(raw))
+		state.mu.Lock()
+		state.rejected = rejected
+		state.mu.Unlock()
 	}
 	if token && resp.StatusCode == 200 {
 		if !jsonMedia(resp.Header.Get("Content-Type")) {
@@ -433,9 +457,4 @@ func readResponse(resp *http.Response, limit int64) ([]byte, error) {
 func jsonMedia(value string) bool {
 	media, _, e := mime.ParseMediaType(value)
 	return e == nil && (media == "application/json" || strings.HasSuffix(media, "+json"))
-}
-
-// Publication is completed by the next task; no request is possible here yet.
-func (c *client) Submit(context.Context, []delivery.Payload) (delivery.Submission, error) {
-	return delivery.Submission{}, delivery.Fail("unsupported_operation", "OCI publication not yet available")
 }
