@@ -457,3 +457,103 @@ func TestSubmitExactMissingBlobAndPartialPhases(t *testing.T) {
 		})
 	}
 }
+
+func TestSubmitEmptyAuthenticationRejection(t *testing.T) {
+	for _, mode := range []string{"valid-empty", "no-challenge", "html"} {
+		t.Run(mode, func(t *testing.T) {
+			s := newRegistry(t)
+			v, _ := verified(t)
+			c := submitClient(t, s, v, nil)
+			s.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if mode != "no-challenge" {
+					w.Header().Set("Www-Authenticate", `Basic realm="synthetic"`)
+				}
+				w.WriteHeader(401)
+				if mode == "html" {
+					fmt.Fprint(w, "<html>not a registry error</html>")
+				}
+			})
+			sub, e := c.Submit(context.Background(), v.Payloads())
+			want := "unknown"
+			if mode == "valid-empty" {
+				want = "rejected"
+			}
+			if e == nil || sub.Disposition != want {
+				t.Fatal(mode, sub, e)
+			}
+		})
+	}
+}
+func TestSubmitFlatAuthenticationError(t *testing.T) {
+	s := newRegistry(t)
+	v, _ := verified(t)
+	c := submitClient(t, s, v, nil)
+	s.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Www-Authenticate", `Basic realm="synthetic"`)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(401)
+		fmt.Fprint(w, `{"code":"UNAUTHORIZED","message":"do not retain","detail":null}`)
+	})
+	sub, e := c.Submit(context.Background(), v.Payloads())
+	if e == nil || sub.Disposition != "rejected" {
+		t.Fatal("flat supported auth error was lost", sub, e)
+	}
+}
+func TestSubmitMountedManifestReceiptLocation(t *testing.T) {
+	for _, namespace := range []string{"acme", "other"} {
+		t.Run(namespace, func(t *testing.T) {
+			s := newRegistry(t)
+			v, _ := verified(t)
+			c := submitClient(t, s, v, nil)
+			original := s.server.Config.Handler
+			s.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasPrefix(r.URL.Path, "/repository/") {
+					t.Error("receipt Location was followed")
+				}
+				if r.Method != "PUT" || !strings.Contains(r.URL.Path, "/manifests/") {
+					original.ServeHTTP(w, r)
+					return
+				}
+				captured := httptest.NewRecorder()
+				original.ServeHTTP(captured, r)
+				for key, values := range captured.Header() {
+					w.Header()[key] = values
+				}
+				w.Header().Set("Location", strings.Replace(captured.Header().Get("Location"), "/v2/acme/app/", "/repository/"+namespace+"/v2/app/", 1))
+				w.WriteHeader(captured.Code)
+				w.Write(captured.Body.Bytes())
+			})
+			sub, e := c.Submit(context.Background(), v.Payloads())
+			if namespace == "acme" {
+				if e != nil || sub.Disposition != "accepted" {
+					t.Fatal("same-origin mounted repository receipt refused", sub, e)
+				}
+				if o, e := c.Observe(context.Background(), expected(c.options)); e != nil || o.Value != "verified" {
+					t.Fatal(o, e)
+				}
+			} else if e == nil || sub.Disposition == "accepted" {
+				t.Fatal("different mounted repository accepted")
+			}
+		})
+	}
+}
+func TestSubmitRefusedAuthChallengePreservesRejection(t *testing.T) {
+	s := newRegistry(t)
+	v, _ := verified(t)
+	c := submitClient(t, s, v, nil)
+	original := s.server.Config.Handler
+	s.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "PUT" && strings.Contains(r.URL.Path, "/manifests/") {
+			w.Header().Set("Www-Authenticate", `Bearer realm="http://127.0.0.1:1/unapproved",scope="repository:other:push"`)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(401)
+			fmt.Fprint(w, `{"errors":[{"code":"UNAUTHORIZED"}]}`)
+			return
+		}
+		original.ServeHTTP(w, r)
+	})
+	sub, e := c.Submit(context.Background(), v.Payloads())
+	if e == nil || sub.Disposition != "rejected" {
+		t.Fatal("observed supported401 erased by auth-policy refusal", sub, e)
+	}
+}

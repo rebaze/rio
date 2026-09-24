@@ -275,6 +275,20 @@ func (t *safeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return refuse("response_too_large")
 	}
 	resp.Body = &boundedBody{ReadCloser: resp.Body, remaining: limit, cancel: cancel}
+	if !token && resp.StatusCode >= 400 {
+		raw, readErr := readResponse(resp, ErrorLimit)
+		if readErr != nil {
+			return refuse("invalid_error_response")
+		}
+		resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(raw))
+		resp.ContentLength = int64(len(raw))
+		rejected := supportedRejection(resp)
+		resp.Body = io.NopCloser(bytes.NewReader(raw))
+		state.mu.Lock()
+		state.rejected = rejected
+		state.mu.Unlock()
+	}
 	if resp.StatusCode == 401 && !token {
 		scheme, params, e := challenge(resp.Header.Get("Www-Authenticate"))
 		if e != nil {
@@ -300,20 +314,7 @@ func (t *safeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			state.mu.Unlock()
 		}
 	}
-	if !token && resp.StatusCode >= 400 {
-		raw, readErr := readResponse(resp, ErrorLimit)
-		if readErr != nil {
-			return refuse("invalid_error_response")
-		}
-		resp.Body.Close()
-		resp.Body = io.NopCloser(bytes.NewReader(raw))
-		resp.ContentLength = int64(len(raw))
-		rejected := supportedRejection(resp)
-		resp.Body = io.NopCloser(bytes.NewReader(raw))
-		state.mu.Lock()
-		state.rejected = rejected
-		state.mu.Unlock()
-	}
+
 	if token && resp.StatusCode == 200 {
 		if !jsonMedia(resp.Header.Get("Content-Type")) {
 			return refuse("invalid_auth_response")

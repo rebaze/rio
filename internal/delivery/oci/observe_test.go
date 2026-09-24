@@ -233,3 +233,39 @@ func TestCrashOCIIntentOnlyRecovery(t *testing.T) {
 		t.Fatal("intent rewritten")
 	}
 }
+
+func TestObserveNegotiatesReadScopeBeforeRepositoryRequests(t *testing.T) {
+	s := newRegistry(t)
+	v, _ := verified(t)
+	c := submitClient(t, s, v, nil)
+	if _, e := c.Submit(context.Background(), v.Payloads()); e != nil {
+		t.Fatal(e)
+	}
+	original := s.server.Config.Handler
+	tokenRequests := 0
+	s.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			tokenRequests++
+			if r.URL.Query().Get("scope") != "repository:acme/app:pull" {
+				t.Error("read scope not explicit")
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"token":"read-scope-token"}`)
+			return
+		}
+		if r.Header.Get("Authorization") == "Bearer read-scope-token" {
+			original.ServeHTTP(w, r)
+			return
+		}
+		challenge := `Bearer realm="` + s.server.URL + `/token"`
+		if r.URL.Path != "/v2/" {
+			challenge += `,scope="repository:app:pull"`
+		}
+		w.Header().Set("Www-Authenticate", challenge)
+		w.WriteHeader(401)
+	})
+	o, e := c.Observe(context.Background(), expected(c.options))
+	if e != nil || o.Value != "verified" || tokenRequests != 1 {
+		t.Fatal("read scope was not negotiated before repository lookup", o, e, tokenRequests)
+	}
+}

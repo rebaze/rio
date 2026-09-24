@@ -252,6 +252,14 @@ func (c *client) Observe(parent context.Context, refs []delivery.Reference) (del
 	}
 	ctx, cancel := c.traversal(parent, false)
 	defer cancel()
+	resp, e := c.request(ctx, "GET", "/v2/", nil, 0, "")
+	if e != nil || resp.StatusCode != 200 {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return observation("content", "unavailable", "content_unavailable", status(ctx), Facts{Phase: "readback"}, nil), delivery.Fail("content_unavailable", "read-only authentication preflight unavailable")
+	}
+	resp.Body.Close()
 	return c.observeGraph(ctx, false)
 }
 

@@ -39,7 +39,7 @@ func validLocation(raw string, base *url.URL, o Options, kind string) (*url.URL,
 			return nil, delivery.Fail("unsafe_location", "upload session location")
 		}
 	case "manifest":
-		if u.RawQuery != "" || u.ForceQuery || u.Path != prefix+"manifests/"+o.Publication.Manifest.Digest && u.Path != prefix+"manifests/"+o.Publication.Tag {
+		if u.RawQuery != "" || u.ForceQuery || !manifestReceiptPath(u.Path, o) {
 			return nil, delivery.Fail("unsafe_location", "manifest receipt location")
 		}
 	case "blob":
@@ -55,6 +55,34 @@ func validLocation(raw string, base *url.URL, o Options, kind string) (*url.URL,
 	}
 	u.Host = o.Registry
 	return u, nil
+}
+
+// A receipt URI may use a same-origin mounted namespace (for example a
+// repository key before /v2/). Its ordered namespace parts must still equal the
+// configured repository. This URI is never followed; uploads and read-back use
+// the configured /v2/ repository paths and their stricter request checks.
+func manifestReceiptPath(path string, o Options) bool {
+	for _, reference := range []string{o.Publication.Manifest.Digest, o.Publication.Tag} {
+		suffix := "/manifests/" + reference
+		if !strings.HasSuffix(path, suffix) {
+			continue
+		}
+		base := strings.TrimSuffix(path, suffix)
+		if base == "/v2/"+o.Repository {
+			return true
+		}
+		parts := strings.Split(o.Repository, "/")
+		for cut := 1; cut < len(parts); cut++ {
+			tail := "/v2/" + strings.Join(parts[cut:], "/")
+			if strings.HasSuffix(base, tail) {
+				prefix := strings.TrimSuffix(base, tail)
+				if strings.HasSuffix(prefix, "/"+strings.Join(parts[:cut], "/")) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 func ociDescriptor(d Descriptor) ocispec.Descriptor {
 	return ocispec.Descriptor{MediaType: d.MediaType, Digest: digest.Digest(d.Digest), Size: d.Size}
@@ -218,24 +246,50 @@ func (c *client) contentFailure(phase string, began bool, code string, httpStatu
 	return delivery.Submission{Disposition: "unknown", References: []delivery.Reference{}, Observations: []delivery.Observation{o}}, delivery.Fail(code, "OCI content or discovery not verified")
 }
 func supportedRejection(resp *http.Response) bool {
-	if !slices.Contains([]int{400, 401, 403, 404, 405, 409, 413, 415, 422}, resp.StatusCode) || !jsonMedia(resp.Header.Get("Content-Type")) {
+	if !slices.Contains([]int{400, 401, 403, 404, 405, 409, 413, 415, 422}, resp.StatusCode) {
 		return false
 	}
 	raw, e := readResponse(resp, ErrorLimit)
 	if e != nil {
 		return false
 	}
-	var env struct {
-		Errors []struct {
-			Code    string          `json:"code"`
-			Message string          `json:"message,omitempty"`
-			Detail  json.RawMessage `json:"detail,omitempty"`
-		} `json:"errors"`
+	if resp.StatusCode == 401 && len(bytes.TrimSpace(raw)) == 0 {
+		scheme, params, e := challenge(resp.Header.Get("Www-Authenticate"))
+		_, realm := params["realm"]
+		return e == nil && realm && (scheme == "basic" || scheme == "bearer")
 	}
-	if delivery.PreflightJSON(raw, &env, 10000) != nil || delivery.DecodeJSON(raw, &env, false) != nil || len(env.Errors) == 0 {
+	if !jsonMedia(resp.Header.Get("Content-Type")) {
 		return false
 	}
-	for _, v := range env.Errors {
+	type errorItem struct {
+		Code    string `json:"code"`
+		Message string `json:"message,omitempty"`
+		Detail  any    `json:"detail,omitempty"`
+	}
+	var root map[string]json.RawMessage
+	if json.Unmarshal(raw, &root) != nil {
+		return false
+	}
+	items := []errorItem{}
+	if _, wrapped := root["errors"]; wrapped {
+		var env struct {
+			Errors []errorItem `json:"errors"`
+		}
+		if delivery.PreflightJSON(raw, &env, 10000) != nil || delivery.DecodeJSON(raw, &env, true) != nil {
+			return false
+		}
+		items = env.Errors
+	} else {
+		var item errorItem
+		if delivery.PreflightJSON(raw, &item, 10000) != nil || delivery.DecodeJSON(raw, &item, true) != nil {
+			return false
+		}
+		items = append(items, item)
+	}
+	if len(items) == 0 {
+		return false
+	}
+	for _, v := range items {
 		if !slices.Contains([]string{"BLOB_UNKNOWN", "BLOB_UPLOAD_INVALID", "BLOB_UPLOAD_UNKNOWN", "DIGEST_INVALID", "MANIFEST_BLOB_UNKNOWN", "MANIFEST_INVALID", "MANIFEST_UNKNOWN", "NAME_INVALID", "NAME_UNKNOWN", "SIZE_INVALID", "TAG_INVALID", "UNAUTHORIZED", "DENIED", "UNSUPPORTED"}, v.Code) {
 			return false
 		}
