@@ -86,6 +86,8 @@ type integrationRequest struct {
 	LocationExpectedPath *bool  `json:"manifestLocationExpectedPath,omitempty"`
 	LocationHasQuery     *bool  `json:"manifestLocationHasQuery,omitempty"`
 	LocationTemplate     string `json:"manifestLocationTemplate,omitempty"`
+	Authentication       string `json:"authentication"`
+	Challenge            string `json:"challenge,omitempty"`
 }
 type integrationScenario struct {
 	Name                    string      `json:"name"`
@@ -112,7 +114,7 @@ type integrationEvidence struct {
 	ImageDigest          string                `json:"setupReportedImageDigest"`
 	Registry             string                `json:"registry"`
 	Repository           string                `json:"repository"`
-	Auth                 string                `json:"auth"`
+	Auth                 string                `json:"credentialMode"`
 	TLS                  bool                  `json:"tls"`
 	CustomCA             bool                  `json:"customCA"`
 	ImmutablePolicy      bool                  `json:"expectedImmutableTagPolicy"`
@@ -154,6 +156,13 @@ type integrationTransport struct {
 func (tr *integrationTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, e := tr.base.RoundTrip(req)
 	fact := integrationRequest{Operation: tr.operation, Method: req.Method, Path: req.URL.Path}
+	fact.Authentication = "none"
+	authorization := req.Header.Get("Authorization")
+	if strings.HasPrefix(authorization, "Basic ") {
+		fact.Authentication = "basic"
+	} else if strings.HasPrefix(authorization, "Bearer ") {
+		fact.Authentication = "bearer"
+	}
 	prefix := "/v2/" + tr.repository + "/"
 	if strings.Contains(fact.Path, "/blobs/uploads/") {
 		fact.Path = prefix + "blobs/uploads/<session>"
@@ -162,6 +171,9 @@ func (tr *integrationTransport) RoundTrip(req *http.Request) (*http.Response, er
 	}
 	if resp != nil {
 		fact.Status = resp.StatusCode
+		if scheme, _, err := challenge(resp.Header.Get("Www-Authenticate")); err == nil && (scheme == "basic" || scheme == "bearer") {
+			fact.Challenge = scheme
+		}
 		for key, dst := range map[string]*string{"Docker-Content-Digest": &fact.Digest, "OCI-Subject": &fact.Subject} {
 			v := resp.Header.Get(key)
 			if strings.HasPrefix(v, "sha256:") && delivery.ValidDigest(strings.TrimPrefix(v, "sha256:")) {
