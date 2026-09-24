@@ -63,7 +63,7 @@ jobs:
           # Fixtures, golden files and the embedded CycloneDX schemas are
           # inputs to the test suite, so a change to any of them has to run it.
           # Missing that is how a stale golden file reaches main.
-          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets)/|^tools/rio-context(_test)?\.py$)' <<<"$CHANGED" >/dev/null; then go=true; fi
+          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$)' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.github/workflows/.*\.ya?ml$' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.goreleaser\.yaml$' <<<"$CHANGED" >/dev/null; then goreleaser=true; fi
           if grep -E '\.sh$' <<<"$CHANGED" >/dev/null; then shell=true; fi
@@ -143,6 +143,8 @@ jobs:
           ./tools/demo-enrichment/run.sh "$PWD/rio"
           ./tools/demo-context/run.sh "$PWD/rio"
           ./tools/demo-artifact-sets/run.sh "$PWD/rio"
+          ./tools/demo-agent-integration/run.sh "$PWD/rio"
+          RIO_BIN="$PWD/rio" python3 tools/demo-agent-integration/test.py
           RIO_BIN="$PWD/rio" python3 tools/rio-context_test.py
 
       - name: Lint shell scripts
@@ -155,7 +157,7 @@ jobs:
             sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
           fi
           shellcheck --version
-          shellcheck -s sh tools/demo-artifact-sets/run.sh install.sh tools/demo-enrichment/run.sh tools/demo-context/run.sh tools/demo-context/check-replacement.sh
+          shellcheck -s sh tools/demo-agent-integration/*.sh tools/demo-agent-integration/projects/*/build.sh tools/demo-artifact-sets/run.sh install.sh tools/demo-enrichment/run.sh tools/demo-context/run.sh tools/demo-context/check-replacement.sh
           shellcheck tools/rio-dtrack-upload.sh install_test.sh tools/rio-dtrack-upload_test.sh
 
       - name: Test the shell scripts offline

@@ -103,6 +103,18 @@ class ChangesTest(unittest.TestCase):
                 if path.endswith(".sh"):
                     self.assertEqual(result["shell"], "true")
 
+    def test_onboarding_guide_and_examples_run_binary_checks(self):
+        for path in (
+            "docs/agent-integration.md",
+            "tools/demo-agent-integration/examples/mixed.yaml",
+            "tools/demo-agent-integration/projects/modules/seed.cdx.json",
+            "tools/demo-agent-integration/ci.sh",
+            "tools/demo-agent-integration/test.py",
+            "tools/demo-agent-integration/EVALUATION.md",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(detect(path)["go"], "true")
+
     def test_context_helper_changes_run_python_checks(self):
         self.assertEqual(detect("tools/rio-context.py")["python"], "true")
         self.assertEqual(detect("tools/rio-context_test.py")["python"], "true")

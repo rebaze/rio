@@ -1,0 +1,4 @@
+<project>
+  <!-- Synthetic marker; not a runnable Maven project. -->
+  <artifactId>different-from-directory-name</artifactId>
+</project>

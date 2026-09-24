@@ -14,6 +14,7 @@ inputs and remain separate from its runtime.
 | [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | offline, with an installed rio release |
 | [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, refusals and owned-claim replacement | offline, with an installed rio release |
 | [`demo-artifact-sets/`](#artifact-sets-demo) | discovers module SBOMs, adds/removes membership and refuses missing or overlapping inputs | offline, with an installed rio release |
+| [`demo-agent-integration/`](#agent-integration-examples) | tests project onboarding configurations and a CI collection step | offline, with an installed rio release |
 | [`rio-context.py`](#rio-contextpy) | emits one explicit build-context entry bound to original SBOM bytes | in a producing CI job |
 | [`feature-video/`](#feature-video) | records, narrates and encodes the context feature walkthrough | when the feature or its demo changes |
 
@@ -581,3 +582,72 @@ output IDs, not software identity. Markers are selected by filename; their XML i
 See [manifest semantics and limitations](../README.md#discovering-module-artifacts), including
 context/transform path rules and stale-file behavior. The current `index.json`, rather than every
 file in a reused directory, defines membership.
+
+## Agent integration examples
+
+The [integration guide](../docs/agent-integration.md) is the shared workflow for agents configuring
+a project. [`demo-agent-integration/`](demo-agent-integration/) supplies the examples and checks:
+
+| Project | What it demonstrates |
+|---|---|
+| `explicit` | One desktop SBOM selected explicitly |
+| `modules` | Automatic server discovery, with a client outside the selector |
+| `mixed` | Extending an existing manifest, preserving its settings and handling an uppercase directory through exclusion plus an explicit artifact |
+| `incomplete` | A required module has no SBOM producer; configuration stays inclusive and validation fails |
+| `ambiguous` | Both candidates have SBOMs, but only the owner can decide which ships; no reference manifest is preselected |
+
+Run the reference walkthrough with an installed Rio release containing artifact sets (#71 / #72),
+POSIX shell and standard utilities including `tar` and `mktemp`:
+
+```sh
+./tools/demo-agent-integration/run.sh /path/to/rio
+# Or omit the argument to use rio from PATH (or RIO_BIN).
+```
+
+No Go, Maven, Python, jq or network is needed for the walkthrough. It copies projects into a fresh
+temporary directory, runs their synthetic producers, applies the copyable configurations, and
+retains plans, normalized outputs and refusal logs. Each `build.sh` copies fixture data; it is not
+a recipe for generating a real project's SBOM. The walkthrough is a reference demonstration,
+not a live agent evaluation.
+
+The [YAML examples](demo-agent-integration/examples/) are separate from the input projects so an
+agent can be evaluated without seeing an answer. The [evaluation procedure](demo-agent-integration/EVALUATION.md)
+provides fresh-session setup, prompts, owner responses, assessment criteria and an evidence-record
+format. Use it to check question quality and preservation of existing configuration in any harness.
+
+### Copyable CI step
+
+[`ci.sh`](demo-agent-integration/ci.sh) is a shell step for an existing pipeline. Copy it into the
+target project's CI scripts, then pass the installed Rio binary and the project's actual
+build/SBOM-producing command. For example, if that command is `sh ci/build-and-sbom.sh`:
+
+```sh
+sh ci/rio.sh /path/to/rio sh ci/build-and-sbom.sh
+```
+
+It stops on build failure, writes a JSON plan, normalizes with `--gate fail --attest`, and only
+then creates `rio-run.XXXXXXXX/bundle.tgz`. The archive holds `plan.json` and the fresh `normalized/`
+directory, including `index.json` and per-artifact statements. Connect the **printed bundle path**
+to the pipeline's existing artifact collector; do not use a wildcard that also collects old runs.
+The script does not upload anything or delete old files. Failed runs retain diagnostics but produce
+no completed `bundle.tgz`; an archive failure may leave `bundle.tgz.partial`. The producer command must establish SBOM freshness; Rio cannot infer it.
+
+Adapt the output parent and optional `--attest` flag to the target project. Rio installation and
+build tooling are prerequisites. Network-dependent generation or upload steps remain separate from
+Rio's offline processing. The example archives results, not all original inputs needed for later
+reproduction.
+
+### Automated checks
+
+Maintainer checks use Python 3.9+ standard library and the same installed Rio binary:
+
+```sh
+RIO_BIN=/path/to/rio python3 tools/demo-agent-integration/test.py
+shellcheck -s sh tools/demo-agent-integration/*.sh tools/demo-agent-integration/projects/*/build.sh
+```
+
+Checks cover ordered membership, path resolution from another working directory, unchanged SBOM
+subjects/components, existing mixed-project settings, automatic inclusion, missing-output refusal,
+and exact archive contents. Build, plan, gate and archive failures must never produce a completed bundle. CI builds
+Rio and runs both the walkthrough and tests when the guide or examples change. These checks assess
+the shipped reference configurations; use the separate evaluation procedure to assess an agent.
