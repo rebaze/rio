@@ -3,8 +3,10 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"github.com/rebaze/rio/internal/delivery"
+	"github.com/rebaze/rio/internal/delivery/record"
 	"github.com/rebaze/rio/internal/index"
 	"io"
 	"net/http"
@@ -251,5 +253,91 @@ func TestOfflineUnifiedManifestExplicitAndSets(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestReconcileRefusesTransportPolicyDrift(t *testing.T) {
+	ip, cfg := deliveryFixture(t, "https://example.test")
+	_, _, a, _, e := singlePreflight(cfg, ip, false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	b, _ := os.ReadFile(cfg)
+	b = bytes.Replace(b, []byte("allowHTTP: true"), []byte("allowHTTP: false"), 1)
+	os.WriteFile(cfg, b, 0600)
+	_, _, d, _, e := singlePreflight(cfg, ip, false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if samePolicy(a, d, true) || samePolicy(a, d, false) {
+		t.Fatal("transport policy drift accepted")
+	}
+}
+
+func TestLegacyJournalReconcilesByRecordedTargetAfterInputsDisappear(t *testing.T) {
+	calls := 0
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Method != "GET" {
+			t.Error("reconcile resubmitted")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"processing":false}`)
+	}))
+	defer srv.Close()
+	ip, cfg := deliveryFixture(t, srv.URL)
+	_, v, d, _, e := singlePreflight(cfg, ip, false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	dir := filepath.Dir(cfg)
+	p := filepath.Join(dir, "legacy")
+	w, e := record.Create(p, record.Intent{RioVersion: "before-85", Binding: "removed-old-binding", ConfigSHA256: delivery.Digest([]byte("old separate snapshot")), Source: v.Source(), Destination: d, Payloads: []delivery.PayloadRef{v.Payloads()[0].Ref()}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	refs := []delivery.Reference{{Kind: "dependency-track:event-token", Value: "f90934f5-cb88-47ce-81cb-db06fc67d4b4"}}
+	sub, _ := json.Marshal(delivery.Submission{Disposition: "accepted", References: refs, Observations: []delivery.Observation{{Kind: "acknowledgment", Value: "accepted", Origin: "receiver", Code: "accepted", HTTPStatus: 200, References: refs}}})
+	if e = w.Append("submission", sub); e != nil {
+		t.Fatal(e)
+	}
+	w.Close()
+	before, _ := record.Read(p)
+	os.Remove(ip)
+	os.Remove(filepath.Join(dir, "bom.json"))
+	ca := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
+	os.WriteFile(filepath.Join(dir, "rotated.pem"), ca, 0600)
+	b, _ := os.ReadFile(cfg)
+	b = append(b, []byte("      apiKeyEnv: ROTATED_LEGACY_KEY\n      caFile: rotated.pem\n")...)
+	os.WriteFile(cfg, b, 0600)
+	t.Setenv("ROTATED_LEGACY_KEY", "synthetic-key")
+	code, r, _ := deliveryRun(t, "delivery", "reconcile", "--record", p, "--manifest", cfg)
+	if code != 0 || calls != 1 || r["activity"] != "not-observed" {
+		t.Fatal(code, r, calls)
+	}
+	after, _ := record.Read(p)
+	if after.Intent.Binding != "removed-old-binding" || after.Intent.ConfigSHA256 != before.Intent.ConfigSHA256 || after.Intent.Source.IndexSHA256 != before.Intent.Source.IndexSHA256 {
+		t.Fatal("historical snapshot rewritten")
+	}
+	var observation record.Reconciliation
+	if e := json.Unmarshal(after.Events[len(after.Events)-1].Data, &observation); e != nil || observation.ConfigSHA256 != delivery.Digest(b) {
+		t.Fatal(e, observation)
+	}
+	os.Remove(cfg)
+	code, _, _ = deliveryRun(t, "delivery", "inspect", "--record", p)
+	if code != 0 {
+		t.Fatal("inspection required manifest")
+	}
+}
+
+func TestDeliveryDeclarationLimitHasSafeCode(t *testing.T) {
+	dir := batchFixture(t, "https://example.test")
+	t.Chdir(dir)
+	b, _ := os.ReadFile("rio.yaml")
+	b = append(b, []byte("      caFile: '"+strings.Repeat("secret-canary", 100000)+"'\n")...)
+	os.WriteFile("rio.yaml", b, 0600)
+	code, r, stderr := runBatch(t, "delivery", "plan")
+	if code != 2 || r["error"].(map[string]any)["code"] != "size_limit" || strings.Contains(stderr, "secret-canary") {
+		t.Fatal(code, r, stderr)
 	}
 }

@@ -70,7 +70,7 @@ func validateYAML(n yaml.Node, depth int, size *int64) error {
 	if depth > 100 || n.Kind == yaml.AliasNode || n.Anchor != "" {
 		return Fail("invalid_config", "delivery aliases or depth")
 	}
-	*size += int64(len(n.Value) + len(n.Tag) + 16)
+	*size += int64(len(n.Value) + len(n.HeadComment) + len(n.LineComment) + len(n.FootComment))
 	if *size > ConfigLimit {
 		return Fail("size_limit", "delivery declaration")
 	}
@@ -97,6 +97,13 @@ func ParseConfig(n yaml.Node, directory, sha256 string) (Config, error) {
 	var size int64
 	if e := validateYAML(n, 0, &size); e != nil {
 		return c, e
+	}
+	encoded, e := yaml.Marshal(n)
+	if e != nil {
+		return c, Fail("invalid_config", "delivery declaration")
+	}
+	if int64(len(encoded)) > ConfigLimit {
+		return c, Fail("size_limit", "delivery declaration")
 	}
 	root, e := YAMLMap(n, "targets")
 	if e != nil {

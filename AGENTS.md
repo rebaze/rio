@@ -34,6 +34,7 @@ tools/                          Supporting tools that are not rio; see tools/REA
 
 Anything that supports rio without being part of it goes in `tools/`, together with its own
 documentation in `tools/README.md`. Normalization, existing plan, delivery plan and delivery inspection remain offline.
+Intake and delivery configuration share one rio.yaml; deliver plans from verified index members.
 Only explicit native deliver and delivery reconcile operations construct network clients and resolve
 credentials. Supporting network work such as building the p2 mapping table remains a tool. The main `README.md` points at `tools/README.md` and does not document the tools
 itself, so that rio's own documentation stays about rio.

@@ -216,6 +216,9 @@ func planResolved(plan BatchPlan, c Config, indexPath string, idx index.Index, o
 			}
 			b, e := read(path, limit)
 			if e != nil {
+				if safe, ok := e.(*Error); ok && safe.Code == "size_limit" && remaining < PayloadLimit {
+					return nil, Fail("snapshot_limit", "maximum total selected snapshot bytes 256 MiB")
+				}
 				return nil, e
 			}
 			total += int64(len(b))

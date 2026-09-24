@@ -42,3 +42,16 @@ func TestManifestDelivery(t *testing.T) {
 		})
 	}
 }
+
+func TestManifestDeliveryDeclarationLimitOnly(t *testing.T) {
+	base := "version: 1\nartifacts: [{id: app, sbom: missing.json}]\n"
+	p := filepath.Join(t.TempDir(), "rio.yaml")
+	os.WriteFile(p, []byte("#"+strings.Repeat("intake-comment", 90000)+"\n"+base+"delivery: {targets: {security: {type: future}}}\n"), 0600)
+	if _, e := Load(p); e != nil {
+		t.Fatal("historical intake newly capped", e)
+	}
+	os.WriteFile(p, []byte(base+"delivery: {targets: {security: {type: future, value: '"+strings.Repeat("x", 1<<20)+"'}}}\n"), 0600)
+	if _, e := Load(p); e == nil {
+		t.Fatal("oversized delivery accepted")
+	}
+}

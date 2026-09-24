@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/delivery/dtrack"
@@ -32,6 +33,10 @@ func providers(dir string) map[string]delivery.Provider {
 func loadDeliveryConfig(path string) (delivery.Config, error) {
 	m, e := manifest.Load(path)
 	if e != nil {
+		var safe *delivery.Error
+		if errors.As(e, &safe) {
+			return delivery.Config{}, safe
+		}
 		return delivery.Config{}, delivery.Fail("invalid_manifest", "rio.yaml could not be loaded or validated")
 	}
 	return delivery.ParseConfig(m.Delivery, m.Dir, m.SHA256)
@@ -81,7 +86,7 @@ func samePolicy(a, b delivery.Description, reconcile bool) bool {
 	if ao.AutoCreate != nil && *ao.AutoCreate != *bo.AutoCreate {
 		return false
 	}
-	if reconcile && !ao.AllowHTTP && bo.AllowHTTP {
+	if ao.AllowHTTP != bo.AllowHTTP {
 		return false
 	}
 	return true

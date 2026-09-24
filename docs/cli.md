@@ -74,7 +74,9 @@ and inject its API key through the environment, then run:
 ```sh
 mvn -B verify
 rio normalize --gate fail
-rio deliver --delivery application-security --record delivery-record --json
+rio deliver --json
+# Optional explicit single-pair journal:
+rio deliver --artifact application --target security --record delivery-record --json
 ```
 
 The [direct Dependency-Track example](../README.md#deliver-to-dependency-track) shows the separate
@@ -189,3 +191,27 @@ in a repository.
 
 Exit code 1 still writes every output file and the index: a human has to be able to see why the gate
 failed. Exit code 2 writes nothing.
+
+
+### Unified delivery configuration and batch results
+
+Delivery reads targets from the same `rio.yaml` as normalization. `rio deliver` and
+`rio delivery plan` default to all indexed artifacts and all eligible targets, with optional
+repeatable `--artifact`/`--target` filters. `--manifest` defaults to `rio.yaml`; `--index` defaults
+to `target/rio/index.json` relative to cwd. Nondefault output directories require `--index`.
+`--out` is invalid here. Inspect reads only its journal and rejects explicit `--manifest`.
+The removed `--config`/`--delivery` interface reports migration guidance.
+
+Plan/deliver `--json` emit exactly one schemaVersion 2 batch object with operation, outcome,
+raw index/current manifest digests when available, requestMayHaveOccurred, items, unusedRules,
+and a safe error when present. Each item reports artifactId, target, resolved record path, state,
+verified source/destination, and the existing v1 result when attempted. Plan items are ready;
+delivery items are accepted, rejected, unknown, unattempted or error. Partial means an earlier
+attempt completed before failure. Exit remains that failure's code. An observed acceptance can
+remain visible alongside exit 3 if result persistence failed. Inspect/reconcile remain v1.
+
+All input/client preflight and journal reservations precede requests. Attempts run sequentially,
+stop at failure and never roll back. Default journals live below the index directory in
+`deliveries/<pair-key>/`; unchanged reruns refuse existing journals. Explicit `--record` requires
+one pair; `--retry-of` additionally requires an explicit fresh record path. See the
+[configuration, recovery and demo guide](../tools/README.md#native-verified-delivery).

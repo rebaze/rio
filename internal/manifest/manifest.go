@@ -173,7 +173,7 @@ func Load(path string) (*Manifest, error) {
 				}
 				found = true
 				if _, err := delivery.ParseConfig(*root.Content[i+1], m.Dir, m.SHA256); err != nil {
-					return nil, l.errf("delivery", "%v", err)
+					return nil, fmt.Errorf("%s: delivery: %w", l.path, err)
 				}
 			}
 		}
