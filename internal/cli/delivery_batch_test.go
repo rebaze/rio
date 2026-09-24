@@ -500,3 +500,23 @@ func TestDeliveryBatchLateDigestFailureReportsCompleteSelection(t *testing.T) {
 		t.Fatal(items)
 	}
 }
+
+func TestHumanDeliveryPlanShowsEffectiveCreationPolicy(t *testing.T) {
+	for _, tc := range []struct{ name, options, want string }{
+		{"default", "", "autoCreate=false"},
+		{"enabled", "      autoCreate: true\n", "autoCreate=true"},
+		{"uuid", "      project: {uuid: f90934f5-cb88-47ce-81cb-db06fc67d4b4}\n", "autoCreate=not-applicable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := batchFixture(t, "https://example.test")
+			t.Chdir(dir)
+			b, _ := os.ReadFile("rio.yaml")
+			os.WriteFile("rio.yaml", append(b, []byte(tc.options)...), 0600)
+			var out, stderr bytes.Buffer
+			code := Main([]string{"delivery", "plan", "--artifact", "app"}, &out, &stderr)
+			if code != 0 || !strings.Contains(stderr.String(), tc.want) {
+				t.Fatal(code, out.String(), stderr.String())
+			}
+		})
+	}
+}

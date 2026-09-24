@@ -188,6 +188,13 @@ func batchFinish(r runner.BatchResult, e error, o deliveryOptions, g *globalOpti
 			fmt.Fprintf(stderr, "artifact=%s target=%s state=%s record=%s", item.ArtifactID, item.Target, item.State, item.Record)
 			if item.Destination != nil {
 				fmt.Fprintf(stderr, " project=%s capabilities=%v", item.Destination.Identity, item.Destination.Capabilities)
+				if options, identity, err := dtrack.ValidateDescription(*item.Destination); err == nil {
+					if identity.Project.UUID != "" {
+						fmt.Fprint(stderr, " autoCreate=not-applicable")
+					} else if options.AutoCreate != nil {
+						fmt.Fprintf(stderr, " autoCreate=%t", *options.AutoCreate)
+					}
+				}
 			}
 			if item.Source != nil {
 				fmt.Fprintf(stderr, " gate=%s schemaValidated=%t allowFailedGate=%t sha256=%s", item.Source.Gate, item.Source.SchemaValidated, item.Source.AllowFailedGate, item.Source.OutputSHA256)
