@@ -10,7 +10,7 @@ import (
 // contracts remain mechanically isolated from client-bearing packages.
 func TestOfflinePackagesLinkNoNetworkClient(t *testing.T) {
 	args := []string{"list", "-deps"}
-	for _, p := range []string{"sbom", "manifest", "discover", "gate", "index", "transform/...", "enrichment", "buildcontext", "delivery", "delivery/record"} {
+	for _, p := range []string{"sbom", "manifest", "discover", "gate", "index", "transform/...", "enrichment", "buildcontext", "delivery", "delivery/record", "evidence"} {
 		args = append(args, "github.com/rebaze/rio/internal/"+p)
 	}
 	out, err := exec.Command("go", args...).Output()
