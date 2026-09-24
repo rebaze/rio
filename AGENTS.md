@@ -33,9 +33,9 @@ tools/                          Supporting tools that are not rio; see tools/REA
 ```
 
 Anything that supports rio without being part of it goes in `tools/`, together with its own
-documentation in `tools/README.md`. The rule of thumb is the network: rio makes no network calls, so
-work that needs one — building the p2 mapping table, uploading to DependencyTrack — is a tool rather
-than a feature. The main `README.md` points at `tools/README.md` and does not document the tools
+documentation in `tools/README.md`. Normalization, existing plan, delivery plan and delivery inspection remain offline.
+Only explicit native deliver and delivery reconcile operations construct network clients and resolve
+credentials. Supporting network work such as building the p2 mapping table remains a tool. The main `README.md` points at `tools/README.md` and does not document the tools
 itself, so that rio's own documentation stays about rio.
 
 ## Build & Run

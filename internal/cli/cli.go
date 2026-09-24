@@ -14,10 +14,12 @@ import (
 
 // Exit codes (§1).
 const (
-	ExitOK       = 0 // every artifact processed, no gate failure under --gate fail
-	ExitGate     = 1 // at least one artifact failed the gate under --gate fail
-	ExitUsage    = 2 // usage or configuration error; nothing was written
-	ExitInternal = 3 // internal error
+	ExitOK               = 0 // every artifact processed, no gate failure under --gate fail
+	ExitGate             = 1 // at least one artifact failed the gate under --gate fail
+	ExitUsage            = 2 // usage/config/preflight failure; no persistent journal changes (read locks may be used)
+	ExitInternal         = 3 // internal error
+	ExitDeliveryUnknown  = 4 // remote outcome unknown or observation unavailable
+	ExitDeliveryRejected = 5 // supported receiver rejection
 )
 
 // Injected at build time via ldflags (see Makefile and .goreleaser.yaml).
@@ -41,7 +43,7 @@ func (e *exitError) Error() string { return e.err.Error() }
 func (e *exitError) Unwrap() error { return e.err }
 
 // usageErrorf builds an exit 2: a usage or configuration problem that aborts
-// the run before anything is written.
+// the run before persistent output is written. Delivery reads may take an ephemeral lock.
 func usageErrorf(format string, args ...any) error {
 	return &exitError{code: ExitUsage, err: fmt.Errorf(format, args...)}
 }
@@ -71,7 +73,7 @@ func newRootCommand(opts *globalOptions, stdout, stderr io.Writer) *cobra.Comman
 			"resolve, and holds it to the quality you declared in the manifest.\n\n" +
 			"One manifest in; one normalized document per artifact plus index.json out.\n" +
 			"Every repair and every miss is recorded in the document that carries it.\n\n" +
-			"rio makes no network calls.",
+			"Normalization and planning are offline. Explicit deliver/reconcile operations use the network.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       version,
@@ -89,6 +91,8 @@ func newRootCommand(opts *globalOptions, stdout, stderr io.Writer) *cobra.Comman
 	root.AddCommand(newNormalizeCommand(opts, stdout, stderr))
 	root.AddCommand(newPlanCommand(opts, stdout))
 	root.AddCommand(newVersionCommand(stdout))
+	root.AddCommand(newDeliverCommand(opts, stdout, stderr))
+	root.AddCommand(newDeliveryCommand(opts, stdout, stderr))
 	return root
 }
 

@@ -3,14 +3,15 @@
 Things that support rio without being part of it. Nothing here ships in the binary, nothing here is
 covered by rio's compatibility promises, and rio never calls any of it.
 
-Network-facing helpers live here so **rio makes no network calls** and stays static,
+Supporting network-facing helpers live here. **Normalization and planning stay offline**;
+explicit native delivery/reconciliation may use network clients. Rio stays static,
 `CGO_ENABLED=0`. Offline demos also live here: they exercise the binary with inspectable example
 inputs and remain separate from its runtime.
 
 | tool | what it does | when you run it |
 |---|---|---|
 | [`build-p2-table.py`](#build-p2-tablepy) | builds the bundle-symbolic-name → Maven coordinate table rio repairs purls with | occasionally, on a workstation |
-| [`rio-dtrack-upload.sh`](#rio-dtrack-uploadsh) | uploads normalized SBOMs to DependencyTrack | after every `rio normalize`, in a pipeline |
+| [`rio-dtrack-upload.sh`](#rio-dtrack-uploadsh) | batch uploads with optional parent-project assignment | existing batch/parent workflows |
 | [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | offline, with an installed rio release |
 | [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, refusals and owned-claim replacement | offline, with an installed rio release |
 | [`demo-artifact-sets/`](#artifact-sets-demo) | discovers module SBOMs, adds/removes membership and refuses missing or overlapping inputs | offline, with an installed rio release |
@@ -282,8 +283,9 @@ DTRACK_URL=https://dtrack.example.com DTRACK_API_KEY=... \
   ./tools/rio-dtrack-upload.sh target/rio/index.json
 ```
 
-It ships as an example, and it is deliberately not part of rio: rio does not upload anywhere. It
-needs `DTRACK_URL` and `DTRACK_API_KEY` and stops immediately without either. The API key needs the
+For direct verified uploads, use [native delivery](#native-verified-delivery). This separate
+script remains available as an example for existing batch/parent workflows. It needs
+`DTRACK_URL` and `DTRACK_API_KEY` and stops immediately without either. The API key needs the
 `BOM_UPLOAD`, `PROJECT_CREATION_UPLOAD` and `VIEW_PORTFOLIO` permissions. The comment block at the
 top of the script lists every variable it reads.
 
@@ -677,3 +679,108 @@ shows coordinate normalization, not the safety or vulnerability status of Gson.
 
 To use your own input, create a manifest selecting its path and retain this transform only if
 that SBOM needs p2 repair. See the [README's project configuration](../README.md#configure-your-project).
+
+## Native verified delivery
+
+Native delivery checks index v1 structure, gate outcome and the output SHA-256, then sends the
+exact retained snapshot. It never rewrites a BOM to match the destination. One artifact and
+one destination are selected per command. Normalization, existing plan, delivery preview and
+inspection stay offline, with no secret resolution or TLS client construction.
+
+```yaml
+# delivery.yaml (separate from rio.yaml)
+version: 1
+destinations:
+  security:
+    type: dependency-track
+    options:
+      url: https://dtrack.example.com
+      apiKeyEnv: DTRACK_API_KEY
+      # caFile: company-ca.pem  # relative to this configuration file
+      # allowHTTP: true       # explicit local development opt-in only
+deliveries:
+  application-security:
+    artifact: application
+    destination: security
+    options:
+      project:
+        name: acme-application
+        version: "1.2.3"
+      autoCreate: false
+```
+
+Inject the API key through the selected environment variable using your CI secret facility.
+Never put API keys in YAML, command arguments or committed files. HTTPS verifies hostnames and
+uses system roots plus an optional custom CA; redirects are refused. The API URL may contain
+a deployment prefix, and must be the base before `/api/v1`. Standard Go proxy environment
+variables apply. Preview does not need the secret or CA file.
+
+```sh
+rio delivery plan --delivery application-security --json
+rio deliver --delivery application-security --record delivery-record --json
+rio delivery inspect --record delivery-record --json
+rio delivery reconcile --record delivery-record --wait 30s --json
+```
+
+Default paths are `target/rio/index.json` and `delivery.yaml`; override with `--index` and
+`--config`. Delivery commands reject `--manifest` and `--out`. The `--record` path is a new
+**directory**, not a JSON file. `--quiet` suppresses human progress, never requested JSON.
+Use `project: {uuid: f90934f5-cb88-47ce-81cb-db06fc67d4b4}` for UUID targeting (synthetic UUID),
+or `project: {fromSubject: true}` to explicitly use the verified BOM subject's name/version.
+Do not combine selectors. Quote numeric-looking versions. UUID mode forbids `autoCreate`,
+even `false`. Name/version uploads go directly to the upload endpoint with no UUID lookup or
+portfolio-read prerequisite. Creating a missing project requires explicit `autoCreate: true`
+and appropriate receiver permissions. Uploading replaces the project's component inventory.
+
+`--allow-failed-gate` permits a recorded failed gate and is retained in evidence. It cannot
+bypass invalid records, unknown gate outcomes or digest mismatch. Skipped schema validation
+remains visible. Digest agreement establishes consistency with the supplied record, not signer
+authentication, executable equivalence, vulnerability absence or software acceptance.
+
+| Exit | Meaning for delivery commands |
+| --- | --- |
+| 0 | Accepted receipt persisted, valid observation obtained, or valid offline data displayed |
+| 2 | Preflight refusal; no HTTP request (inspection may briefly acquire a lock) |
+| 3 | Local execution/persistence failure; output states whether a request may have occurred |
+| 4 | Remote outcome unknown, observation unavailable, or wait deadline |
+| 5 | Supported receiver rejection of an upload |
+
+Code 0 never establishes ingestion. Inspect can return 0 with an `unknown` outcome. A token
+returning `processing:false` means **no processing observed**; it does not prove a valid token,
+successful ingestion or content retention. Reconciliation retains acknowledgment separately
+from activity, and never uploads. It requires the same binding, artifact and effective target;
+API-key env references and CA files may rotate. It needs no original index or SBOM files.
+
+Every attempt writes immutable, numbered journal events. An intent without a submission result
+is unknown: a crash could have happened on either side of the request. Do not resubmit merely
+because a response was lost. There is no automatic upload retry. Deliberately authorize a
+possible duplicate using `rio deliver ... --retry-of delivery-record --record new-record`;
+the source/index digest, target and creation/gate policies must match and all bytes are checked
+again. Existing journals cannot be reused. The prior journal is never edited.
+
+A sibling `<record>.lock` directory protects cooperating writers and readers. Rio never breaks
+stale locks automatically. Remove one only after confirming no writer remains; age or PID
+alone is insufficient. Inspect reports orphan `.event-*.tmp` files and ignores them as evidence.
+Corrupt, empty or incomplete journals never authorize replay. File sync and immutable events
+reduce crash hazards but do not promise power-loss durability on every filesystem. Shared/network
+storage is supported only when it provides reliable exclusive directory creation and same-directory
+publication. Windows uses native filesystem operations and the same cooperative lock/validation.
+
+Limits: configuration 1 MiB, index 16 MiB, selected SBOM 64 MiB, receiver JSON 64 KiB,
+each journal event 1 MiB, journal 10,000 events. Each request has a 30-second deadline;
+`--wait` polls every 3 seconds for at most 10 minutes, persisting each observation.
+
+The existing `rio-dtrack-upload.sh` remains available for batch/parent workflows. Native v1
+has no batch, parent hierarchy or merge behavior and does not claim script parity. The shell
+uploader's weaker handoff checks remain tracked separately in #43; native validation does not
+silently complete that work. Integration support is limited to versions with retained real-server
+evidence; synthetic demo responses alone do not establish a tested server version.
+
+Run the [synthetic installed-binary demo](demo-delivery/README.md) with
+`python3 tools/demo-delivery/run.py /absolute/path/to/rio`. It uses only a loopback stub,
+retains inspectable evidence, and needs no Go toolchain.
+
+The adapter's real-server contract is tested against **Dependency-Track 5.1.1**. Retained
+[sanitized integration evidence and opt-in test instructions](demo-delivery/integration/README.md)
+cover both selectors, creation policies and denial/status behavior. Other versions are not
+advertised as tested. The integration harness uses additional read permissions only for testing.

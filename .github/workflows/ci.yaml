@@ -63,7 +63,7 @@ jobs:
           # Fixtures, golden files and the embedded CycloneDX schemas are
           # inputs to the test suite, so a change to any of them has to run it.
           # Missing that is how a stale golden file reaches main.
-          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$)' <<<"$CHANGED" >/dev/null; then go=true; fi
+          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$)' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.github/workflows/.*\.ya?ml$' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.goreleaser\.yaml$' <<<"$CHANGED" >/dev/null; then goreleaser=true; fi
           if grep -E '\.sh$' <<<"$CHANGED" >/dev/null; then shell=true; fi
@@ -127,9 +127,8 @@ jobs:
         run: go test -race ./...
 
       # rio must stay a self-contained static binary with no runtime
-      # dependency on external tools, and it must make no network calls
-      # (§8, and the "no network access anywhere in the binary" acceptance
-      # criterion). Building with CGO off is the part CI can enforce.
+      # dependency on external tools. Normalization/planning stay offline;
+      # explicit delivery may construct clients. Build with CGO off.
       - name: Build the release binary the way GoReleaser does
         if: steps.changes.outputs.go == 'true'
         env:
@@ -201,3 +200,32 @@ jobs:
       - name: Validate GoReleaser config
         if: steps.changes.outputs.goreleaser == 'true'
         run: goreleaser check
+
+  delivery-platforms:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      # Golden files and raw-byte fixture digests require an unchanged LF checkout.
+      - name: Preserve fixture bytes on Windows
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.9"
+      - name: Native delivery tests
+        run: go test ./internal/delivery/... ./internal/cli ./cmd/rio
+      - name: Static build and installed-binary demo
+        shell: bash
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          go build -trimpath -o rio-demo.exe ./cmd/rio
+          python tools/demo-delivery/run.py "$PWD/rio-demo.exe"

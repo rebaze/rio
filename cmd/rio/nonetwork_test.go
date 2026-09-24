@@ -6,16 +6,14 @@ import (
 	"testing"
 )
 
-// "No network access anywhere in the binary, including during schema
-// validation" is one of the cross-cutting acceptance criteria, and §12 puts it
-// in the README as a promise to the reader. A promise nothing checks is a
-// promise that quietly stops being true, so check the import graph.
-//
-// Absence of an HTTP client is what makes the claim mechanical: the CycloneDX
-// schemas are embedded with go:embed and their $refs resolve locally, the p2
-// mapping table is embedded, and nothing else has a reason to reach out.
-func TestBinaryLinksNoNetworkClient(t *testing.T) {
-	out, err := exec.Command("go", "list", "-deps", ".").Output()
+// Explicit delivery may use network clients; normalization and offline delivery
+// contracts remain mechanically isolated from client-bearing packages.
+func TestOfflinePackagesLinkNoNetworkClient(t *testing.T) {
+	args := []string{"list", "-deps"}
+	for _, p := range []string{"sbom", "manifest", "discover", "gate", "index", "transform/...", "enrichment", "buildcontext", "delivery", "delivery/record"} {
+		args = append(args, "github.com/rebaze/rio/internal/"+p)
+	}
+	out, err := exec.Command("go", args...).Output()
 	if err != nil {
 		t.Fatalf("go list -deps: %v", err)
 	}
@@ -31,6 +29,9 @@ func TestBinaryLinksNoNetworkClient(t *testing.T) {
 		"net/smtp",
 		"crypto/tls",
 		"golang.org/x/net/http2",
+		"github.com/rebaze/rio/internal/delivery/dtrack",
+		"github.com/rebaze/rio/internal/delivery/runner",
+		"github.com/rebaze/rio/internal/cli",
 	}
 	linked := map[string]bool{}
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
@@ -39,7 +40,7 @@ func TestBinaryLinksNoNetworkClient(t *testing.T) {
 
 	for _, pkg := range forbidden {
 		if linked[pkg] {
-			t.Errorf("the binary links %s; rio makes no network calls", pkg)
+			t.Errorf("offline packages depend on %s", pkg)
 		}
 	}
 }
