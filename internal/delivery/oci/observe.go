@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"mime"
+	"reflect"
 	"strings"
 
 	"github.com/rebaze/rio/internal/delivery"
@@ -130,6 +131,11 @@ func (c *client) referrers(ctx context.Context, find bool) (bool, string, int) {
 			}
 			return false, code, resp.StatusCode
 		}
+		media, _, mediaErr := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if mediaErr != nil || media != IndexMediaType {
+			resp.Body.Close()
+			return false, "invalid_referrers", 200
+		}
 		raw, e := readResponse(resp, DocumentLimit)
 		resp.Body.Close()
 		if e != nil {
@@ -137,6 +143,9 @@ func (c *client) referrers(ctx context.Context, find bool) (bool, string, int) {
 		}
 		found, e := parseReferrers(raw, c.options.Publication.Manifest, &total, seenDescriptors)
 		if e != nil {
+			if safe, ok := e.(*delivery.Error); ok && safe.Code == "referrers_limit" {
+				return false, "referrers_limit", 200
+			}
 			return false, "invalid_referrers", 200
 		}
 		if find && found {
@@ -167,6 +176,7 @@ func (c *client) referrers(ctx context.Context, find bool) (bool, string, int) {
 // materialize the server's manifests array before applying the traversal budget.
 func parseReferrers(raw []byte, want Descriptor, total *int, seen map[string]bool) (bool, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
 	tok, e := dec.Token()
 	if e != nil || tok != json.Delim('{') {
 		return false, invalid("referrers index")
@@ -204,12 +214,8 @@ func parseReferrers(raw []byte, want Descriptor, total *int, seen map[string]boo
 					return false, delivery.Fail("referrers_limit", "maximum 10000 descriptors")
 				}
 				*total++
-				var rawDescriptor json.RawMessage
-				if dec.Decode(&rawDescriptor) != nil {
-					return false, invalid("referrer descriptor")
-				}
-				var d referrer
-				if delivery.DecodeJSON(rawDescriptor, &d, true) != nil || !validDescriptor(Descriptor{d.MediaType, d.Digest, d.Size}) || seen[d.Digest] {
+				d, e := decodeReferrer(dec)
+				if e != nil || !validDescriptor(Descriptor{d.MediaType, d.Digest, d.Size}) || seen[d.Digest] {
 					return false, invalid("referrer descriptor")
 				}
 				seen[d.Digest] = true
@@ -224,8 +230,7 @@ func parseReferrers(raw []byte, want Descriptor, total *int, seen map[string]boo
 				return false, invalid("referrers descriptors")
 			}
 		case "annotations":
-			var m map[string]string
-			if dec.Decode(&m) != nil {
+			if skipStringMap(dec) != nil {
 				return false, invalid("referrers annotations")
 			}
 		default:
@@ -239,4 +244,91 @@ func parseReferrers(raw []byte, want Descriptor, total *int, seen map[string]boo
 		return false, invalid("referrers index")
 	}
 	return found, nil
+}
+
+func (c *client) Observe(parent context.Context, refs []delivery.Reference) (delivery.Observation, error) {
+	if !reflect.DeepEqual(refs, expected(c.options)) {
+		return observation("content", "unavailable", "invalid_references", 0, Facts{Phase: "readback"}, nil), invalid("observer references")
+	}
+	ctx, cancel := c.traversal(parent, false)
+	defer cancel()
+	return c.observeGraph(ctx, false)
+}
+
+// Decode known scalar fields directly. Unknown fields and excess array elements
+// fail before the decoder visits their values; no generic object tree is built.
+func decodeReferrer(dec *json.Decoder) (referrer, error) {
+	var d referrer
+	tok, e := dec.Token()
+	if e != nil || tok != json.Delim('{') {
+		return d, invalid("referrer descriptor")
+	}
+	seen := map[string]bool{}
+	for dec.More() {
+		tok, e = dec.Token()
+		key, ok := tok.(string)
+		if e != nil || !ok || seen[key] {
+			return d, invalid("referrer descriptor")
+		}
+		seen[key] = true
+		switch key {
+		case "mediaType", "digest", "artifactType":
+			tok, e = dec.Token()
+			value, ok := tok.(string)
+			if e != nil || !ok {
+				return d, invalid("referrer string")
+			}
+			switch key {
+			case "mediaType":
+				d.MediaType = value
+			case "digest":
+				d.Digest = value
+			case "artifactType":
+				d.ArtifactType = value
+			}
+		case "size":
+			tok, e = dec.Token()
+			value, ok := tok.(json.Number)
+			if e != nil || !ok {
+				return d, invalid("referrer size")
+			}
+			d.Size, e = value.Int64()
+			if e != nil {
+				return d, invalid("referrer size")
+			}
+		case "annotations":
+			if e = skipStringMap(dec); e != nil {
+				return d, e
+			}
+		default:
+			return d, invalid("unknown referrer field")
+		}
+	}
+	if tok, e = dec.Token(); e != nil || tok != json.Delim('}') || !seen["mediaType"] || !seen["digest"] || !seen["size"] {
+		return d, invalid("referrer descriptor")
+	}
+	return d, nil
+}
+func skipStringMap(dec *json.Decoder) error {
+	tok, e := dec.Token()
+	if e != nil || tok != json.Delim('{') {
+		return invalid("annotations")
+	}
+	seen := map[string]bool{}
+	for dec.More() {
+		tok, e = dec.Token()
+		key, ok := tok.(string)
+		if e != nil || !ok || seen[key] {
+			return invalid("annotations")
+		}
+		seen[key] = true
+		tok, e = dec.Token()
+		if _, ok = tok.(string); e != nil || !ok {
+			return invalid("annotation value")
+		}
+	}
+	if tok, e = dec.Token(); e != nil || tok != json.Delim('}') {
+		return invalid("annotations")
+	}
+	return nil
 }
