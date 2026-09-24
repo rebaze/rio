@@ -183,6 +183,8 @@ jobs:
           python3 tools/dependabot-auto-merge_test.py
           python3 tools/ci-changes_test.py
           python3 tools/rio-context_test.py
+          python3 tools/feature-video/feature_video_test.py
+          python3 tools/feature-video/tooling_test.py
           python3 tools/release-publish_test.py
 
       - name: Install GoReleaser
