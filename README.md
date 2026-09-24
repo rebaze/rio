@@ -19,6 +19,21 @@ manifest-defined transformations, checks declared requirements, and writes norma
 plus an `index.json`. A pipeline or engineer can inspect what changed, identify gaps, and hand the
 SBOMs to a downstream tool such as DependencyTrack.
 
+## For agents
+
+Use the [integration guide](docs/agent-integration.md) with any coding agent. Paste this into your
+project's agent session, or provide a local copy of the guide if the agent cannot fetch it:
+
+```text
+Integrate Rio into this project. Read
+https://raw.githubusercontent.com/rebaze/rio/main/docs/agent-integration.md
+first. Inspect our build and existing configuration, ask only about unresolved
+decisions, then configure and validate Rio. Report anything still needed.
+```
+
+[Runnable examples and evaluation](tools/README.md#agent-integration-examples) ·
+[AGENTS.md](AGENTS.md) is for developing Rio itself, not integrating it.
+
 ## Why it exists
 
 Coding agents increase the volume of changes, while teams still need to decide what can ship.
