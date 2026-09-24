@@ -1,0 +1,142 @@
+name: Auto-merge security updates
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  merge:
+    if: >-
+      github.repository == 'rebaze/rio' &&
+      github.actor == 'dependabot[bot]' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: read
+      statuses: read
+      actions: write # Explicitly dispatch Scorecard after a token-driven merge.
+    steps:
+      # This privileged workflow only reads API metadata. Never check out or
+      # execute PR code here; the unprivileged CI workflow verifies that code.
+      - name: Read verified Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+
+      - name: Apply security auto-merge policy
+        if: always() && !cancelled()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_ACTOR: ${{ github.actor }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          METADATA: ${{ steps.metadata.outputs.updated-dependencies-json }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A valid signature plus a bot author does not identify the pusher.
+          # Only authenticated Dependabot events may authorize a merge. A rerun
+          # retains the original actor/payload; the current head is checked below.
+          if [ "$EVENT_ACTOR" != "dependabot[bot]" ]; then
+            echo "Manual review required: event was not triggered by Dependabot."
+            exit 0
+          fi
+          # The maintainer signal comes from the event body. Verify its author
+          # through GitHub, then detect edits (including edits later reverted).
+          # Compare actor IDs: GraphQL bot logins differ from REST bot logins.
+          read_pr_state() {
+            # Keep GraphQL variables literal for server-side binding.
+            # shellcheck disable=SC2016
+            gh api graphql -f owner="${GH_REPO%/*}" -f name="${GH_REPO#*/}" -F number="$PR_NUMBER" \
+              -f query='query($owner:String!,$name:String!,$number:Int!) {
+                repository(owner:$owner,name:$name) { pullRequest(number:$number) {
+                  body lastEditedAt editor { ... on Node { id } } author { ... on Node { id } }
+                  headRefOid baseRefName state isDraft
+                } }
+              }' --jq '.data.repository.pullRequest | {body, lastEditedAt, editor: .editor.id, author: .author.id, head: .headRefOid, base: .baseRefName, state, draft: .isDraft}'
+          }
+          pr_state=$(read_pr_state)
+          if ! jq -e --arg body "$PR_BODY" --arg head "$PR_HEAD" '
+            .head == $head and .base == "main" and .state == "OPEN" and .draft == false and
+            .body == $body and .author != null and
+            ((.lastEditedAt == null and .editor == null) or .editor == .author)
+          ' <<<"$pr_state" >/dev/null; then
+            echo "Manual review required: PR state changed or body was edited outside Dependabot."
+            exit 0
+          fi
+          # fetch-metadata uses branch ecosystem names (go_modules, not gomod).
+          # Its maintainerChanges flag concerns upstream package maintainers.
+          # fetch-metadata verifies the first commit. Require that to be the
+          # only commit, at the exact head being authorized, as well.
+          commits=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER/commits?per_page=2")
+          if jq -e --arg head "$PR_HEAD" '
+            length == 1 and .[0].sha == $head and
+            .[0].author.login == "dependabot[bot]" and
+            .[0].commit.verification.verified == true
+          ' <<<"$commits" >/dev/null && jq -e '
+            type == "array" and length > 0 and all(.[];
+              .targetBranch == "main" and .maintainerChanges == false and
+              ((.packageEcosystem == "go_modules" and .dependencyGroup == "security-go") or
+               (.packageEcosystem == "github_actions" and .dependencyGroup == "security-actions")) and
+              (.updateType == "version-update:semver-patch" or
+               .updateType == "version-update:semver-minor"))
+          ' <<<"${METADATA:-[]}" >/dev/null; then
+            # Do not queue native auto-merge: that authorization can survive
+            # later maintainer edits. Wait, then merge only this verified SHA.
+            for attempt in {1..80}; do
+              latest_pr_state=$(read_pr_state)
+              if [ "$latest_pr_state" != "$pr_state" ]; then
+                echo "PR state or body metadata changed; leaving the PR open."
+                exit 0
+              fi
+              # gh exits nonzero for pending/failed checks as well as errors.
+              # Parse only a real JSON array and never treat empty as passing.
+              checks=$(gh pr checks "$PR_NUMBER" --required --json name,bucket) || true
+              if jq -e 'type == "array"' <<<"$checks" >/dev/null; then
+                if jq -e '
+                  any(.[]; .name == "build") and any(.[]; .name == "Analyze Go") and
+                  all(.[]; .bucket == "pass")
+                ' <<<"$checks" >/dev/null; then
+                  # Revalidate head, base, open/draft state and body metadata
+                  # together after the checks query, immediately before merge.
+                  latest_pr_state=$(read_pr_state)
+                  if [ "$latest_pr_state" != "$pr_state" ]; then exit 0; fi
+                  # This endpoint only merges now or refuses. Unlike the CLI's
+                  # PR merge command, it never enables native auto-merge/queues.
+                  merged=$(gh api --method PUT "repos/$GH_REPO/pulls/$PR_NUMBER/merge" \
+                    -f sha="$PR_HEAD" -f merge_method=merge --jq '.merged')
+                  if [ "$merged" != "true" ]; then
+                    echo "GitHub refused the merge; leaving the PR open." >&2
+                    exit 1
+                  fi
+                  # GITHUB_TOKEN merges do not trigger push workflows.
+                  gh workflow run scorecard.yaml --ref main
+                  exit 0
+                fi
+                if jq -e 'any(.[]; .bucket == "fail" or .bucket == "cancel")' <<<"$checks" >/dev/null; then
+                  echo "Required checks failed; leaving the PR open."
+                  exit 0
+                fi
+              fi
+              echo "Waiting for required checks ($attempt/80)."
+              sleep 15
+            done
+            echo "Timed out waiting for required checks; leaving the PR open." >&2
+            exit 1
+          else
+            echo "Manual review required: not a verified patch/minor security group."
+          fi

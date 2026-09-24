@@ -1,11 +1,16 @@
 version: 2
 updates:
   - package-ecosystem: gomod
-    directory: /
+    directories: ["/", "/tools/security"]
     schedule:
       interval: weekly
       day: monday
     open-pull-requests-limit: 10
+    groups:
+      security-go:
+        applies-to: security-updates
+        patterns: ["*"]
+        update-types: [patch, minor]
 
   - package-ecosystem: github-actions
     directory: /
@@ -17,6 +22,10 @@ updates:
     # stay behind until a later run happens to have room.
     open-pull-requests-limit: 15
     groups:
+      security-actions:
+        applies-to: security-updates
+        patterns: ["*"]
+        update-types: [patch, minor]
       # Dependabot counts each action path as its own dependency, so the four
       # codeql-action subpaths and the two attest-* actions arrive as unrelated
       # single-pin PRs. Each family has to move as a unit: a CodeQL run rejects

@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/rebaze/rio/internal/buildcontext"
 	"github.com/rebaze/rio/internal/discover"
 	"github.com/rebaze/rio/internal/gate"
 	"github.com/rebaze/rio/internal/index"
@@ -68,6 +69,9 @@ type artifact struct {
 	stats           []index.TransformResult
 	gate            gate.Result
 	integrity       []sbom.IntegrityFinding
+	enrichment      *sbom.EnrichmentRecord
+	contextResolved *buildcontext.Resolved
+	context         *sbom.ContextRecord
 	output          []byte
 }
 
@@ -84,10 +88,34 @@ func runNormalize(opts *globalOptions, gateMode string, attest bool, stdout, std
 	// Steps 1 to 4 for every artifact before anything is written. Exit 2
 	// conditions abort the whole run before any file is created (§5, §10).
 	artifacts := make([]*artifact, 0, len(man.Artifacts))
+	contextFiles := map[string]*buildcontext.File{}
 	for _, spec := range man.Artifacts {
 		a, err := prepare(man, spec)
 		if err != nil {
 			return err
+		}
+		if spec.Context != nil {
+			path := spec.Context.File
+			if !filepath.IsAbs(path) {
+				path = filepath.Join(man.Dir, path)
+			}
+			path, err = filepath.Abs(path)
+			if err != nil {
+				return usageErrorf("%s: artifact %q: context.file: %v", man.Path, spec.ID, err)
+			}
+			path = filepath.Clean(path)
+			file := contextFiles[path]
+			if file == nil {
+				file, err = buildcontext.Read(man.Dir, path)
+				if err != nil {
+					return usageErrorf("%s: artifact %q: %v", man.Path, spec.ID, err)
+				}
+				contextFiles[path] = file
+			}
+			a.contextResolved, err = file.Resolve(spec.ID, a.inputSHA, *spec.Context)
+			if err != nil {
+				return usageErrorf("%s: artifact %q: %v", man.Path, spec.ID, err)
+			}
 		}
 		if err := process(man, a); err != nil {
 			return err
@@ -204,6 +232,22 @@ func process(man *manifest.Manifest, a *artifact) error {
 		oldName, oldVersion := doc.SetSubject(s.Name, s.Version)
 		doc.AddMetadataProperty(sbom.PropertyPrefix+"subject-override",
 			fmt.Sprintf("from=%s@%s | to=%s@%s", oldName, oldVersion, s.Name, s.Version))
+	}
+
+	// Enrichment is a separate metadata phase: it never changes dependency membership.
+	if a.spec.Enrichment != nil {
+		record, err := doc.Enrich(a.spec.Enrichment, filepath.Base(man.Path), man.SHA256)
+		if err != nil {
+			return usageErrorf("%s: artifact %q: %v", man.Path, a.spec.ID, err)
+		}
+		a.enrichment = record
+	}
+	if a.contextResolved != nil {
+		record, err := doc.ApplyContext(a.contextResolved)
+		if err != nil {
+			return usageErrorf("%s: artifact %q: context %s: %v", man.Path, a.spec.ID, a.contextResolved.Selector, err)
+		}
+		a.context = record
 	}
 
 	// Run metadata (§4.3a).
@@ -346,6 +390,8 @@ func writeAll(man *manifest.Manifest, artifacts []*artifact, outDir string, atte
 			Gate:              gateStatus(a.gate),
 			GateFindings:      gateFindings(a.gate),
 			IntegrityFindings: a.integrity,
+			Enrichment:        a.enrichment,
+			Context:           a.context,
 		})
 	}
 

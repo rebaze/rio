@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
 
+# Only one writer for a tag; a failed run must never replace a release.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -32,11 +37,11 @@ jobs:
         with:
           cosign-release: v3.0.6
 
-      - name: Run GoReleaser (skip homebrew tap)
+      - name: Build release assets locally (no publication)
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           version: "~> v2"
-          args: release --clean --skip=homebrew
+          args: release --clean --skip=publish,announce,homebrew
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -50,83 +55,34 @@ jobs:
             --exclude './dist/**' \
             --output "cyclonedx-json=dist/rio-${GITHUB_REF_NAME}-source.cdx.json"
 
-      - name: Upload SBOM to GitHub release
+      - name: Stage the exact release assets
         shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
-          gh release upload "$TAG" "dist/rio-${TAG}-source.cdx.json" --clobber
+          python3 tools/release-publish.py stage \
+            --dist dist --stage release-assets --inventory release-inventory.json \
+            --tag "$TAG" --repo "$GITHUB_REPOSITORY"
 
       - name: Attest build provenance for release archives
         id: attest-provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
-            dist/*.tar.gz
-            dist/*.zip
-            dist/checksums.txt
+            release-assets/*.tar.gz
+            release-assets/*.zip
+            release-assets/checksums.txt
 
       - name: Attest source SBOM (CycloneDX) against all archives
         id: attest-sbom
         uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
         with:
           subject-path: |
-            dist/*.tar.gz
-            dist/*.zip
-          sbom-path: dist/rio-${{ github.ref_name }}-source.cdx.json
+            release-assets/*.tar.gz
+            release-assets/*.zip
+          sbom-path: release-assets/rio-${{ github.ref_name }}-source.cdx.json
 
-      - name: Verify attestations (CI gate)
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-
-          archives=( dist/*.tar.gz dist/*.zip )
-          if (( ${#archives[@]} == 0 )); then
-            echo "no release archives found in dist/ — refusing to declare verification passed" >&2
-            ls -la dist/ >&2 || true
-            exit 1
-          fi
-          if [[ ! -f dist/checksums.txt ]]; then
-            echo "dist/checksums.txt missing — refusing to declare verification passed" >&2
-            exit 1
-          fi
-
-          # Two predicate-typed passes: gh attestation verify without
-          # --predicate-type succeeds on the first valid attestation it finds,
-          # so a single loop cannot tell whether *both* the provenance and
-          # SBOM attestations are present. Enforce each explicitly.
-
-          echo "::group::Verify SLSA provenance attestations"
-          for f in "${archives[@]}" dist/checksums.txt; do
-            echo "Verifying provenance: $f"
-            gh attestation verify "$f" \
-              --repo "${GITHUB_REPOSITORY}" \
-              --predicate-type https://slsa.dev/provenance/v1
-          done
-          echo "::endgroup::"
-
-          # SBOM attestations are only attached to archives (see the
-          # actions/attest-sbom subject-path above), not to checksums.txt.
-          echo "::group::Verify CycloneDX SBOM attestations"
-          for f in "${archives[@]}"; do
-            echo "Verifying SBOM: $f"
-            gh attestation verify "$f" \
-              --repo "${GITHUB_REPOSITORY}" \
-              --predicate-type https://cyclonedx.org/bom
-          done
-          echo "::endgroup::"
-
-      # The attestations above live in GitHub's attestation store, which is
-      # reachable only through `gh attestation verify`. Nothing reads them off
-      # the release itself: Scorecard's Signed-Releases check scores provenance
-      # purely by looking for a release asset whose name ends in .intoto.jsonl,
-      # and a user without the gh CLI has no other copy to check against.
-      # Publish the very bundles the gate above just verified.
-      - name: Publish attestation bundle as a release asset
+      - name: Verify staged assets and publish
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -135,51 +91,24 @@ jobs:
           SBOM_BUNDLE: ${{ steps.attest-sbom.outputs.bundle-path }}
         run: |
           set -euo pipefail
-          shopt -s nullglob
-
           for bundle in "$PROVENANCE_BUNDLE" "$SBOM_BUNDLE"; do
             if [[ ! -s "$bundle" ]]; then
               echo "attestation bundle missing or empty: ${bundle:-<unset>}" >&2
               exit 1
             fi
           done
+          # Keep the assembled bundle outside the frozen staging directory.
+          # awk terminates each record even when an input lacks a final newline.
+          awk 1 "$PROVENANCE_BUNDLE" "$SBOM_BUNDLE" > release-attestations.jsonl
+          python3 tools/release-publish.py publish \
+            --stage release-assets --inventory release-inventory.json \
+            --bundle release-attestations.jsonl --tag "$TAG" --repo "$GITHUB_REPOSITORY"
 
-          BUNDLE="dist/rio-${TAG}.intoto.jsonl"
-
-          # Both inputs are JSON Lines. `awk 1` re-emits every record with a
-          # trailing newline, so an input that lacks one cannot fuse its last
-          # envelope onto the first line of the next.
-          awk 1 "$PROVENANCE_BUNDLE" "$SBOM_BUNDLE" > "$BUNDLE"
-
-          # Publishing an unverifiable bundle would be worse than publishing
-          # none, so check the assembled file itself rather than trusting that
-          # concatenating two verified inputs produced a verified output.
-          archives=( dist/*.tar.gz dist/*.zip )
-          if (( ${#archives[@]} == 0 )); then
-            echo "no release archives found in dist/ — refusing to publish a bundle" >&2
-            exit 1
-          fi
-          for f in "${archives[@]}"; do
-            gh attestation verify "$f" --bundle "$BUNDLE" \
-              --repo "${GITHUB_REPOSITORY}" \
-              --predicate-type https://slsa.dev/provenance/v1
-            gh attestation verify "$f" --bundle "$BUNDLE" \
-              --repo "${GITHUB_REPOSITORY}" \
-              --predicate-type https://cyclonedx.org/bom
-          done
-          # checksums.txt carries provenance only (see the attest-sbom
-          # subject-path above), so it gets the one pass.
-          gh attestation verify dist/checksums.txt --bundle "$BUNDLE" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --predicate-type https://slsa.dev/provenance/v1
-
-          gh release upload "$TAG" "$BUNDLE" --clobber
-
-      - name: Upload dist/ for downstream jobs
+      - name: Retain verified assets for downstream jobs
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist
-          path: dist/
+          path: release-assets/
           retention-days: 7
 
   publish-tap:
@@ -268,15 +197,15 @@ jobs:
 
             binary "rio"
 
-            postflight do
+            postflight_steps do
               # The macOS binaries are ad-hoc signed by the Go toolchain, not
               # Developer ID signed or notarized, and Homebrew tags every cask
               # download with com.apple.quarantine. Gatekeeper SIGKILLs that
               # combination, so without this "brew install rebaze/tap/rio"
               # yields a binary that dies with signal 9 until the user approves
               # it by hand in System Settings. Strip the tag at install time.
-              system_command "/usr/bin/xattr",
-                             args: ["-dr", "com.apple.quarantine", "#{staged_path}/rio"]
+              run "/usr/bin/xattr",
+                  args: ["-dr", "com.apple.quarantine", "{{staged_path}}/rio"]
             end
 
             # No zap stanza required

@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/rebaze/rio/internal/discover"
+	"github.com/rebaze/rio/internal/enrichment"
 	"github.com/rebaze/rio/internal/index"
 	"github.com/rebaze/rio/internal/manifest"
 	"github.com/rebaze/rio/internal/transform"
@@ -79,6 +80,18 @@ type planArtifact struct {
 	Input      planFile        `json:"input"`
 	Output     planFile        `json:"output"`
 	Transforms []planTransform `json:"transforms"`
+	// Enrichment is an optional, independently versioned additive extension.
+	Enrichment *enrichment.Resolved `json:"enrichment,omitempty"`
+	// Context is an optional producer-assertion binding. Its file is described
+	// from the manifest only; plan must not open it.
+	Context *planContext `json:"context,omitempty"`
+}
+
+type planContext struct {
+	Version int      `json:"version"`
+	File    string   `json:"file"`
+	Require []string `json:"require"`
+	Replace []string `json:"replace"`
 }
 
 type planFile struct {
@@ -217,8 +230,17 @@ func runPlan(opts *globalOptions, asJSON bool, stdout io.Writer) error {
 func describeArtifact(man *manifest.Manifest, spec manifest.Artifact) (planArtifact, error) {
 	a := planArtifact{
 		ID:         spec.ID,
+		Enrichment: spec.Enrichment,
 		Output:     planFile{Path: spec.ID + ".cdx.json"},
 		Transforms: make([]planTransform, 0, len(spec.Transforms)),
+	}
+	if spec.Context != nil {
+		a.Context = &planContext{
+			Version: 1,
+			File:    filepath.ToSlash(spec.Context.File),
+			Require: append([]string{}, spec.Context.Require...),
+			Replace: append([]string{}, spec.Context.Replace...),
+		}
 	}
 
 	// A plan that succeeded on a manifest normalize refuses would describe a
@@ -273,7 +295,17 @@ func writePlanText(p plan, man *manifest.Manifest, opts *globalOptions, stdout i
 			fmt.Fprintf(stdout, "  write  %s\n", filepath.ToSlash(filepath.Join(opts.out, a.Output.Path)))
 			if len(a.Transforms) == 0 {
 				fmt.Fprintf(stdout, "  no transforms\n")
-				continue
+			}
+			if a.Enrichment != nil {
+				fmt.Fprintln(stdout, "  enrichment")
+				for _, field := range a.Enrichment.Fields {
+					fmt.Fprintf(stdout, "    %s = %s (source %s, replace=%t)\n", field.Field, field.Value, field.Source, field.Replace)
+				}
+			}
+			if a.Context != nil {
+				fmt.Fprintf(stdout, "  context  %s\n", a.Context.File)
+				fmt.Fprintf(stdout, "    require %s\n", requireList(a.Context.Require))
+				fmt.Fprintf(stdout, "    replace %s\n", requireList(a.Context.Replace))
 			}
 			for _, t := range a.Transforms {
 				fmt.Fprintf(stdout, "  %s\n", describeTransformLine(t, man.Dir))

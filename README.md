@@ -7,55 +7,137 @@
 [![Go](https://img.shields.io/github/go-mod/go-version/rebaze/rio)](go.mod)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rebaze/rio/badge)](https://scorecard.dev/viewer/?uri=github.com/rebaze/rio)
 
-The open supply chain governance CLI: it collects the evidence your build already produces,
-normalizes it into a shape the rest of the world can actually resolve, and holds it to a standard
-you declared before it leaves the pipeline.
+rio is an open-source evidence compiler for software delivery. It turns supported engineering
+inputs into structured, customer-owned records with explicit checks, sources and gaps.
+
+The goal is to make check results useful for release decisions: which exact artifact was checked,
+which requirements the results cover, and what remains missing or needs an authorized exception.
+rio compiles the supported evidence; the surrounding release process enforces the release rules.
+
+Today, rio compiles **SBOM normalization records**: it reads local CycloneDX SBOMs, applies
+manifest-defined transformations, checks declared requirements, and writes normalized documents
+plus an `index.json`. A pipeline or engineer can inspect what changed, identify gaps, and hand the
+SBOMs to a downstream tool such as DependencyTrack.
 
 ## Why it exists
 
-Every build emits supply chain evidence, and everything downstream — advisory databases, policy
-engines, dashboards, auditors — expects that evidence in a shape nobody produced. SBOMs land in a
-dozen target directories, at different spec versions, describing the module that built the artifact
-rather than the artifact, carrying identities that resolve nowhere. Between "the build wrote
-something" and "a downstream tool can answer a question with it" sits a step nobody owns, and it is
-usually a pile of pipeline glue nobody wants to maintain.
+Coding agents increase the volume of changes, while teams still need to decide what can ship.
+A green pipeline can leave important questions unanswered: did every required check run, do its
+results belong to the artifact being released, and is an earlier exception still applicable?
 
-rio is the missing piece there. One manifest, committed next to the code and reviewed like code,
-declares which artifacts a repository ships and what their evidence has to look like. One run
-collects each artifact's SBOM, levels the spec version, repairs identity, checks the result against
-the quality you asked for, and writes the normalized documents plus an `index.json` that says what
-happened. It is a single static binary that makes no network calls, so it behaves the same on an
-air-gapped build agent as on a laptop.
+For example, tests may pass for artifact A and a later rebuild produce artifact B from the same
+source revision. The result for A does not establish that B was tested. A useful release record
+must preserve that distinction and expose the missing evidence. This is a target workflow, not a
+capability of today's SBOM normalization command.
 
-Nothing is guessed and nothing is silent. Every change rio makes is recorded in the document that
-carries it, so a normalized SBOM can be read on its own and still say what was rewritten, by which
-rule, and what it used to be. Every miss is recorded the same way, because a gap you can see is
-worth more than a coordinate that might be wrong.
+rio starts by making evidence preparation repeatable. A manifest committed next to the code
+declares the inputs and requirements. Explicit rules transform supported evidence into inspectable
+records that remain usable after the pipeline run ends. Humans can follow the sources; agents and
+downstream tools can consume the same structured facts. Missing information stays visible.
+
+The starting point is practical: SBOMs arrive at different spec versions, describe build modules
+instead of intended subjects, or carry package identities downstream tools cannot resolve. rio
+normalizes those documents and records its changes and unresolved mappings. It runs in
+customer-controlled infrastructure as a single static binary with no network calls.
 
 ### The case it was built for
 
-An Eclipse RCP product's SBOM uploads to DependencyTrack today with almost no findings, because
-nothing in the vulnerability world understands p2 coordinates. A component identified as
-`pkg:p2/com.google.gson@2.8.9.v20220111-1409` matches nothing in any advisory database, so the
-project comes back clean and the clean result is meaningless.
+In an Eclipse RCP workflow, p2 package identities prevented DependencyTrack from matching
+components to vulnerability findings. Normalizing those identities to Maven coordinates made
+findings visible in the downstream system.
 
-After normalization the same component reads `pkg:maven/com.google.code.gson/gson@2.8.9`, and the
-CVEs that were there the whole time appear. That before-and-after difference is the acceptance
-criterion for this tool. p2 is the first ecosystem rio repairs, not the reason it exists: the seam
-it plugs into is a transform seam, and the next broken identity scheme lands next to it.
+For example, rio can rewrite `pkg:p2/com.google.gson@2.8.9.v20220111-1409` to
+`pkg:maven/com.google.code.gson/gson@2.8.9` using its mapping rules. The original identity and
+rewrite remain recorded in the output. This makes the SBOM more useful for downstream matching;
+it does not independently prove that the component is equivalent to the Maven artifact. The
+absence of scanner findings does not establish that a component is safe.
 
-## What `rio normalize` does
+## What works today
 
-- **Levels the spec version.** Documents below the configured floor are uplifted to it; documents at
-  or above it pass through unchanged.
-- **Repairs identity.** p2 purls are rewritten to Maven purls via an embedded, extendable mapping
-  table, and Eclipse version qualifiers are stripped from the purl version.
-- **Checks quality.** A gate asserts the document's subject and the required fields on every
-  component, and either warns or fails the build.
-- **Records what it did.** Every repair and every miss is written into the output document itself.
-  `index.json` carries the counts, the out-of-scope ones included, and the run parameters.
+`rio normalize`:
 
-The full specification lives in issue #4.
+- **Levels the spec version.** Documents below the configured floor are uplifted to it. Documents
+  at or above the floor keep their spec version; other configured processing still applies.
+- **Repairs package identities.** Supported p2 and synthetic Maven purls are rewritten using
+  supplied coordinates or an embedded, extendable mapping table. Applicable Eclipse version
+  qualifiers are preserved as properties when removed from purl versions.
+- **Enriches subject and SBOM metadata.** Shared manifest defaults and artifact-specific values
+  describe the product, manufacturer, supplier, SBOM producer, contacts and SBOM data license.
+  Differing existing values require explicit field replacement; every change records its source.
+- **Binds supplied CI context.** An artifact can select a versioned local context document by
+  exact ID and original SBOM digest. Source, build and generator claims remain separately labeled;
+  conflicts and removals require explicit authorization.
+- **Checks declared SBOM requirements.** The gate checks subject name and version, and the
+  configured component fields: name, version and parseable purl. Gate failures are recorded;
+  `--gate` controls whether they also cause a nonzero exit.
+- **Records the run.** Normalized SBOMs carry repairs and unresolved mappings. `index.json`
+  records input and output digests, tool version, manifest reference, transform counts, schema
+  validation status and findings. `--attest` also emits an unsigned statement per normalized SBOM.
+
+`rio plan` describes the inputs, outputs and resolved transform configuration without normalizing
+anything. Both commands run offline. The command and format documentation below describes current
+behavior; [issue #4](https://github.com/rebaze/rio/issues/4) is the historical v1 implementation spec.
+
+### What a record establishes
+
+A consumer can check an output file against its recorded digest, inspect the reported gate result,
+and see repairs and gaps. A structurally valid record can report failed checks. The gate covers
+SBOM fields, not software acceptance, vulnerability absence or compliance. rio does not add missing
+components or scan for vulnerabilities; a passing gate does not establish SBOM completeness.
+
+Unmapped components and dangling dependency references can coexist with `gate: "ok"`. A schema
+version beyond the embedded schemas produces `schemaValidated: false`, even if the gate passes.
+Missing or invalid inputs stop compilation with exit 2 and produce no new record.
+
+The attestation subject is the normalized SBOM, not a built binary or deployment. Source assertions
+and mapping entries are inputs to normalization, not independently verified facts. Retain the
+original SBOM, context JSON when used, manifest and any external mapping table alongside the outputs if later inspection
+or reproduction is required; rio does not package those inputs automatically. The index references
+the manifest by digest but does not embed its requirements or identify the external table by digest.
+
+## Direction
+
+The next target is a release workflow that can explain which required checks belong to the exact
+candidate and refuse release when the required evidence is missing. The first product and release
+path must be validated through a [concrete consumer workflow](https://github.com/rebaze/rio/issues/47)
+before expanding the compiler's supported inputs.
+
+The SBOM foundation remains a [verifiable handoff](https://github.com/rebaze/rio/issues/43),
+[repair provenance](https://github.com/rebaze/rio/issues/44),
+[inspectable requirements](https://github.com/rebaze/rio/issues/45) and
+[portable retention](https://github.com/rebaze/rio/issues/46).
+
+The proposed extension connects [an artifact to its SBOM evidence](https://github.com/rebaze/rio/issues/52),
+imports [artifact-level check results](https://github.com/rebaze/rio/issues/53), and
+[evaluates declared release requirements](https://github.com/rebaze/rio/issues/54).
+[Scoped, authorized exceptions](https://github.com/rebaze/rio/issues/55) follow once required-check
+evaluation works. A [repeatable release-gate example](https://github.com/rebaze/rio/issues/56) will
+exercise the complete path, including refusal of results for a different artifact. Independently,
+Rio's own pipeline [verifies staged assets before publication](https://github.com/rebaze/rio/issues/51);
+see the [release guard and offline demo](tools/README.md#verify-release-assets-before-publication).
+
+The compiler extensions above are planned improvements, not capabilities of the current release.
+rio does not yet compile
+build provenance, external test results, release evaluations, exceptions or deployment records.
+Engineering history remains useful beyond release decisions, but a build or release record alone
+does not establish what is currently running; deployment systems remain the source for that state.
+
+## rio and rebaze
+
+[rebaze](https://www.rebaze.de/) implements
+[release controls](https://www.rebaze.de/release-controls/): the required checks, artifact
+associations and release rules for one product and one release path in a customer's existing
+toolchain. The implementation and operating instructions stay with the team, which can repeat the
+workflow at the next release. Business owners define requirements and authority to approve
+exceptions; those rules are enforced in the release process.
+
+rio provides a reusable open-source evidence compiler for the inputs it supports within that
+workflow. A check result records what was assessed; whether the check adequately addresses a
+business risk still depends on its scope and the surrounding controls.
+
+You can use rio independently of rebaze services, without a hosted account. Working with rebaze
+does not require rio. Records belong to the customer; humans, agents and downstream systems use
+them to inspect claims and make decisions.
 
 ## Install
 
@@ -156,8 +238,8 @@ this contract for each `index.artifacts[i]`:
 
 The references in the table mean the actual JSON values from the same run's `index.json`.
 `predicate.artifact` preserves every field: `id`, `input`, `output`, `specVersion`,
-`schemaValidated`, `components`, `transforms`, `gate`, `gateFindings`, and `integrityFindings`
-when present. Arrays retain the index's order and empty-array representation; absent optional
+`schemaValidated`, `components`, `transforms`, `gate`, `gateFindings`, `integrityFindings`, and
+`enrichment` and `context` when present. Arrays retain the index's order and empty-array representation; absent optional
 fields stay absent. There is no additional `schemaVersion` field in the statement or predicate;
 the two type URIs identify their versions.
 
@@ -167,15 +249,16 @@ directory. Input paths are relative to the manifest's directory, as in the index
 are local file references, not download URIs; independently checking an input digest requires
 the original input file.
 
-Statements are deterministic for the same inputs, manifest and rio version. rio writes all
-SBOMs and statements before writing `index.json` last. `--attest` leaves the SBOM and index bytes
+Statements are deterministic for the same input SBOMs, manifest, mapping tables and rio version.
+rio writes all SBOMs and statements before writing `index.json` last. `--attest` leaves the SBOM and index bytes
 unchanged and does not change the gate: a gate failure still writes every statement, with exit 0
 under `--gate warn` and exit 1 under `--gate fail`. Usage or input errors (exit 2) write nothing.
 Without the flag, rio writes no statements and preserves its existing output bytes.
 
 rio does not sign statements or make network calls. An unsigned statement records a claim; it
 is not cryptographic proof of who made it. Signing and verification belong to the surrounding
-pipeline; see [the planned signing tools](tools/README.md#signing-and-verifying-normalization-attestations).
+pipeline. A signature can authenticate a statement without proving its assertions true; see
+[the planned signing tools](tools/README.md#signing-and-verifying-normalization-attestations).
 
 ### `rio plan`
 
@@ -195,7 +278,7 @@ gate  require name, version, purl
 ```
 
 Only the options a manifest actually set are shown; `--json` carries every one of them, resolved.
-Exit 2 for the same manifest and glob problems `normalize` refuses, exit 0 otherwise — there is no
+Exit 2 for the same manifest and glob problems `normalize` refuses, exit 0 otherwise. There is no
 exit 1, because no gate runs.
 
 A table that does not exist yet is reported on the line that names it, rather than being an error.
@@ -246,13 +329,24 @@ restated on a command line where it could disagree with the manifest.
   digests are a contract; a plan is transient stdout that exists to be joined against, and making
   the consumer guess the base directory is worse.
 
+When enrichment is configured, each artifact also has an optional `enrichment` object with its own
+`version: 1` and resolved `fields`. Each field reports `field`, `value`, `source` (a manifest selector
+such as `enrichment.producer.name` or `artifacts[0].enrichment.subject.name`) and `replace` (boolean).
+Fields are sorted by name. Planning resolves declarations without reading SBOM content: it can
+show replacement intent but cannot establish whether an existing value conflicts.
+
+When an artifact binds context, the plan artifact has `context: {"version":1,
+"file":"build-context.json","require":["source.repository"],"replace":[]}`. The path is
+manifest-relative. Planning reports only that binding and never opens the context file or SBOM;
+it can succeed before the producer writes either file.
+
 This is not `index.json` with fewer fields. The index describes a run that happened, and a run needs
-the mapping table that the plan is read to produce — so the index can never describe the first run
+the mapping table that the plan is read to produce, so the index can never describe the first run
 in a repository.
 
 ### Repaired, unmapped, skipped
 
-A transform leaves each component in one of three states, and `index.json` counts all three:
+A transform reports changes, unresolved mappings and exclusions. `index.json` counts these outcomes:
 
 ```json
 { "id": "repair-purl/p2", "applied": 8, "unmapped": 1, "skipped": 4 }
@@ -260,7 +354,7 @@ A transform leaves each component in one of three states, and `index.json` count
 
 - **repaired**, `applied` in the index: rio rewrote the purl.
 - **unmapped**: the component was in scope and rio found no Maven coordinates for it. Its purl is
-  left exactly as the generator wrote it.
+  not converted to Maven coordinates; version-qualifier processing may still apply, as described below.
 - **skipped**: the component was out of scope for the transform, so rio never looked for
   coordinates. Out of scope is a different outcome from a miss.
 
@@ -280,11 +374,11 @@ the manifest, defaulting to `p2.eclipse.plugin`.
 Everything else is skipped, and the list is a whitelist rather than a judgement about which
 coordinates look real:
 
-- Any Maven namespace other than `syntheticNamespace` — including the other placeholders
+- Any Maven namespace other than `syntheticNamespace`, including the other placeholders
   `p2.eclipse.feature` and `p2.p2.installable.unit`. Those are features and installable units, not
   Maven artifacts, so a table hit against one would be a confident false positive.
 - A synthetic purl carrying a `classifier`. That is an artefact shipped *inside* a bundle, and it
-  repeats the bundle's own name and version — `org.eclipse.jdt.debug` appears both as the plugin
+  repeats the bundle's own name and version. `org.eclipse.jdt.debug` appears both as the plugin
   and as `classifier=jdimodel.jar`. Resolving by name alone would assert that the jar is the plugin
   and put the same purl on two components.
 - A `pkg:p2` purl whose group falls outside the `p2.` prefix, which is how a first-party reactor
@@ -355,22 +449,263 @@ gate:
   require: [name, version, purl]  # subset of these three; defaults to all three
 ```
 
-The "exactly one file" rule is deliberate. A glob resolving to several files is the merge case, and
-merge is v2. An empty match is the most dangerous silent failure in this tool, because a run that
-processed nothing looks identical to a clean run.
+The "exactly one file" rule is deliberate. Merging multiple matches is unsupported. An empty match
+is the most dangerous silent failure in this tool, because a run that processed nothing looks
+identical to a clean run.
 
 The rule is only worth as much as the search behind it, so rio will not assert it over a tree it
 could not fully read. A directory under the glob that rio cannot open may hold a second SBOM, and
 proceeding on the one file it could see would make the same repository answer differently depending
-on nothing but a permission bit — with the wrong answer being the clean looking one, because the
+on nothing but a permission bit. The wrong answer would look clean because the
 gate passes and the index records a valid digest. When that happens the run stops with exit 2 and
 names the directory that blocked it.
 
+### Build and source context
+
+Bind an optional producer-supplied JSON document to each artifact. There are no root context
+defaults. The file path resolves from the manifest directory; Rio selects an entry by exact
+artifact ID and checks its `sbom.sha256` against the **original input SBOM bytes**:
+
+```yaml
+version: 1
+artifacts:
+  - id: console
+    sbom: target/console.cdx.json
+    context:
+      file: build-context.json
+      require: [source.repository, source.revision, build.url]
+      replace: [source.repository]
+```
+
+`file` is required. `require` and `replace` default to empty arrays. `require` demands an explicitly
+supplied leaf in the selected entry; an inferred or defaulted value does not count. `replace`
+permits that exact leaf to change an existing subject reference or prior Rio-owned context claim.
+It can name an omitted leaf to permit removal of an old owned assertion. Replacement is never a
+wildcard. The allowed leaves are `source.repository`, `source.revision`,
+`source.subdirectory`, `source.ref`, `source.workspace`, `build.url`, `build.id`,
+`build.timestamp`, `build.system.name`, `build.system.version`, `generator.name`,
+`generator.version`, and `lifecycle`. `lifecycle` may be required but cannot be replaced.
+IDs and digests cannot be replaced. Duplicate/unknown selectors and wrong YAML types fail.
+
+The file is one strict `contextVersion: 1` JSON document. A single file can serve multiple
+artifacts; all entries must be structurally valid, but unselected entries are not matched by
+filename or digest. Here is a complete two-entry example (use each real input SBOM's lowercase
+64-character SHA-256 digest in place of the illustrative repeated digits):
+
+```json
+{
+  "contextVersion": 1,
+  "artifacts": [
+    {
+      "id": "console",
+      "sbom": {"sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+      "source": {
+        "repository": "https://code.example.org/widgets/console",
+        "revision": "1111111111111111111111111111111111111111",
+        "subdirectory": "apps/console",
+        "ref": "refs/heads/main",
+        "workspace": "clean"
+      },
+      "build": {
+        "url": "https://ci.example.org/runs/42",
+        "id": "42",
+        "timestamp": "2026-01-01T12:00:00Z",
+        "system": {"name": "Gradle", "version": "8.14"}
+      },
+      "generator": {"name": "CycloneDX Gradle Plugin", "version": "3.0.0"},
+      "lifecycle": "build"
+    },
+    {
+      "id": "agent",
+      "sbom": {"sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+      "source": {"repository": "https://code.example.org/agents/agent"},
+      "build": {"url": "https://ci.example.org/runs/7"}
+    }
+  ]
+}
+```
+
+Only `id` and `sbom.sha256` are mandatory in each entry unless the binding requires more.
+Digests must be lowercase SHA-256 hex. Revisions must be full 40- or 64-character lowercase hex;
+abbreviated or uppercase revisions are refused. Repository and build URLs must be absolute
+HTTP(S) URLs with a hostname and no credentials, query or fragment. `subdirectory` is a canonical
+relative POSIX directory; omit it for repository root. Supplied strings must be nonblank and have
+no surrounding whitespace or controls. `source.workspace` is `clean`, `dirty` or `unknown`.
+When a source object exists but omits workspace, Rio records effective `unknown` and lists
+`source.workspace` under `defaulted`; this does **not** satisfy `require` for that leaf. Build
+timestamps must be RFC3339. A supplied build system or generator must have a name; version is
+optional. Lifecycle phases are `design`, `pre-build`, `build`, `post-build`, `operations`,
+`discovery`, `decommission`. Unknown JSON keys, duplicate keys at any depth, null/wrong types,
+trailing documents, empty artifact lists and duplicate IDs fail before outputs are written.
+
+`source.repository` maps to the subject's `vcs` external reference and `build.url` to its
+`build-system` external reference. Matching rich references and unrelated references remain;
+different existing values require the corresponding `replace` selector. These claims apply only
+to `metadata.component`, never to dependency components. Other effective values remain in a
+structured context record in `index.json`, the optional normalization statement and one active
+`rebaze:normalize:context` SBOM metadata property. The property value is JSON with `version: 1`,
+the context file's relative path and raw-byte digest, `/artifacts/N` selector, effective values,
+defaulted fields, `assertion: "producer"`, and changes. Each change names a field, target,
+before/after values, source selector and whether replacement was explicitly authorized. A
+`context:/...` target denotes a logical context claim; `/metadata/...` denotes an SBOM mutation.
+An omitted prior field is an auditable removal with `after: null`; absent revision, workspace or
+build ID values are never silently inherited from a prior snapshot. The index artifact and
+statement artifact carry identical context records.
+
+The record's `ownedReferences` array lists `source.repository` and/or `build.url` only when
+Rio added the corresponding bare native reference. Ownership survives unchanged snapshots.
+An authorized omission removes that exact reference and records the native before/after
+arrays as well as the logical removal. Pre-existing references, unrelated references and
+references subsequently augmented with comments or hashes remain. Earlier v1 context records
+without `ownedReferences` are accepted: Rio derives ownership only from an explicit native
+addition in their change audit; otherwise it preserves the reference because ownership is
+unknown. This extends the unreleased context record; context input files remain unchanged.
+
+The generator claim describes the producer's reported generator. Rio preserves original
+`metadata.tools` and separately records itself as the normalizer; it never re-labels the
+generator as a tool that edited the original SBOM. A supplied lifecycle fills an empty native
+`metadata.lifecycles` array. If native known phases exist, the supplied phase must match one of
+them; the full native array stays. A custom-only array also stays, with the supplied phase held
+as a separate context assertion. No phase is inferred from timestamps, and a prior owned
+lifecycle assertion cannot be changed or removed.
+
+This is a **producer assertion**, not authentication of the source, build or generated artifact
+bytes. The context digest binds the local context file and the entry binds original SBOM bytes;
+neither binds a compiled artifact. Keep the original SBOM, raw context JSON, manifest and outputs
+for audit and reproduction. Rio does not package them. Context support adds optional v1 records
+under the existing plan/index/predicate v1 contracts; manifests without `context` retain their
+previous output shape. The [offline context demo](tools/README.md#ci-build-context-demo) and
+[explicit producer helper](tools/README.md#rio-contextpy) are documented with the other tools.
+
+### Manifest enrichment
+
+Use top-level `enrichment` for shared defaults and `artifacts[].enrichment` for each artifact's
+values. Enrichment applies to the SBOM subject (`metadata.component`) and document metadata;
+it does not apply your product identity or organization to third-party dependency components.
+
+```yaml
+version: 1
+enrichment:
+  subject:
+    group: com.example
+    version: "1.0.0"
+    type: application
+    manufacturer:
+      name: Example Products
+      url: [https://products.example.com]
+      contact:
+        - name: Product Security
+          email: security@example.com
+    supplier:
+      name: Example Distribution
+    securityContact: mailto:security@example.com
+    website: https://products.example.com
+    documentation: https://products.example.com/docs
+    support: https://products.example.com/support
+  producer:
+    name: Example Build Services
+  dataLicense: CC0-1.0
+artifacts:
+  - id: console
+    sbom: inputs/console.cdx.json
+    enrichment:
+      subject:
+        name: console
+        purl: pkg:maven/com.example/console@1.0.0
+        documentation: https://products.example.com/console/docs
+output:
+  specVersionFloor: "1.6"
+```
+
+The artifact's leaves override the corresponding shared leaves; omitted leaves inherit. Organization
+`name`, `url` and `contact` are separate leaves, while each `url` or `contact` list is one value
+and is replaced as a whole, not merged by position. An organization accepts a name, a list of
+HTTP(S) URLs and a list of contacts with `name`, `email` and/or `phone`. Blank strings and null
+values cannot remove defaults. Website, documentation and support must be absolute HTTP(S) URLs;
+security contact also accepts a `mailto:` address.
+
+| Manifest field | CycloneDX target | Meaning |
+|---|---|---|
+| `subject.name`, `.group`, `.version`, `.type`, `.purl` | Corresponding fields under `metadata.component` | The described product's identity and component type |
+| `subject.manufacturer` | `metadata.component.manufacturer` | Organization that made the product; requires 1.6 |
+| `subject.supplier` | `metadata.component.supplier` | Organization supplying the product |
+| `subject.securityContact`, `.website`, `.documentation`, `.support` | Typed entries in `metadata.component.externalReferences` | Product contact and information URLs |
+| `producer` | `metadata.manufacturer` | Organization that created the SBOM; requires 1.6 |
+| `dataLicense` | `metadata.licenses` | One SPDX license ID for the SBOM data, such as `CC0-1.0`; does not change component licenses |
+
+CycloneDX 1.5 supports the other modeled fields. A 1.5 output with `producer` or
+`subject.manufacturer` is refused: rio does not substitute a different organization role. The
+configured spec floor applies first, so the default floor of 1.6 permits these fields on older
+inputs after uplift. Unknown fields, malformed values and unsupported output targets fail with
+exit 2 before writing outputs.
+
+#### Existing values and explicit replacement
+
+An absent SBOM value is filled. An identical value is left alone. A different existing value
+causes exit 2 with the artifact, field and source identified, and no new output files are written.
+Artifact precedence changes which manifest value wins; it does not authorize overwriting SBOM
+values. To intentionally change an existing value, list each field under `replace`:
+
+```yaml
+    enrichment:
+      replace: [subject.name, subject.version, subject.purl]
+      subject:
+        name: console
+        version: "1.0.0"
+        purl: pkg:maven/com.example/console@1.0.0
+```
+
+`replace` accepts only modeled leaf names with an effective enrichment value. For example,
+`subject.supplier.name` replaces that name without replacing its URLs or contacts;
+`subject.supplier.contact` replaces its contact list. There is no wildcard or blanket override.
+An artifact's `replace` list replaces the shared list; omitting it inherits the list, and an
+explicit `replace: []` clears inherited replacement permission.
+
+When name, group, version or purl is supplied, the resulting subject name, group and version must
+agree with its purl. Updating only a name while retaining an incompatible purl is refused. The subject's
+`bom-ref` remains unchanged, including when its text contains the old purl: it is a local graph
+identifier, and dependency references must keep resolving to it.
+
+The original artifact-level `subject: {name, version}` option retains its existing behavior and
+runs before enrichment. If both are configured, enrichment sees the legacy override result and
+applies its own conflict and identity checks. Use `enrichment.subject` for the conflict-aware
+fields and provenance described here.
+The [runnable enrichment demo](tools/README.md#manifest-enrichment-demo) provides synthetic inputs
+and examples for an installed release binary.
+
+#### Enrichment provenance and compatibility
+
+Every actual enrichment change records `field`, `target`, `before`, `after`, a `source` object
+with `kind: "manifest"`, manifest `path`, `sha256` and field `selector`, and
+`assertion: "producer"`. Missing prior values are represented as `null`. These records appear in
+the artifact's optional `index.json` extension, `enrichment: {version: 1, changes: [...]}`;
+the same change fields, with an additional `version: 1`, appear as JSON values in
+`rebaze:normalize:enrichment` SBOM metadata properties. Unchanged values do not create change records. With `--attest`, the same artifact
+extension is included in the unsigned normalization statement.
+
+Existing subject organization assertions at `metadata.supplier` or the legacy
+`metadata.manufacture` are also checked. An explicit replacement updates that existing leaf as
+well as the subject location, preserving unrelated fields and recording both changes.
+
+These are manifest-author assertions, not independently verified facts. They identify who the
+manifest says made the product and SBOM; they do not authenticate that organization or replace
+original build evidence. The input timestamp, existing generator tools, component membership and
+dependency graph are preserved. rio adds its own tool entry and records alongside existing data.
+
+The optional enrichment extensions are versioned separately. `planVersion`, index `schemaVersion`
+and the normalization predicate remain v1, with their existing meanings. Manifests that omit
+`enrichment` retain their previous behavior and output shape. This feature does not collect source
+or CI/build facts, hash the built artifact, generate evidence references or normalize dependency
+licenses.
+
 ## Out of scope
 
-rio owns the evidence layer — collect, normalize, gate, index. Analysis, enrichment and storage
-belong to the tools it feeds, and the following are deliberate refusals rather than gaps. Do not
-implement them, and do not leave hooks that invite implementation:
+rio keeps compilation local. Collection from remote systems, storage, signing, querying and
+presentation belong around the compiler. It does not replace scanners, test runners or
+observability systems, and it is not a governance suite or an automatic compliance certification
+system.
+
+The current implementation also excludes:
 
 - merging multiple SBOMs into one closure
 - scope filtering or shipped-set reduction
@@ -382,13 +717,14 @@ implement them, and do not leave hooks that invite implementation:
 - uploading anywhere from inside rio
 - any network access at all
 
-A pull request adding one of these is rejected regardless of quality. Naming what the tool refuses to
-do is what keeps it small.
+The broader direction does not relax these boundaries. Changes require an explicit scope decision
+grounded in a concrete workflow and compatibility with existing users.
 
 ## What rio writes into the output SBOM
 
-**Component membership never changes.** v1 adds no component and removes none. Only identity fields
-are rewritten. The component array in equals the component array out, member for member.
+**Component membership never changes.** v1 adds no component and removes none. Configured repairs
+can rewrite dependency identities; enrichment updates subject and SBOM metadata. The dependency
+component array in equals the component array out, member for member.
 
 An input-versus-output diff still shows more than the repaired purls. rio appends itself to
 `metadata.tools`, in whichever shape the document already uses: an entry in the flat array, or a
@@ -398,7 +734,8 @@ they belong to. What it never changes is the set of components. A change there i
 
 ### Reading the repair records
 
-Every repair is traceable from the output document alone, without the index and without the input.
+The output document records the rule and before-and-after values for each repair. It does not yet
+record which coordinate source won or preserve the mapping table's evidence metadata.
 `metadata.properties` carries one property per repaired component:
 
 ```json
@@ -421,12 +758,12 @@ Misses are recorded the same way, so they are as visible as hits:
 ```
 
 Here `purl=` is the purl as it was found in the input and `reason=` says why no coordinate was
-written. An unmapped component still passes the gate — both shapes are valid package URLs — so
-unmapped is a count, not a failure. rio never guesses a groupId from a symbolic name, because a
+written. An unmapped component can still pass the gate because both shapes are valid package URLs.
+Unmapped is a count, not a failure. rio never guesses a groupId from a symbolic name, because a
 wrong coordinate is worse than a missing one.
 
 What happens to the version on a miss differs by shape, and deliberately. An unmapped `pkg:p2` purl
-keeps its type, which announces that it resolves nowhere, so the Eclipse qualifier is stripped and
+keeps its p2 type rather than asserting a Maven mapping. The Eclipse qualifier is stripped and
 preserved as a property; the two halves of the transform are independent. An unmapped synthetic
 purl is left byte-identical, because stripping the qualifier off
 `pkg:maven/p2.eclipse.plugin/com.google.guava@30.1.0.v1` would make it indistinguishable from a
@@ -449,11 +786,12 @@ The same repair is also recorded on the component itself, as an `evidence.identi
 
 The `value` names the rule and the original purl, so a consumer holding only the normalized document
 can still see what the identity used to be. If a component already carries `evidence.identity`, rio
-appends to it and never overwrites an existing entry.
+appends to it and never overwrites an existing entry. The current implementation assigns `0.9`
+to every repair; this is a fixed value, not a measured probability or independent verification.
 
 Where an Eclipse build qualifier was dropped from a version, the component carries it as a
-`rebaze:normalize:p2-qualifier` property, for example `v20230708-0916`. It is the only link back to
-the exact Eclipse build, so it is recorded rather than discarded.
+`rebaze:normalize:p2-qualifier` property, for example `v20230708-0916`. This preserves the version
+detail from the input; it does not independently identify or verify the corresponding build bytes.
 
 Alongside the per-component records, `metadata.properties` carries the run itself.
 `rebaze:normalize:tool`, `rebaze:normalize:artifact-id`, `rebaze:normalize:manifest-sha256` and
