@@ -1,0 +1,25 @@
+version: 1
+destinations:
+  synthetic:
+    type: dependency-track
+    options:
+      url: http://127.0.0.1:PORT
+      allowHTTP: true
+      apiKeyEnv: RIO_SYNTHETIC_KEY
+deliveries:
+  application-security:
+    artifact: application
+    destination: synthetic
+    options:
+      project: {name: synthetic-app, version: "1.2.3"}
+      autoCreate: false
+  uuid:
+    artifact: application
+    destination: synthetic
+    options:
+      project: {uuid: f90934f5-cb88-47ce-81cb-db06fc67d4b4}
+  subject:
+    artifact: application
+    destination: synthetic
+    options:
+      project: {fromSubject: true}

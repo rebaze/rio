@@ -130,6 +130,11 @@ class ChangesTest(unittest.TestCase):
         self.assertEqual(detect("tools/rio-context.py")["go"], "true")
         self.assertEqual(detect("tools/rio-context_test.py")["go"], "true")
 
+    def test_delivery_fixtures_run_binary_checks(self):
+        for path in ("tools/demo-delivery/run.py", "tools/demo-delivery/bom.json", "tools/demo-delivery/delivery.yaml", "tools/demo-delivery/README.md"):
+            with self.subTest(path=path):
+                self.assertEqual(detect(path)["go"], "true")
+
     def test_unrelated_documentation_keeps_checks_skipped(self):
         self.assertEqual(
             detect("README.md"),

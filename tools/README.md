@@ -773,3 +773,7 @@ has no batch, parent hierarchy or merge behavior and does not claim script parit
 uploader's weaker handoff checks remain tracked separately in #43; native validation does not
 silently complete that work. Integration support is limited to versions with retained real-server
 evidence; synthetic demo responses alone do not establish a tested server version.
+
+Run the [synthetic installed-binary demo](demo-delivery/README.md) with
+`python3 tools/demo-delivery/run.py /absolute/path/to/rio`. It uses only a loopback stub,
+retains inspectable evidence, and needs no Go toolchain.
