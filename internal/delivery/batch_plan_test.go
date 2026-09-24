@@ -96,3 +96,40 @@ func TestBatchPlanPairAndSnapshotBudgets(t *testing.T) {
 		t.Fatal(e, reads, len(p.Jobs))
 	}
 }
+
+func TestPairKeyIncludesEachImmutableIdentityField(t *testing.T) {
+	ip, _ := verifiedFixture(t)
+	v, e := Verify(ip, "application", false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	source := v.Source()
+	d := Description{Type: "test", DestinationName: "alias", Identity: json.RawMessage(`{"receiver":"one","project":"app"}`), Options: json.RawMessage(`{"caFile":"old.pem"}`), CredentialRefs: []string{"OLD_KEY"}}
+	key := PairKey(source, d)
+	for _, field := range []string{"index", "artifact", "output", "adapter", "target"} {
+		t.Run(field, func(t *testing.T) {
+			s, next := source, d
+			switch field {
+			case "index":
+				s.IndexSHA256 = Digest([]byte("other index"))
+			case "artifact":
+				s.ArtifactID = "other-artifact"
+			case "output":
+				s.OutputSHA256 = Digest([]byte("other output"))
+			case "adapter":
+				next.Type = "other-adapter"
+			case "target":
+				next.Identity = json.RawMessage(`{"receiver":"two","project":"app"}`)
+			}
+			if PairKey(s, next) == key {
+				t.Fatal("immutable field absent from key", field)
+			}
+		})
+	}
+	d.DestinationName = "renamed"
+	d.Options = json.RawMessage(`{"caFile":"rotated.pem","apiKeyEnv":"NEW_KEY"}`)
+	d.CredentialRefs = []string{"NEW_KEY"}
+	if PairKey(source, d) != key {
+		t.Fatal("transport reference rotation changed identity key")
+	}
+}

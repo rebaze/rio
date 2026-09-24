@@ -202,7 +202,8 @@ to `target/rio/index.json` relative to cwd. Nondefault output directories requir
 `--out` is invalid here. Inspect reads only its journal and rejects explicit `--manifest`.
 The removed `--config`/`--delivery` interface reports migration guidance.
 
-Plan/deliver `--json` emit exactly one schemaVersion 2 batch object with operation, outcome,
+Plan/deliver `--json` suppress human progress and emit exactly one schemaVersion 2 batch object
+with operation, outcome,
 raw index/current manifest digests when available, requestMayHaveOccurred, items, unusedRules,
 and a safe error when present. Each item reports artifactId, target, resolved record path, state,
 verified source/destination, and the existing v1 result when attempted. Plan items are ready;

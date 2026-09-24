@@ -560,3 +560,140 @@ func TestDeliveryBatchOversizedLaterIntentRefusesBeforeAnyRequest(t *testing.T) 
 		t.Fatal("intent or lock persisted during preflight refusal")
 	}
 }
+
+func TestReconcileDeclaredPolicyDriftMatrix(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Method != "POST" {
+			t.Error("drift contacted receiver")
+		}
+		io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"token":"f90934f5-cb88-47ce-81cb-db06fc67d4b4"}`)
+	}))
+	defer srv.Close()
+	ip, cfg := deliveryFixture(t, srv.URL)
+	b, _ := os.ReadFile(cfg)
+	override := "      overrides:\n        app:\n          project: {name: explicit-project, version: '1'}\n"
+	base := strings.Replace(string(b), "      project: {name: app, version: '1'}\n", override, 1)
+	os.WriteFile(cfg, []byte(base), 0600)
+	t.Setenv("DTRACK_API_KEY", "synthetic-key")
+	p := filepath.Join(t.TempDir(), "attempt")
+	if code, _, _ := deliveryRun(t, "deliver", "--manifest", cfg, "--index", ip, "--record", p); code != 0 {
+		t.Fatal(code)
+	}
+	prior, e := record.Read(p)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, tc := range []struct{ name, config string }{
+		{"declared selector", strings.Replace(base, "{name: explicit-project, version: '1'}", "{fromSubject: true}", 1)},
+		{"project name", strings.Replace(base, "explicit-project", "different-project", 1)},
+		{"project version", strings.Replace(base, "version: '1'", "version: '2'", 1)},
+		{"creation policy", base + "      autoCreate: true\n"},
+		{"absent target", strings.Replace(base, "    security:", "    renamed:", 1)},
+		{"absent override", strings.Replace(base, override, "", 1)},
+		{"server", strings.Replace(base, srv.URL, "http://127.0.0.1:1", 1)},
+		{"transport", strings.Replace(base, "allowHTTP: true", "allowHTTP: false", 1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			os.WriteFile(cfg, []byte(tc.config), 0600)
+			code, _, _ := deliveryRun(t, "delivery", "reconcile", "--manifest", cfg, "--record", p)
+			after, e := record.Read(p)
+			if code != 2 || calls != 1 || e != nil || after.SHA256 != prior.SHA256 {
+				t.Fatal("drift was not a read-only local refusal", code, calls, e)
+			}
+		})
+	}
+	os.WriteFile(cfg, []byte(base), 0600)
+	retry := filepath.Join(t.TempDir(), "gate-policy-retry")
+	code, r, _ := deliveryRun(t, "deliver", "--manifest", cfg, "--index", ip, "--record", retry, "--retry-of", p, "--allow-failed-gate")
+	if code != 2 || calls != 1 || r["error"].(map[string]any)["code"] != "retry_mismatch" {
+		t.Fatal(code, r, calls)
+	}
+	if _, e := os.Stat(retry); !os.IsNotExist(e) {
+		t.Fatal("mismatched retry created intent")
+	}
+}
+
+func TestDeliveryPlanOrderingAndCredentialCARotationPreserveSlots(t *testing.T) {
+	dir := batchFixture(t, "https://example.test")
+	t.Chdir(dir)
+	b, _ := os.ReadFile("rio.yaml")
+	base := string(b) + "    mirror: {type: dependency-track, url: https://mirror.test}\n"
+	os.WriteFile("rio.yaml", []byte(base), 0600)
+	args := []string{"delivery", "plan", "--artifact", "service", "--artifact", "app", "--target", "security", "--target", "mirror"}
+	code, first, _ := runBatch(t, args...)
+	if code != 0 {
+		t.Fatal(code, first)
+	}
+	rotated := strings.Replace(base, "      allowHTTP: true", "      allowHTTP: true\n      apiKeyEnv: ROTATED_KEY\n      caFile: rotated.pem", 1)
+	rotated = strings.Replace(rotated, "url: https://mirror.test}", "url: https://mirror.test, apiKeyEnv: OTHER_ROTATED_KEY, caFile: other.pem}", 1)
+	os.WriteFile("rio.yaml", []byte(rotated), 0600)
+	code, second, _ := runBatch(t, "delivery", "plan", "--target", "mirror", "--target", "security", "--artifact", "app", "--artifact", "service")
+	if code != 0 {
+		t.Fatal(code, second)
+	}
+	a, z := first["items"].([]any), second["items"].([]any)
+	if len(a) != 4 || len(z) != 4 {
+		t.Fatal("wrong selected scope")
+	}
+	for i := range a {
+		before, after := a[i].(map[string]any), z[i].(map[string]any)
+		if before["artifactId"] != after["artifactId"] || before["target"] != after["target"] || before["record"] != after["record"] {
+			t.Fatal("rotation or argument order changed slot")
+		}
+	}
+	if a[0].(map[string]any)["artifactId"] != "app" || a[0].(map[string]any)["target"] != "mirror" {
+		t.Fatal("not index/lexical order")
+	}
+}
+
+func TestDeliveryBatchJSONSuppressesProgressButKeepsErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name, operation string
+		reject, quiet   bool
+		want            int
+	}{
+		{"plan", "plan", false, false, 0},
+		{"accepted", "deliver", false, false, 0},
+		{"rejected", "deliver", true, false, 5},
+		{"quiet accepted", "deliver", false, true, 0},
+		{"quiet rejected", "deliver", true, true, 5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				io.Copy(io.Discard, r.Body)
+				w.Header().Set("Content-Type", "application/json")
+				if tc.reject {
+					w.WriteHeader(403)
+					io.WriteString(w, `{"error":"synthetic"}`)
+				} else {
+					io.WriteString(w, `{"token":"f90934f5-cb88-47ce-81cb-db06fc67d4b4"}`)
+				}
+			}))
+			defer srv.Close()
+			dir := batchFixture(t, srv.URL)
+			t.Chdir(dir)
+			t.Setenv("DTRACK_API_KEY", "synthetic-key")
+			args := []string{"deliver"}
+			if tc.operation == "plan" {
+				args = []string{"delivery", "plan"}
+			}
+			if tc.quiet {
+				args = append(args, "--quiet")
+			}
+			code, _, stderr := runBatch(t, args...)
+			if code != tc.want || strings.Contains(stderr, "artifact=") || strings.Contains(stderr, tc.operation+": ") {
+				t.Fatalf("code=%d unexpected progress stderr=%q", code, stderr)
+			}
+			if tc.want == 0 && stderr != "" {
+				t.Fatalf("successful JSON stderr=%q", stderr)
+			}
+			if tc.want != 0 && !strings.Contains(stderr, "rio: upload_rejected") {
+				t.Fatalf("missing diagnostic stderr=%q", stderr)
+			}
+		})
+	}
+}

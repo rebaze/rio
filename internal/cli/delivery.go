@@ -182,7 +182,7 @@ func batchFinish(r runner.BatchResult, e error, o deliveryOptions, g *globalOpti
 			return internalErrorf("writing delivery batch result")
 		}
 	}
-	if !g.quiet {
+	if !o.json && !g.quiet {
 		fmt.Fprintf(stderr, "%s: %s\n", r.Operation, r.Outcome)
 		for _, item := range r.Items {
 			fmt.Fprintf(stderr, "artifact=%s target=%s state=%s record=%s", item.ArtifactID, item.Target, item.State, item.Record)
