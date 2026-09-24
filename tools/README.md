@@ -11,7 +11,7 @@ inputs and remain separate from its runtime.
 | tool | what it does | when you run it |
 |---|---|---|
 | [`build-p2-table.py`](#build-p2-tablepy) | builds the bundle-symbolic-name → Maven coordinate table rio repairs purls with | occasionally, on a workstation |
-| [`rio-dtrack-upload.sh`](#rio-dtrack-uploadsh) | uploads normalized SBOMs to DependencyTrack | after every `rio normalize`, in a pipeline |
+| [`rio-dtrack-upload.sh`](#rio-dtrack-uploadsh) | batch uploads with optional parent-project assignment | existing batch/parent workflows |
 | [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | offline, with an installed rio release |
 | [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, refusals and owned-claim replacement | offline, with an installed rio release |
 | [`demo-artifact-sets/`](#artifact-sets-demo) | discovers module SBOMs, adds/removes membership and refuses missing or overlapping inputs | offline, with an installed rio release |
@@ -283,8 +283,9 @@ DTRACK_URL=https://dtrack.example.com DTRACK_API_KEY=... \
   ./tools/rio-dtrack-upload.sh target/rio/index.json
 ```
 
-It ships as an example, and it is deliberately not part of rio: rio does not upload anywhere. It
-needs `DTRACK_URL` and `DTRACK_API_KEY` and stops immediately without either. The API key needs the
+For direct verified uploads, use [native delivery](#native-verified-delivery). This separate
+script remains available as an example for existing batch/parent workflows. It needs
+`DTRACK_URL` and `DTRACK_API_KEY` and stops immediately without either. The API key needs the
 `BOM_UPLOAD`, `PROJECT_CREATION_UPLOAD` and `VIEW_PORTFOLIO` permissions. The comment block at the
 top of the script lists every variable it reads.
 

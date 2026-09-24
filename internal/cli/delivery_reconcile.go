@@ -27,14 +27,14 @@ func newDeliveryReconcileCommand(g *globalOptions, stdout, stderr io.Writer) *co
 func runDeliveryReconcile(cmd *cobra.Command, o deliveryOptions, wait time.Duration) (r runner.Result, err error) {
 	r = runner.NewResult("reconcile", o.record)
 	if e := rejectDeliveryInherited(cmd); e != nil {
-		return r, (e)
+		return r, e
 	}
 	if cmd.Flags().Changed("wait") && (wait <= 0 || wait > 10*time.Minute) {
-		return r, (delivery.Fail("invalid_wait", "wait must be positive and at most 10m"))
+		return r, delivery.Fail("invalid_wait", "wait must be positive and at most 10m")
 	}
 	w, e := record.Open(o.record)
 	if e != nil {
-		return r, (e)
+		return r, e
 	}
 	defer func() {
 		if closeErr := w.Close(); closeErr != nil {
@@ -43,35 +43,35 @@ func runDeliveryReconcile(cmd *cobra.Command, o deliveryOptions, wait time.Durat
 	}()
 	s, e := w.Snapshot()
 	if e != nil {
-		return r, (e)
+		return r, e
 	}
 	if e = validateSnapshot(s); e != nil {
-		return r, (e)
+		return r, e
 	}
 	r = runner.FromSnapshot("reconcile", o.record, s)
 	if _, e = dtrack.EventToken(s.References); e != nil {
-		return r, (e)
+		return r, e
 	}
 	_, id, e := dtrack.ValidateDescription(s.Intent.Destination)
 	if e != nil {
-		return r, (e)
+		return r, e
 	}
 	c, b, d, p, e := describeConfig(o.config, s.Intent.Binding, delivery.Subject{Name: id.Project.Name, Version: id.Project.Version})
 	if e != nil {
-		return r, (e)
+		return r, e
 	}
 	if b.Artifact != s.Intent.Source.ArtifactID || !samePolicy(s.Intent.Destination, d, true) {
-		return r, (delivery.Fail("destination_drift", "binding artifact, target or policy changed"))
+		return r, delivery.Fail("destination_drift", "binding artifact, target or policy changed")
 	}
 	target, e := deliveryBuild(p, d)
 	if e != nil {
-		return r, (e)
+		return r, e
 	}
 	observer, ok := target.(delivery.Observer)
 	if !ok {
-		return r, (delivery.Fail("unsupported_observation", "destination has no observer"))
+		return r, delivery.Fail("unsupported_observation", "destination has no observer")
 	}
 	r, e = runner.Reconcile(cmd.Context(), w, observer, c.SHA256, wait)
 	r.Record = o.record
-	return r, (e)
+	return r, e
 }

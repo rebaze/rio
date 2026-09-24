@@ -135,6 +135,10 @@ func TestDeliveryRetry(t *testing.T) {
 	if code, _, _ := deliveryRun(t, append(args, "--record", prior)...); code != 0 {
 		t.Fatal(code)
 	}
+	// Orphan temps are not committed evidence; explicit retry still authorizes a possible duplicate.
+	if e := os.WriteFile(filepath.Join(prior, ".event-orphan.tmp"), []byte("partial result"), 0600); e != nil {
+		t.Fatal(e)
+	}
 	before, e := record.Read(prior)
 	if e != nil {
 		t.Fatal(e)

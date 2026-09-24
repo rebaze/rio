@@ -68,21 +68,23 @@ rio plan [flags]
 rio version
 ```
 
-For a Maven build already configured to produce SBOMs, a pipeline can run:
+For a Maven build already configured to produce SBOMs, configure a native delivery binding
+and inject its API key through the environment, then run:
 
 ```sh
 mvn -B verify
 rio normalize --gate fail
-DTRACK_URL=https://dtrack.example.com DTRACK_API_KEY=... \
-  ./tools/rio-dtrack-upload.sh target/rio/index.json
+rio deliver --delivery application-security --record delivery-record --json
 ```
 
-That third step is not rio. rio does not upload anywhere; `tools/rio-dtrack-upload.sh` ships as an
-example of what to do with `index.json` afterwards. Its environment variables, the DependencyTrack
-permissions it needs, and how to nest artifacts under a parent project are documented in
-[tools/README.md](../tools/README.md).
+The [direct Dependency-Track example](../README.md#deliver-to-dependency-track) shows the separate
+configuration. Native delivery verifies the recorded output before upload; accepted receipts do
+not prove ingestion. Each attempt uses a new journal directory. Offline preview and inspection,
+reconciliation, permissions and delivery exit codes are documented in
+[the delivery guide](../tools/README.md#native-verified-delivery).
+The manual script remains available for [existing batch/parent workflows](../tools/README.md#rio-dtrack-uploadsh).
 
-One line per artifact on stdout, then a summary. Machine detail belongs in `index.json`, not here.
+Normalization prints one line per artifact on stdout, then a summary. Machine detail belongs in `index.json`, not here.
 Errors and warnings go to stderr. A run over the committed fixtures `testdata/tycho-rcp.cdx.json`
 and `testdata/gate-missing-version.cdx.json` prints:
 
@@ -95,7 +97,7 @@ server-war   2 components   repaired 0    unmapped 0    gate FAIL (1 component m
 ## `rio plan`
 
 `plan` prints what a `normalize` run would read, write and repair, and does none of it. It writes no
-files and, like everything else here, makes no network calls.
+files and makes no network calls.
 
 ```
 $ rio plan

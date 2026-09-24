@@ -30,13 +30,15 @@ what is running. Rio's own release pipeline separately [checks staged assets bef
 
 ## Scope
 
-The CLI runs locally and makes no network calls, including during schema validation and p2
-mapping. Schemas and built-in mappings are embedded; the binary has no runtime dependency on
-external tools. Network-dependent mapping preparation and uploads live in [tools/README.md](../tools/README.md).
+Normalization, planning and delivery inspection run locally without network calls, including
+schema validation and p2 mapping. Schemas and built-in mappings are embedded; the binary has no
+runtime dependency on external tools. Explicit native delivery and reconciliation communicate
+with Dependency-Track. Supporting mapping preparation and delivery examples live in
+[tools/README.md](../tools/README.md).
 
 Current exclusions include SBOM merging, component filtering, reading assembled release artifacts,
 drift comparison, SPDX conversion, license normalization/scoring, vulnerability lookup, signing,
-and remote storage or querying. Rio preserves dependency component membership. Release policy,
+and general-purpose remote storage or querying. Rio preserves dependency component membership. Release policy,
 scanner execution and deployment tracking belong to the surrounding systems.
 
 ## Rio and rebaze
