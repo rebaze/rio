@@ -185,7 +185,14 @@ func batchFinish(r runner.BatchResult, e error, o deliveryOptions, g *globalOpti
 	if !g.quiet {
 		fmt.Fprintf(stderr, "%s: %s\n", r.Operation, r.Outcome)
 		for _, item := range r.Items {
-			fmt.Fprintf(stderr, "artifact=%s target=%s project=%s state=%s record=%s gate=%s schemaValidated=%t allowFailedGate=%t sha256=%s capabilities=%v\n", item.ArtifactID, item.Target, item.Destination.Identity, item.State, item.Record, item.Source.Gate, item.Source.SchemaValidated, item.Source.AllowFailedGate, item.Source.OutputSHA256, item.Destination.Capabilities)
+			fmt.Fprintf(stderr, "artifact=%s target=%s state=%s record=%s", item.ArtifactID, item.Target, item.State, item.Record)
+			if item.Destination != nil {
+				fmt.Fprintf(stderr, " project=%s capabilities=%v", item.Destination.Identity, item.Destination.Capabilities)
+			}
+			if item.Source != nil {
+				fmt.Fprintf(stderr, " gate=%s schemaValidated=%t allowFailedGate=%t sha256=%s", item.Source.Gate, item.Source.SchemaValidated, item.Source.AllowFailedGate, item.Source.OutputSHA256)
+			}
+			fmt.Fprintln(stderr)
 		}
 		for _, rule := range r.UnusedRules {
 			fmt.Fprintf(stderr, "unused %s rule: target=%s artifact=%s\n", rule.Rule, rule.Target, rule.ArtifactID)

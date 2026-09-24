@@ -3,6 +3,7 @@ package delivery
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"gopkg.in/yaml.v3"
 	"io"
 	"os"
@@ -63,5 +64,35 @@ func TestBatchPlanSnapshotsAndFilters(t *testing.T) {
 	s.OutputSHA256 = Digest([]byte("other"))
 	if PairKey(s, d) == key {
 		t.Fatal("changed bytes reuse key")
+	}
+}
+
+func TestBatchPlanPairAndSnapshotBudgets(t *testing.T) {
+	ip, op := verifiedFixture(t)
+	raw, _ := os.ReadFile(ip)
+	idx, e := ParseIndex(raw)
+	if e != nil {
+		t.Fatal(e)
+	}
+	c := Config{Targets: map[string]TargetConfig{}}
+	for i := 0; i < PairLimit+1; i++ {
+		var n yaml.Node
+		n.Encode(map[string]any{"url": fmt.Sprint(i)})
+		c.Targets[fmt.Sprint(i)] = TargetConfig{Type: "test", Options: n}
+	}
+	reads := 0
+	_, e = planBatch(c, ip, PlanOptions{}, map[string]Provider{"test": planProvider{}}, func(path string, limit int64) ([]byte, error) { reads++; return ReadBounded(path, limit) })
+	if e == nil || e.(*Error).Code != "pair_limit" || reads != 1 {
+		t.Fatal(e, reads)
+	}
+	c.Targets = map[string]TargetConfig{"only": c.Targets["0"]}
+	a := idx.Artifacts[0]
+	a.ID = "second"
+	idx.Artifacts = append(idx.Artifacts, a)
+	b, _ := os.ReadFile(op)
+	reads = 0
+	p, e := planResolved(BatchPlan{IndexSHA256: Digest(raw)}, c, ip, idx, PlanOptions{}, map[string]Provider{"test": planProvider{}}, func(path string, limit int64) ([]byte, error) { reads++; return ReadBounded(path, limit) }, int64(len(b)+1))
+	if e == nil || e.(*Error).Code != "snapshot_limit" || reads != 2 || len(p.Jobs) != 2 {
+		t.Fatal(e, reads, len(p.Jobs))
 	}
 }

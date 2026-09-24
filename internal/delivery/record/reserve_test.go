@@ -57,3 +57,30 @@ func TestBatchReserveConflictReleasesAll(t *testing.T) {
 		t.Fatal("intent committed during reservation")
 	}
 }
+
+func TestReserveStaleAndAliases(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "attempt")
+	os.Mkdir(p+".lock", 0700)
+	if _, e := Reserve(p); e == nil {
+		t.Fatal("stale lock auto-broken")
+	}
+	if _, e := os.Stat(p + ".lock"); e != nil {
+		t.Fatal(e)
+	}
+	os.Remove(p + ".lock")
+	alias := filepath.Join(t.TempDir(), "alias")
+	if e := os.Symlink(dir, alias); e != nil {
+		t.Skip("symlink privileges unavailable")
+	}
+	if _, e := ReserveAll([]string{p, filepath.Join(alias, "attempt")}); e == nil {
+		t.Fatal("canonical alias reserved twice")
+	}
+	if _, e := os.Stat(p + ".lock"); !os.IsNotExist(e) {
+		t.Fatal("alias conflict leaked lock")
+	}
+	os.Symlink(filepath.Join(dir, "missing"), p)
+	if _, e := Reserve(p); e == nil {
+		t.Fatal("symlink record accepted")
+	}
+}

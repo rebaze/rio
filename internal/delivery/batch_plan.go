@@ -20,6 +20,7 @@ type Job struct {
 	Verified                   Verified
 	Description                Description
 	Provider                   Provider
+	Error                      *Error
 }
 type UnusedRule struct {
 	Target     string `json:"target"`
@@ -130,9 +131,9 @@ func planBatch(c Config, indexPath string, o PlanOptions, registry map[string]Pr
 	if e != nil {
 		return plan, e
 	}
-	return planResolved(plan, c, indexPath, idx, o, registry, read)
+	return planResolved(plan, c, indexPath, idx, o, registry, read, SnapshotBudget)
 }
-func planResolved(plan BatchPlan, c Config, indexPath string, idx index.Index, o PlanOptions, registry map[string]Provider, read func(string, int64) ([]byte, error)) (BatchPlan, error) {
+func planResolved(plan BatchPlan, c Config, indexPath string, idx index.Index, o PlanOptions, registry map[string]Provider, read func(string, int64) ([]byte, error), snapshotLimit int64) (BatchPlan, error) {
 	artifacts := map[string]bool{}
 	targets := map[string]bool{}
 	for _, a := range idx.Artifacts {
@@ -189,6 +190,23 @@ func planResolved(plan BatchPlan, c Config, indexPath string, idx index.Index, o
 	if count > PairLimit {
 		return plan, Fail("pair_limit", "maximum 1024 selected pairs")
 	}
+	// Preserve the entire selected routing scope even if a later snapshot fails.
+	for _, a := range idx.Artifacts {
+		if as[a.ID] {
+			for _, id := range order {
+				if ts[id] && !excluded(c.Targets[id], a.ID) {
+					plan.Jobs = append(plan.Jobs, Job{ArtifactID: a.ID, Target: id})
+				}
+			}
+		}
+	}
+	cursor := 0
+	failJob := func(e error) (BatchPlan, error) {
+		if safe, ok := e.(*Error); ok {
+			plan.Jobs[cursor].Error = safe
+		}
+		return plan, e
+	}
 	var total int64
 	seen := map[string]bool{}
 	type modes struct {
@@ -210,7 +228,7 @@ func planResolved(plan BatchPlan, c Config, indexPath string, idx index.Index, o
 			continue
 		}
 		v, e := verifyArtifactRead(indexPath, plan.IndexSHA256, idx, a.ID, o.AllowFailedGate, func(path string, limit int64) ([]byte, error) {
-			remaining := SnapshotBudget - total
+			remaining := snapshotLimit - total
 			if remaining < limit {
 				limit = remaining
 			}
@@ -225,16 +243,19 @@ func planResolved(plan BatchPlan, c Config, indexPath string, idx index.Index, o
 			return b, nil
 		})
 		if e != nil {
-			return plan, e
+			return failJob(e)
 		}
 		for _, id := range eligible {
 			d, p, e := DescribeTarget(c, id, a.ID, v.Subject(), registry)
 			if e != nil {
-				return plan, e
+				return failJob(e)
 			}
+			plan.Jobs[cursor].Verified = v
+			plan.Jobs[cursor].Description = d
+			plan.Jobs[cursor].Provider = p
 			identity := d.Type + ":" + string(d.Identity)
 			if seen[identity] {
-				return plan, Fail("target_collision", "multiple routes resolve to the same receiver/project")
+				return failJob(Fail("target_collision", "multiple routes resolve to the same receiver/project"))
 			}
 			seen[identity] = true
 			if cp, ok := p.(interface {
@@ -250,15 +271,16 @@ func planResolved(plan BatchPlan, c Config, indexPath string, idx index.Index, o
 				m.artifacts[a.ID] = true
 				m.modes[mode] = true
 				if len(m.artifacts) > 1 && len(m.modes) > 1 {
-					return plan, Fail("ambiguous_target", "mixed UUID and name/version at one receiver")
+					return failJob(Fail("ambiguous_target", "mixed UUID and name/version at one receiver"))
 				}
 			}
 			key := PairKey(v.Source(), d)
 			path, e := filepath.Abs(filepath.Join(filepath.Dir(indexPath), "deliveries", key))
 			if e != nil {
-				return plan, Fail("invalid_record_path", "automatic journal")
+				return failJob(Fail("invalid_record_path", "automatic journal"))
 			}
-			plan.Jobs = append(plan.Jobs, Job{a.ID, id, path, v, d, p})
+			plan.Jobs[cursor].Record = path
+			cursor++
 		}
 	}
 	return plan, nil

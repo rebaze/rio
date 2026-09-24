@@ -341,3 +341,162 @@ func TestDeliveryDeclarationLimitHasSafeCode(t *testing.T) {
 		t.Fatal(code, r, stderr)
 	}
 }
+
+func TestDeliveryBatchSendsOriginalSnapshotsAfterSourceReplacement(t *testing.T) {
+	calls := 0
+	hashes := map[string]int{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if e := r.ParseMultipartForm(1 << 20); e != nil {
+			t.Error(e)
+		}
+		f, _, e := r.FormFile("bom")
+		if e != nil {
+			t.Error(e)
+			return
+		}
+		b, _ := io.ReadAll(f)
+		f.Close()
+		hashes[delivery.Digest(b)]++
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"token":"f90934f5-cb88-47ce-81cb-db06fc67d4b4"}`)
+	}))
+	defer srv.Close()
+	dir := batchFixture(t, srv.URL)
+	t.Chdir(dir)
+	t.Setenv("DTRACK_API_KEY", "synthetic-key")
+	original, _ := os.ReadFile("target/rio/app.json")
+	b, _ := os.ReadFile("rio.yaml")
+	b = append(b, []byte(fmt.Sprintf("    mirror: {type: dependency-track, url: '%s/mirror', allowHTTP: true}\n", srv.URL))...)
+	os.WriteFile("rio.yaml", b, 0600)
+	old := deliveryBuild
+	defer func() { deliveryBuild = old }()
+	builds := 0
+	deliveryBuild = func(p delivery.Provider, d delivery.Description) (delivery.Target, error) {
+		builds++
+		if builds == 1 {
+			os.WriteFile("target/rio/app.json", []byte("replaced after complete planning"), 0600)
+		}
+		return old(p, d)
+	}
+	code, r, _ := runBatch(t, "deliver")
+	if code != 0 || calls != 6 || hashes[delivery.Digest(original)] != 2 {
+		t.Fatal(code, r, calls, hashes)
+	}
+}
+
+func TestDeliveryBatchCanonicalAliasesCollide(t *testing.T) {
+	dir := batchFixture(t, "https://EXAMPLE.test:443")
+	t.Chdir(dir)
+	b, _ := os.ReadFile("rio.yaml")
+	b = append(b, []byte("    alias: {type: dependency-track, url: https://example.test}\n")...)
+	os.WriteFile("rio.yaml", b, 0600)
+	code, r, _ := runBatch(t, "delivery", "plan")
+	if code != 2 || r["error"].(map[string]any)["code"] != "target_collision" {
+		t.Fatal(code, r)
+	}
+}
+
+func TestDeliveryBatchOutputAndRemovedFlags(t *testing.T) {
+	dir := batchFixture(t, "https://example.test")
+	t.Chdir(dir)
+	code, r, stderr := runBatch(t, "delivery", "plan", "--quiet")
+	if code != 0 || stderr != "" || r["outcome"] != "ready" {
+		t.Fatal(code, r, stderr)
+	}
+	for _, flag := range []string{"--config", "--delivery"} {
+		code, r, stderr := runBatch(t, "deliver", flag, "legacy", "--quiet")
+		if code != 2 || r["error"].(map[string]any)["code"] != "removed_flag" || !strings.Contains(stderr, "rio.yaml") || !strings.Contains(stderr, "--target") {
+			t.Fatal(code, r, stderr)
+		}
+	}
+	code, _, stderr = deliveryRun(t, "delivery", "inspect", "--record", "missing", "--manifest", "rio.yaml")
+	if code != 2 || !strings.Contains(stderr, "irrelevant") {
+		t.Fatal(code, stderr)
+	}
+	var out, human bytes.Buffer
+	code = Main([]string{"delivery", "plan"}, &out, &human)
+	if code != 0 || out.Len() != 0 {
+		t.Fatal(code, out.String(), human.String())
+	}
+	for _, s := range []string{"artifact=app", "target=security", "project=", "record=", "state=ready"} {
+		if !strings.Contains(human.String(), s) {
+			t.Fatal("missing human fact", s, human.String())
+		}
+	}
+}
+
+func TestDeliveryBatchRejectedSuffixAndCleanup(t *testing.T) {
+	for _, cleanup := range []bool{false, true} {
+		t.Run(fmt.Sprint(cleanup), func(t *testing.T) {
+			calls := 0
+			last := ""
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				io.Copy(io.Discard, r.Body)
+				if cleanup {
+					os.WriteFile(filepath.Join(last+".lock", "obstruction"), []byte("block cleanup"), 0600)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(403)
+				io.WriteString(w, `{"error":"synthetic"}`)
+			}))
+			defer srv.Close()
+			dir := batchFixture(t, srv.URL)
+			t.Chdir(dir)
+			t.Setenv("DTRACK_API_KEY", "synthetic-key")
+			_, p, _ := runBatch(t, "delivery", "plan")
+			last = p["items"].([]any)[2].(map[string]any)["record"].(string)
+			code, r, _ := runBatch(t, "deliver")
+			want := 5
+			if cleanup {
+				want = 3
+			}
+			items := r["items"].([]any)
+			if code != want || calls != 1 || r["outcome"] != "rejected" || items[0].(map[string]any)["state"] != "rejected" || items[1].(map[string]any)["state"] != "unattempted" || items[2].(map[string]any)["state"] != "unattempted" {
+				t.Fatal(code, r, calls)
+			}
+			if cleanup && r["error"].(map[string]any)["code"] != "persistence_failed" {
+				t.Fatal(r)
+			}
+		})
+	}
+}
+func TestDeliveryBatchEmptyIndexAndInvalidUnusedOptions(t *testing.T) {
+	dir := batchFixture(t, "https://example.test")
+	t.Chdir(dir)
+	b, _ := os.ReadFile("rio.yaml")
+	b = append(b, []byte("    unused: {type: dependency-track, url: https://other.test, project: {name: invalid, version: 1}}\n")...)
+	os.WriteFile("rio.yaml", b, 0600)
+	code, r, _ := runBatch(t, "delivery", "plan", "--target", "security")
+	if code != 2 || r["error"].(map[string]any)["code"] != "invalid_config" {
+		t.Fatal(code, r)
+	}
+	b = bytes.Replace(b, []byte("version: 1}}"), []byte("version: '1'}}"), 1)
+	os.WriteFile("rio.yaml", b, 0600)
+	raw, _ := os.ReadFile("target/rio/index.json")
+	idx, e := delivery.ParseIndex(raw)
+	if e != nil {
+		t.Fatal(e)
+	}
+	idx.Artifacts = []index.Artifact{}
+	index.Write("target/rio", &idx)
+	code, r, _ = runBatch(t, "delivery", "plan")
+	if code != 2 || r["error"].(map[string]any)["code"] != "no_deliveries_selected" {
+		t.Fatal(code, r)
+	}
+}
+
+func TestDeliveryBatchLateDigestFailureReportsCompleteSelection(t *testing.T) {
+	dir := batchFixture(t, "https://example.test")
+	t.Chdir(dir)
+	os.WriteFile("target/rio/worker.json", []byte("tampered"), 0600)
+	code, r, _ := runBatch(t, "deliver")
+	items := r["items"].([]any)
+	if code != 2 || len(items) != 3 {
+		t.Fatal(code, r)
+	}
+	if items[0].(map[string]any)["state"] != "unattempted" || items[1].(map[string]any)["state"] != "error" || items[2].(map[string]any)["state"] != "unattempted" {
+		t.Fatal(items)
+	}
+}

@@ -8,14 +8,14 @@ import (
 )
 
 type BatchItem struct {
-	ArtifactID  string               `json:"artifactId"`
-	Target      string               `json:"target"`
-	Record      string               `json:"record"`
-	State       string               `json:"state"`
-	Source      delivery.Source      `json:"source"`
-	Destination delivery.Description `json:"destination"`
-	Result      *Result              `json:"result,omitempty"`
-	Error       *delivery.Error      `json:"error,omitempty"`
+	ArtifactID  string                `json:"artifactId"`
+	Target      string                `json:"target"`
+	Record      string                `json:"record"`
+	State       string                `json:"state"`
+	Source      *delivery.Source      `json:"source,omitempty"`
+	Destination *delivery.Description `json:"destination,omitempty"`
+	Result      *Result               `json:"result,omitempty"`
+	Error       *delivery.Error       `json:"error,omitempty"`
 }
 type BatchResult struct {
 	SchemaVersion          int                   `json:"schemaVersion"`
@@ -40,7 +40,21 @@ func NewBatch(operation string, plan delivery.BatchPlan) BatchResult {
 		if operation == "plan" {
 			state = "ready"
 		}
-		r.Items = append(r.Items, BatchItem{ArtifactID: j.ArtifactID, Target: j.Target, Record: j.Record, State: state, Source: j.Verified.Source(), Destination: j.Description})
+		item := BatchItem{ArtifactID: j.ArtifactID, Target: j.Target, Record: j.Record, State: state, Error: j.Error}
+		if len(j.Verified.Payloads()) > 0 {
+			source := j.Verified.Source()
+			item.Source = &source
+		}
+		if j.Description.Type != "" {
+			d := j.Description
+			item.Destination = &d
+		}
+		if j.Error != nil {
+			item.State = "error"
+		} else if item.Source == nil {
+			item.State = "unattempted"
+		}
+		r.Items = append(r.Items, item)
 	}
 	return r
 }

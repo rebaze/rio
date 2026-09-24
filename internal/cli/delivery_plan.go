@@ -22,7 +22,9 @@ func newDeliveryPlanCommand(g *globalOptions, stdout, stderr io.Writer) *cobra.C
 			r.Outcome = "ready"
 		} else {
 			for i := range r.Items {
-				r.Items[i].State = "unattempted"
+				if r.Items[i].State != "error" {
+					r.Items[i].State = "unattempted"
+				}
 			}
 		}
 		return batchFinish(r, e, o, g, stdout, stderr)

@@ -1,4 +1,24 @@
 version: 1
-artifacts:
-  - id: application
+artifactSets:
+  - modules: "services/*/pom.xml"
     sbom: bom.json
+    idFrom: module-directory
+delivery:
+  targets:
+    security:
+      type: dependency-track
+      url: http://127.0.0.1:PRIMARY_PORT
+      allowHTTP: true
+      apiKeyEnv: RIO_SYNTHETIC_KEY
+      exclude: [test-fixtures]
+    z-mirror:
+      type: dependency-track
+      url: http://127.0.0.1:MIRROR_PORT
+      allowHTTP: true
+      apiKeyEnv: RIO_SYNTHETIC_KEY
+      exclude: [worker, test-fixtures]
+      overrides:
+        application:
+          project: {name: mirror-application, version: "1.2.3"}
+        absent-module:
+          project: {fromSubject: true}

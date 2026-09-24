@@ -817,7 +817,7 @@ silently complete that work. Integration support is limited to versions with ret
 evidence; synthetic demo responses alone do not establish a tested server version.
 
 Run the [synthetic installed-binary demo](demo-delivery/README.md) with
-`python3 tools/demo-delivery/run.py /absolute/path/to/rio`. It uses only a loopback stub,
+`python3 tools/demo-delivery/run.py /absolute/path/to/rio`. It uses only loopback stubs,
 retains inspectable evidence, and needs no Go toolchain.
 
 The adapter's real-server contract is tested against **Dependency-Track 5.1.1**. Retained

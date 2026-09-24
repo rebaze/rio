@@ -221,7 +221,7 @@ jobs:
         with:
           python-version: "3.9"
       - name: Native delivery tests
-        run: go test ./internal/delivery/... ./internal/cli ./cmd/rio
+        run: go test ./internal/delivery/... ./internal/manifest ./internal/index ./internal/cli ./cmd/rio
       - name: Static build and installed-binary demo
         shell: bash
         env:
