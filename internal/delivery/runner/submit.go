@@ -19,6 +19,7 @@ type Prepared struct {
 	Reservation        *record.Reservation
 }
 type Result struct {
+	ExpectedReferences     []delivery.Reference   `json:"expectedReferences,omitempty"`
 	SchemaVersion          int                    `json:"schemaVersion"`
 	Operation              string                 `json:"operation"`
 	AttemptID              string                 `json:"attemptId,omitempty"`
@@ -61,6 +62,7 @@ func FromSnapshot(operation, path string, s record.Snapshot) Result {
 	r.AttemptID = s.Events[0].AttemptID
 	r.Source = &s.Intent.Source
 	r.Destination = &s.Intent.Destination
+	r.ExpectedReferences = append([]delivery.Reference(nil), s.Intent.ExpectedReferences...)
 	r.Outcome = s.Disposition
 	r.Acknowledgment = s.Disposition
 	r.Observations = s.Observations
@@ -80,6 +82,7 @@ func Submit(ctx context.Context, p Prepared, path string) (r Result, err error) 
 	source := p.Verified.Source()
 	r.Source = &source
 	r.Destination = &p.Description
+	r.ExpectedReferences = append([]delivery.Reference(nil), p.ExpectedReferences...)
 	if p.Target == nil || len(p.Verified.Payloads()) == 0 {
 		return Failure(r, delivery.Fail("invalid_prepared", "verified payload and target required"), 2)
 	}

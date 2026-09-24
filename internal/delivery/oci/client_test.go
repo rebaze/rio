@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -404,5 +405,62 @@ func TestClientPreallocationAndRequestDeadline(t *testing.T) {
 	resp, e := tr.RoundTrip(r)
 	if e == nil || resp != nil || !body.closed || status(ctx) != 200 {
 		t.Fatal("preallocation limit lost response fact", resp, e, body.closed, status(ctx))
+	}
+}
+
+func TestAuthRejectsTokenCaseAlias(t *testing.T) {
+	var s *httptest.Server
+	s = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"token":"good","Token":"wrong"}`)
+			return
+		}
+		if r.Header.Get("Authorization") != "" {
+			w.WriteHeader(200)
+			return
+		}
+		w.Header().Set("Www-Authenticate", `Bearer realm="`+s.URL+`/token"`)
+		w.WriteHeader(401)
+	}))
+	defer s.Close()
+	c := buildClient(t, clientDescription(t, s.URL, "{anonymous: true}", ""))
+	ctx, cancel := c.traversal(context.Background(), false)
+	defer cancel()
+	r, e := c.request(ctx, "GET", "/v2/", nil, 0, "")
+	if r != nil {
+		r.Body.Close()
+	}
+	if e == nil {
+		t.Fatal("token case alias passed to SDK")
+	}
+}
+func TestClientHEADUsesBlobSizeBound(t *testing.T) {
+	c := buildClient(t, clientDescription(t, "https://registry.example", "{anonymous: true}", ""))
+	ctx, cancel := c.traversal(context.Background(), true)
+	defer cancel()
+	tr := &safeTransport{options: c.options, base: responseTransport(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, ContentLength: delivery.PayloadLimit, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(""))}, nil
+	})}
+	req, _ := http.NewRequestWithContext(ctx, "HEAD", "https://registry.example/v2/acme/app/blobs/sha256:"+strings.Repeat("a", 64), nil)
+	resp, e := tr.RoundTrip(req)
+	if e != nil {
+		t.Fatal("valid large existing blob refused", e)
+	}
+	resp.Body.Close()
+}
+func TestClientCanonicalSameOriginLocation(t *testing.T) {
+	c := buildClient(t, clientDescription(t, "https://registry.example", "{anonymous: true}", ""))
+	base, _ := url.Parse("https://registry.example/v2/acme/app/blobs/uploads/")
+	u, e := validLocation("https://REGISTRY.EXAMPLE:443/v2/acme/app/blobs/uploads/session?state=x%2fy", base, c.options, "upload")
+	if e != nil || u.Host != "registry.example" || u.RawQuery != "state=x%2fy" {
+		t.Fatal("same origin refused or query rewritten", u, e)
+	}
+}
+func TestClientRejectsDoubleEncodedSessionPath(t *testing.T) {
+	c := buildClient(t, clientDescription(t, "https://registry.example", "{anonymous: true}", ""))
+	base, _ := url.Parse("https://registry.example/v2/acme/app/blobs/uploads/")
+	if _, e := validLocation("/v2/acme/app/blobs/uploads/%252e%252e/escape", base, c.options, "upload"); e == nil {
+		t.Fatal("double-encoded path accepted")
 	}
 }

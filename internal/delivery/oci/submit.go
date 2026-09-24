@@ -53,6 +53,7 @@ func validLocation(raw string, base *url.URL, o Options, kind string) (*url.URL,
 	default:
 		return nil, delivery.Fail("unsafe_location", "OCI location kind")
 	}
+	u.Host = o.Registry
 	return u, nil
 }
 func ociDescriptor(d Descriptor) ocispec.Descriptor {
@@ -231,7 +232,7 @@ func supportedRejection(resp *http.Response) bool {
 			Detail  json.RawMessage `json:"detail,omitempty"`
 		} `json:"errors"`
 	}
-	if delivery.DecodeJSON(raw, &env, false) != nil || len(env.Errors) == 0 {
+	if delivery.PreflightJSON(raw, &env, 10000) != nil || delivery.DecodeJSON(raw, &env, false) != nil || len(env.Errors) == 0 {
 		return false
 	}
 	for _, v := range env.Errors {

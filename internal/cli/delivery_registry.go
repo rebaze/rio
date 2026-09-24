@@ -2,14 +2,19 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/delivery/dtrack"
 	"github.com/rebaze/rio/internal/delivery/oci"
 	"github.com/rebaze/rio/internal/delivery/record"
+	"strings"
 )
 
 // This local registry owns adapter policies; core delivery remains HTTP-free.
 type adapterEntry struct {
+	HumanIdentityLabel         string
+	HumanDescription           func(delivery.Description) string
+	HumanObservation           func(delivery.Observation) string
 	Provider                   delivery.Provider
 	ValidateIntent             func(record.Intent) error
 	ValidateSnapshot           func(record.Snapshot) error
@@ -20,11 +25,41 @@ type adapterEntry struct {
 
 var deliveryAdapters = func(dir string) map[string]adapterEntry {
 	return map[string]adapterEntry{"oci": {
+		HumanObservation: func(o delivery.Observation) string {
+			var d struct {
+				OCI oci.Facts `json:"oci"`
+			}
+			if delivery.DecodeJSON(o.Details, &d, true) != nil {
+				return ""
+			}
+			f := d.OCI
+			parts := []string{fmt.Sprintf("publicationBegan=%t phase=%s", f.PublicationBegan, f.Phase)}
+			for _, item := range [][2]string{{"manifest", f.Manifest}, {"config", f.Config}, {"blob", f.Blob}, {"tag", f.Tag}, {"subject", f.Subject}, {"discovery", f.Discovery}} {
+				if item[1] != "" {
+					parts = append(parts, item[0]+"="+item[1])
+				}
+			}
+			return strings.Join(parts, " ")
+		},
 		Provider: oci.Provider{Directory: dir}, ValidateIntent: oci.ValidateIntent,
 		ValidateSnapshot: oci.ValidateSnapshot, SamePolicy: oci.SamePolicy,
 		RecordedSubject:            func(delivery.Description) (delivery.Subject, error) { return delivery.Subject{}, nil },
 		ValidateObserverReferences: oci.ValidateObserverReferences,
 	}, "dependency-track": {
+		HumanIdentityLabel: "project",
+		HumanDescription: func(d delivery.Description) string {
+			o, id, e := dtrack.ValidateDescription(d)
+			if e != nil {
+				return ""
+			}
+			if id.Project.UUID != "" {
+				return " autoCreate=not-applicable"
+			}
+			if o.AutoCreate != nil {
+				return fmt.Sprintf(" autoCreate=%t", *o.AutoCreate)
+			}
+			return ""
+		},
 		Provider: dtrack.Provider{Directory: dir},
 		ValidateIntent: func(i record.Intent) error {
 			if len(i.ExpectedReferences) > 0 {

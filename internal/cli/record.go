@@ -132,6 +132,15 @@ func renderRecord(d evidence.Document, w io.Writer) {
 		if o := x.Summary.LatestActivity; o != nil {
 			fmt.Fprintf(w, "latest activity=%s sequence=%d observedAt=%s\n", o.Observation.Value, o.Sequence, o.ObservedAt)
 		}
+		if o := x.Summary.LatestVerification; o != nil {
+			fmt.Fprintf(w, "latest verification=%s sequence=%d observedAt=%s\n", o.Observation.Value, o.Sequence, o.ObservedAt)
+			if entry, e := adapter(x.Intent.Destination.Type); e == nil && entry.HumanObservation != nil {
+				fmt.Fprintln(w, entry.HumanObservation(o.Observation))
+			}
+		}
+		for _, ref := range x.Intent.ExpectedReferences {
+			fmt.Fprintf(w, "expected %s: %s\n", ref.Kind, ref.Value)
+		}
 		if o := x.Summary.LastObservation; o != nil && o.Observation.Kind == "unavailable" {
 			fmt.Fprintf(w, "last observation=unavailable sequence=%d observedAt=%s\n", o.Sequence, o.ObservedAt)
 		}

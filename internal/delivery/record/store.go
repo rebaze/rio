@@ -105,15 +105,18 @@ func create(path string, i Intent, setup func(*Writer)) (result *Writer, err err
 func CheckIntent(i Intent) error { return checkIntent(i) }
 
 func checkIntent(i Intent) error {
-	if validateIntent(i) != nil {
-		return invalid()
-	}
 	// Bound the exact worst-length event envelope before persistent directory creation.
 	data, err := json.Marshal(i)
 	if err != nil {
 		return invalid()
 	}
 	var checked Intent
+	if err = preflight(data, &checked); err != nil {
+		return err
+	}
+	if validateIntent(i) != nil {
+		return invalid()
+	}
 	if delivery.DecodeJSON(data, &checked, true) != nil {
 		return invalid()
 	}

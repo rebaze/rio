@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/rebaze/rio/internal/delivery"
-	"github.com/rebaze/rio/internal/delivery/dtrack"
 	"github.com/rebaze/rio/internal/delivery/runner"
 	"github.com/rebaze/rio/internal/manifest"
 	"github.com/spf13/cobra"
@@ -79,6 +78,22 @@ func deliveryFinish(r runner.Result, e error, o deliveryOptions, global *globalO
 			}
 			fmt.Fprintf(stderr, "activity: %s\n", activity)
 		}
+		if r.Verification != "" {
+			fmt.Fprintf(stderr, "verification: %s\n", r.Verification)
+		}
+		for _, ref := range r.ExpectedReferences {
+			fmt.Fprintf(stderr, "expected %s: %s\n", ref.Kind, ref.Value)
+		}
+		if r.Destination != nil {
+			if entry, err := adapter(r.Destination.Type); err == nil && entry.HumanObservation != nil {
+				for i := len(r.Observations) - 1; i >= 0; i-- {
+					if r.Observations[i].Kind == "content" || i == len(r.Observations)-1 {
+						fmt.Fprintln(stderr, entry.HumanObservation(r.Observations[i]))
+						break
+					}
+				}
+			}
+		}
 		if r.Journal != nil && len(r.Journal.OrphanTemps) > 0 {
 			fmt.Fprintf(stderr, "orphan temporary files ignored: %d\n", len(r.Journal.OrphanTemps))
 		}
@@ -141,19 +156,28 @@ func batchFinish(r runner.BatchResult, e error, o deliveryOptions, g *globalOpti
 		for _, item := range r.Items {
 			fmt.Fprintf(stderr, "artifact=%s target=%s state=%s record=%s", item.ArtifactID, item.Target, item.State, item.Record)
 			if item.Destination != nil {
-				fmt.Fprintf(stderr, " project=%s capabilities=%v", item.Destination.Identity, item.Destination.Capabilities)
-				if options, identity, err := dtrack.ValidateDescription(*item.Destination); err == nil {
-					if identity.Project.UUID != "" {
-						fmt.Fprint(stderr, " autoCreate=not-applicable")
-					} else if options.AutoCreate != nil {
-						fmt.Fprintf(stderr, " autoCreate=%t", *options.AutoCreate)
-					}
+				label := "identity"
+				if entry, e := adapter(item.Destination.Type); e == nil && entry.HumanIdentityLabel != "" {
+					label = entry.HumanIdentityLabel
+				}
+				fmt.Fprintf(stderr, " %s=%s capabilities=%v", label, item.Destination.Identity, item.Destination.Capabilities)
+				if entry, e := adapter(item.Destination.Type); e == nil && entry.HumanDescription != nil {
+					fmt.Fprint(stderr, entry.HumanDescription(*item.Destination))
 				}
 			}
 			if item.Source != nil {
 				fmt.Fprintf(stderr, " gate=%s schemaValidated=%t allowFailedGate=%t sha256=%s", item.Source.Gate, item.Source.SchemaValidated, item.Source.AllowFailedGate, item.Source.OutputSHA256)
 			}
 			fmt.Fprintln(stderr)
+			for _, ref := range item.ExpectedReferences {
+				fmt.Fprintf(stderr, "expected %s: %s\n", ref.Kind, ref.Value)
+			}
+			if item.Result != nil {
+				fmt.Fprintf(stderr, "acknowledgment: %s\n", item.Result.Acknowledgment)
+				if item.Result.Verification != "" {
+					fmt.Fprintf(stderr, "verification: %s\n", item.Result.Verification)
+				}
+			}
 		}
 		for _, rule := range r.UnusedRules {
 			fmt.Fprintf(stderr, "unused %s rule: target=%s artifact=%s\n", rule.Rule, rule.Target, rule.ArtifactID)

@@ -4,6 +4,7 @@ import (
 	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/delivery/record"
 	"reflect"
+	"strings"
 )
 
 const emptyConfig = "{}"
@@ -48,11 +49,18 @@ func validatePublication(o Options) error {
 	if pub == nil || !validPayload(pub.Payload) || int64(len(pub.ManifestJSON)) > DocumentLimit {
 		return invalid("publication")
 	}
-	var m envelope
-	if e := delivery.DecodeJSON([]byte(pub.ManifestJSON), &m, true); e != nil {
-		return e
+	// The full canonical byte comparison below is the validation. Extract only
+	// the fixed source-digest token; never decode attacker-supplied layer arrays.
+	marker := `"` + indexAnnotation + `":"`
+	offset := strings.Index(pub.ManifestJSON, marker)
+	if offset < 0 {
+		return invalid("publication source digest")
 	}
-	hash := m.Annotations[indexAnnotation]
+	offset += len(marker)
+	if len(pub.ManifestJSON) < offset+65 || pub.ManifestJSON[offset+64] != '"' {
+		return invalid("publication source digest")
+	}
+	hash := pub.ManifestJSON[offset : offset+64]
 	if !delivery.ValidDigest(hash) {
 		return invalid("publication source digest")
 	}

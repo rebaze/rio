@@ -206,7 +206,9 @@ Plan/deliver `--json` suppress human progress and emit exactly one schemaVersion
 with operation, outcome,
 raw index/current manifest digests when available, requestMayHaveOccurred, items, unusedRules,
 and a safe error when present. Each item reports artifactId, target, resolved record path, state,
-verified source/destination, and the existing v1 result when attempted. Plan items are ready;
+verified source/destination, optional predicted `expectedReferences`, and the existing v1 result
+when attempted. OCI v1 results also expose optional `verification`, separately from
+`acknowledgment` and Dependency-Track `activity`. Plan items are ready;
 delivery items are accepted, rejected, unknown, unattempted or error. Partial means an earlier
 attempt completed before failure. Exit remains that failure's code. An observed acceptance can
 remain visible alongside exit 3 if result persistence failed. Inspect/reconcile remain v1.
@@ -216,6 +218,42 @@ stop at failure and never roll back. Default journals live below the index direc
 `deliveries/<pair-key>/`; unchanged reruns refuse existing journals. Explicit `--record` requires
 one pair; `--retry-of` additionally requires an explicit fresh record path. See the
 [configuration, recovery and demo guide](../tools/README.md#native-verified-delivery).
+
+### OCI delivery and reconciliation
+
+Use `type: oci` in `delivery.targets`; standalone and exact-subject attachment share all existing
+selection, automatic-journal, retry and JSON contracts. There is no separate OCI command family or
+configuration file. [The early example](../README.md#deliver-to-an-oci-registry) shows both forms.
+
+`registry` is a host/port authority and `repository` is a lowercase OCI repository path. Authentication
+is exactly one of `anonymous: true`, username/password environment references, or `bearerTokenEnv`.
+Only explicit deliver/reconcile builds a client or reads selected credentials/CA files. Planning,
+inspection and evidence collection validate descriptions without doing so.
+
+The intent commits exact expected `oci:manifest`, `oci:blob`, `oci:tag`, and optional `oci:subject`
+references before HTTP. They are predictions, not receipts. OCI `verification` values are `verified`,
+`mismatch`, or `unavailable`; allowlisted `details.oci` separates protocol phase, whether publication
+began, and current manifest/config/blob/tag/subject/discovery facts. An already-present artifact
+requires a complete read-back and records `already_present` with `publicationBegan: false`.
+
+One OCI reconcile performs one bounded traversal. Any explicitly supplied `--wait` is refused
+before HTTP. Intent-only journals may reconcile by committed expected references; acknowledgment
+stays unknown and no submission can later be appended to that same attempt. An explicit fresh
+`--retry-of` is the sole retry linkage. Credential environment references and CA files may rotate;
+repository, registry, subject, publication, HTTP policy or trusted-token-origin changes refuse.
+
+| Exit | OCI meaning |
+|---|---|
+| 0 | Receipt persisted, fully verified already-present artifact, valid offline data, or complete requested read-back/discovery |
+| 2 | Local config/source/journal/credential/policy refusal, including OCI wait; no HTTP |
+| 3 | Local persistence or cleanup failure; reported remote facts may already have occurred |
+| 4 | Ambiguous publication, unusable receipt, conflict/drift, incomplete content or required discovery |
+| 5 | Trustworthy supported-endpoint rejection of publication |
+
+A positive HTTP 201 with an unusable digest/location or missing attachment acknowledgment is retained
+as an observed HTTP acceptance; it does not become a usable receipt. Inspecting a valid unresolved
+journal still exits 0. No reconciliation repairs tags, uploads blobs or maintains fallback indexes.
+See [the complete transport and compatibility scope](../tools/README.md#native-oci-delivery).
 
 ## Record collection and inspection
 

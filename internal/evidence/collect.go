@@ -132,6 +132,9 @@ func assemble(raw []byte, captures []record.Capture, version string, validate Va
 			for _, o := range observations {
 				ob := &Observation{ev.Sequence, ev.ObservedAt, o}
 				x.Summary.LastObservation = ob
+				if o.Kind == "content" {
+					x.Summary.LatestVerification = ob
+				}
 				if o.Kind == "activity" {
 					x.Summary.LatestActivity = ob
 				}
@@ -149,7 +152,7 @@ func assemble(raw []byte, captures []record.Capture, version string, validate Va
 		for n := range x.Events {
 			x.Events[n].Data, _ = canonicalJSON(x.Events[n].Data)
 		}
-		for _, o := range []*Observation{x.Summary.LatestActivity, x.Summary.LastObservation} {
+		for _, o := range []*Observation{x.Summary.LatestActivity, x.Summary.LatestVerification, x.Summary.LastObservation} {
 			if o != nil && o.Observation.Details != nil {
 				o.Observation.Details, _ = canonicalJSON(o.Observation.Details)
 			}

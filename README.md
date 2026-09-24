@@ -18,10 +18,10 @@ and what later checks observed. Lost responses remain visible as uncertainty, wi
 resubmission. Normalization stays offline; delivery uses the network explicitly. Both run in one
 binary, on your workstation or in CI.
 
-Delivery destinations include analysis platforms and artifact registries. **Dependency-Track is
-implemented today; [OCI registry delivery is planned](https://github.com/rebaze/rio/issues/83).**
+Delivery targets include **Dependency-Track** and **OCI artifact registries**. OCI delivery supports
+standalone SBOMs and attachment to an explicitly supplied image or image-index digest.
 
-[Quick start](#quick-start) · [Verified delivery](#deliver-to-dependency-track) · [One evidence record](#one-evidence-record) · [Configuration](#configure-your-project) · [For agents](#for-agents) · [Reference](#reference)
+[Quick start](#quick-start) · [Verified delivery](#deliver-to-dependency-track) · [OCI registries](#deliver-to-an-oci-registry) · [One evidence record](#one-evidence-record) · [Configuration](#configure-your-project) · [For agents](#for-agents) · [Reference](#reference)
 
 ## When to use Rio
 
@@ -32,7 +32,8 @@ implemented today; [OCI registry delivery is planned](https://github.com/rebaze/
   Source/build details remain labeled as producer assertions.
 - **Deliver verified SBOMs with an inspectable history.** Upload directly to Dependency-Track by
   project name/version or UUID. Retain the intended destination, payload digest, acknowledgment
-  and later activity observations in a delivery journal, including unknown outcomes.
+  and later activity observations in a delivery journal, including unknown outcomes. Publish unchanged
+  SBOM bytes to OCI registries with immutable manifest references and independent read-back evidence.
 - **Cover every selected module.** Include each qualifying module's SBOM automatically, with a
   failure when a selected module has not produced its output.
 - **Optionally repair Eclipse/OSGi p2 coordinates.** Convert eligible package URLs to Maven
@@ -150,6 +151,59 @@ Use the reported journal path with `rio delivery inspect --record PATH` or
 `rio delivery reconcile --record PATH` to query saved receipt activity without resubmitting.
 See [delivery configuration and the runnable demo](tools/README.md#native-verified-delivery)
 for filters, overrides, UUID selectors, deliberate retries, and tested server versions.
+
+## Deliver to an OCI registry
+
+With a build that includes OCI delivery, add a registry target to the same `rio.yaml`:
+
+```yaml
+delivery:
+  targets:
+    release-registry:
+      type: oci
+      registry: registry.example.com
+      repository: acme/application-sbom
+      auth:
+        usernameEnv: OCI_USERNAME
+        passwordEnv: OCI_PASSWORD
+```
+
+Inject the named credentials through your secret manager, normalize, then preview or deliver:
+
+```sh
+rio normalize --gate fail
+rio delivery plan --target release-registry --json
+rio deliver --target release-registry --json
+```
+
+Rio uploads the exact verified CycloneDX bytes with a deterministic OCI manifest. It reports a
+consumer reference such as `registry.example.com/acme/application-sbom@sha256:<manifest-digest>`
+and uses the generated tag `rio-sbom-sha256-<manifest-digest>`. A valid persisted receipt is exit 0;
+normal publication does not claim that a later read-back has already succeeded.
+
+To attach the SBOM to an existing image, use **that image's repository** and add its exact
+`subject` descriptor to the target. This example is illustrative; replace all descriptor values
+with those from your image-producing pipeline:
+
+```yaml
+repository: acme/application
+subject:
+  digest: sha256:1111111111111111111111111111111111111111111111111111111111111111
+  mediaType: application/vnd.oci.image.manifest.v1+json
+  size: 527
+```
+
+Rio verifies that subject before writing and requires the OCI Referrers API for attachment.
+Choose the image index or a specific platform manifest explicitly. The **SBOM blob digest**,
+**Rio wrapper manifest digest**, and **subject image digest** are different identities. Attachment
+does not change the subject, prove executable-to-SBOM correspondence, or trigger security analysis.
+
+Use the reported journal with `rio delivery reconcile --record PATH` for a bounded read-only
+content/discovery check. Reconciliation needs no original SBOM or index files. After a lost response
+it can report `verification: verified` while the historical acknowledgment remains `unknown`.
+`rio delivery inspect` and `rio record` remain offline. Server tag immutability and retention policy
+matter: generated tags avoid human release aliases but are not an atomic protection against racing
+external writers. See [OCI configuration, recovery, demos and tested registry scope](tools/README.md#native-oci-delivery).
 
 ## One evidence record
 

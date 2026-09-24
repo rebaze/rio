@@ -61,7 +61,7 @@ func validateIntent(i Intent) error {
 	}
 	for _, raw := range []json.RawMessage{i.Destination.Identity, i.Destination.Options} {
 		var m map[string]json.RawMessage
-		if delivery.DecodeJSON(raw, &m, false) != nil || m == nil {
+		if preflight(raw, &m) != nil || delivery.DecodeJSON(raw, &m, false) != nil || m == nil {
 			return invalid()
 		}
 	}
@@ -135,6 +135,20 @@ func addEvent(s *Snapshot, e Event) error {
 	}
 	if len(s.Events) > 0 && e.AttemptID != s.Events[0].AttemptID {
 		return invalid()
+	}
+	var model any
+	switch e.Kind {
+	case "intent":
+		model = &Intent{}
+	case "submission":
+		model = &delivery.Submission{}
+	case "reconciliation":
+		model = &Reconciliation{}
+	default:
+		return invalid()
+	}
+	if err := preflight(e.Data, model); err != nil {
+		return err
 	}
 	switch e.Kind {
 	case "intent":

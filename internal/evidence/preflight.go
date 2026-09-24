@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/delivery/record"
 )
 
@@ -31,12 +32,16 @@ func preflightRecord(raw []byte) error {
 type recordScanner struct {
 	dec          *json.Decoder
 	events, refs int
+	inEvent      bool
+	eventEntries int
 }
 
 var deliveriesType = reflect.TypeFor[[]Delivery]()
 var sourcesType = reflect.TypeFor[[]SourceDocument]()
 var eventsType = reflect.TypeFor[[]record.Event]()
 var notesType = reflect.TypeFor[[]CollectionNote]()
+var referencesType = reflect.TypeFor[[]delivery.Reference]()
+var eventType = reflect.TypeFor[record.Event]()
 var deliveryType = reflect.TypeFor[Delivery]()
 
 func (s *recordScanner) value(t reflect.Type, scope string, depth int) error {
@@ -64,6 +69,12 @@ func (s *recordScanner) value(t reflect.Type, scope string, depth int) error {
 			}
 			seen := map[string]bool{}
 			for s.dec.More() {
+				if s.inEvent {
+					if s.eventEntries >= record.JSONEntryLimit {
+						return limitError()
+					}
+					s.eventEntries++
+				}
 				key, e := s.dec.Token()
 				if e != nil {
 					return invalid()
@@ -90,8 +101,16 @@ func (s *recordScanner) value(t reflect.Type, scope string, depth int) error {
 						childScope = "references"
 					}
 				}
+				oldEvent, oldEntries := s.inEvent, s.eventEntries
+				if t == eventType && name == "data" {
+					s.inEvent = true
+					s.eventEntries = 0
+				}
 				if e = s.value(child, childScope, depth+1); e != nil {
 					return e
+				}
+				if t == eventType && name == "data" {
+					s.inEvent, s.eventEntries = oldEvent, oldEntries
 				}
 			}
 			if end, e := s.dec.Token(); e != nil || end != json.Delim('}') {
@@ -113,8 +132,16 @@ func (s *recordScanner) value(t reflect.Type, scope string, depth int) error {
 				limit = MaxEvents
 			case notesType:
 				limit = MaxJournals
+			case referencesType:
+				limit = record.JSONEntryLimit
 			}
 			for s.dec.More() {
+				if s.inEvent {
+					if s.eventEntries >= record.JSONEntryLimit {
+						return limitError()
+					}
+					s.eventEntries++
+				}
 				if limit >= 0 && count >= limit {
 					return limitError()
 				}

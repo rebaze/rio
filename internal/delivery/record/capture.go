@@ -67,6 +67,9 @@ func replayRaw(s *Snapshot, b []byte) error {
 		return delivery.Fail("size_limit", "maximum event bytes")
 	}
 	var e Event
+	if err := preflight(b, &e); err != nil {
+		return err
+	}
 	if delivery.DecodeJSON(b, &e, true) != nil {
 		return invalid()
 	}

@@ -195,9 +195,15 @@ type safeTransport struct {
 	options Options
 }
 
-func originURL(u *url.URL) string { return u.Scheme + "://" + u.Host }
+func originURL(u *url.URL) string {
+	host, e := canonicalRegistry(u.Host, u.Scheme == "http")
+	if e != nil {
+		return ""
+	}
+	return u.Scheme + "://" + host
+}
 func safeURL(u *url.URL) bool {
-	if u.User != nil || u.Fragment != "" || u.Opaque != "" || u.Host == "" || strings.Contains(u.Path, "\\") || strings.ContainsAny(u.RawQuery, "\r\n") {
+	if u.User != nil || u.Fragment != "" || u.Opaque != "" || u.Host == "" || strings.ContainsAny(u.Path, "\\%") || strings.ContainsAny(u.RawQuery, "\r\n") {
 		return false
 	}
 	escaped := strings.ToLower(u.EscapedPath())
@@ -259,7 +265,7 @@ func (t *safeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, delivery.Fail(code, "OCI response refused")
 	}
 	limit := DocumentLimit
-	if strings.Contains(req.URL.Path, "/blobs/") && req.Method == "GET" {
+	if strings.Contains(req.URL.Path, "/blobs/") && (req.Method == "GET" || req.Method == "HEAD") {
 		limit = delivery.PayloadLimit
 	}
 	if token || resp.StatusCode >= 400 {
@@ -317,8 +323,13 @@ func (t *safeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			return refuse("invalid_auth_response")
 		}
 		var m map[string]json.RawMessage
-		if delivery.DecodeJSON(raw, &m, false) != nil {
+		if delivery.PreflightJSON(raw, &m, 10000) != nil || delivery.DecodeJSON(raw, &m, false) != nil {
 			return refuse("invalid_auth_response")
+		}
+		for key := range m {
+			if (strings.EqualFold(key, "token") && key != "token") || (strings.EqualFold(key, "access_token") && key != "access_token") {
+				return refuse("invalid_auth_response")
+			}
 		}
 		var tokenValue, access string
 		for key, dst := range map[string]*string{"token": &tokenValue, "access_token": &access} {

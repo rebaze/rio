@@ -840,3 +840,118 @@ record collection/inspection. It retains before/after snapshots, shows failed ga
 journals and missing selected retry ancestry, removes the original workspace and inspects a copied
 record. Altered embedded bytes and summaries refuse. All receiver responses are labeled synthetic;
 no successful-ingestion, authenticated-identity, signing or full-retention claim is made.
+
+## Native OCI delivery
+
+Rio's OCI adapter is part of the binary. It needs no ORAS/Docker executable, shell helper, Docker
+credential configuration, keychain or cloud login command. The [early product example](../README.md#deliver-to-an-oci-registry)
+uses the same `rio.yaml`, verified index and batch selection as Dependency-Track. You can include
+both target types in one batch and collect their journals into one portable `record.json`.
+
+An OCI target accepts `registry`, `repository`, `auth`, optional `subject`, `caFile`, `allowHTTP`,
+and `tokenServiceOrigins`. Per-artifact overrides may replace only `subject`. Common `exclude`
+and `overrides` follow the unified delivery configuration. No arbitrary tag, raw manifest, project,
+auto-create option, inline credential, or payload override is accepted.
+
+```yaml
+delivery:
+  targets:
+    registry:
+      type: oci
+      registry: registry.example.com:443
+      repository: product-repository/acme/application
+      auth:
+        usernameEnv: OCI_USERNAME
+        passwordEnv: OCI_PASSWORD
+      caFile: company-ca.pem
+      tokenServiceOrigins: [https://auth.example.com]
+```
+
+Use an OCI client endpoint, not a browser UI, Maven URL or generic `/repository/...` URL. Registry
+is an authority with no scheme or path (bracketed IPv6 is supported); repository contains the product
+repository key when path routing requires it. Obtain the exact endpoint from your registry operator.
+Rio canonicalizes host case and effective default ports, and refuses traversal/encoded separators.
+It does not guess Docker Hub library names. Provision a writable hosted/local OCI repository outside
+Rio; proxy/group/virtual endpoints need their own verified deployment configuration.
+
+Authentication is exactly `{anonymous: true}`, `{usernameEnv: NAME, passwordEnv: NAME}`, or
+`{bearerTokenEnv: NAME}`. Values are resolved only for selected explicit network operations. Missing,
+empty or control-containing credentials refuse without being echoed. HTTPS and hostname verification
+are the default; relative `caFile` paths resolve beside the current manifest. Saved CA references
+remain portable historical strings during inspection. `allowHTTP: true` is an explicit development
+setting. Standard Go proxy environment variables are honored; proxy credentials are not recorded.
+
+Basic/PAT and Bearer challenges are supported. Deliver negotiates repository `pull,push` scope;
+reconcile uses `pull`. Token-service origins default to the registry origin; add other **HTTPS
+origins** explicitly. Cross-origin HTTP, downgraded realms and expanded repository scopes refuse
+before forwarding credentials. Credentials/CA references may rotate for an existing journal;
+trusted origins and effective transport policy must remain the same. There are no generic write
+retries. The finite authentication exception can replay a body only after an explicit 401 rejection,
+using a new reader over the same snapshot. Connection reuse and HTTP/2 are disabled to exclude their
+implicit retry paths. All redirects, including read offloading, are unsupported in this initial scope.
+
+Every request has a 30-second deadline, and each submit/reconcile traversal has a five-minute deadline
+bounded by caller cancellation. Manifest, subject and Referrers documents are at most 4 MiB each;
+auth/error JSON is at most 64 KiB; the unchanged SBOM snapshot is at most 64 MiB. Referrers traversal
+allows at most 100 pages and 10,000 descriptors, counted before decoding an excess entry. Index,
+configuration and event byte limits continue to apply. Journal events additionally allow at most
+10,000 combined JSON object properties and array entries, checked before their trees are allocated.
+Limits refuse rather than truncate.
+
+### Packaging, attachment and evidence
+
+The wrapper is an OCI image manifest with artifact type `application/vnd.cyclonedx+json`, an exact
+`{}` empty config (`application/vnd.oci.empty.v1+json`), and one unchanged CycloneDX layer named
+`sbom.cdx.json`. Its annotation binds the raw normalization index SHA-256. No timestamp, random value,
+compression, archive or SBOM reserialization enters the envelope. The generated publication tag uses
+all 64 hex characters of the wrapper digest. The immutable manifest reference and original blob
+SHA-256 are distinct; attachment adds a third digest for the exact subject image or index.
+
+For attachment, supply `subject.digest` (`sha256:` plus lowercase hex), `subject.mediaType`, and
+`subject.size` (positive, at most 4 MiB), in the **same repository**. OCI image manifest/index and Docker
+schema-2 manifest/list media types are accepted. Obtain the descriptor from the image-producing
+pipeline; an optional setup tool is `oras manifest fetch --descriptor REGISTRY/REPOSITORY@sha256:DIGEST`.
+Rio does not invoke ORAS or resolve an image tag. Explicitly choose the multi-platform index or the
+platform manifest that the SBOM describes. The supplied association is a producer assertion.
+
+Before mutation, Rio verifies the subject and probes the standardized Referrers API. Missing or
+unsupported discovery refuses attachment; there is no referrers-tag fallback or index mutation.
+It checks the generated tag: matching content is fully read back and recorded as `already_present`;
+different content is a conflict. GET-before-PUT is not a portable atomic reservation against an
+external writer. Configure server tag immutability/access control and retention deliberately.
+
+Blob uploads preserve same-origin session query data without saving session URLs. Manifest acceptance
+requires HTTP 201 with the expected digest and a valid same-origin manifest Location; attachment also
+requires matching `OCI-Subject`. A positive 201 with an unusable receipt remains visible as its own
+observation. Partial failures leave already written blobs/sessions in place; Rio never deletes shared
+content or automatically repeats an ambiguous upload.
+
+`rio delivery reconcile --record PATH` reads and hashes the actual manifest, empty config and original
+SBOM blob, checks the generated tag, and, for attachment, verifies the subject and exact Referrers
+descriptor. Matching HEAD/digest headers alone are not verification. Missing discovery is explicit
+`not-observed`/unavailable. Reconcile never repairs or uploads. No original local index/SBOM files are
+needed after intent persistence, and current presence never proves which attempt created an object.
+
+After a crash, confirm the writer has actually stopped before manually removing its stale sibling
+`.lock` directory. Rio never breaks one automatically. Reconcile an intent-only journal first: it may
+report content verified with acknowledgment unknown. A new explicit retry uses fresh source
+verification and a fresh journal with `--retry-of`; the original event bytes remain unchanged.
+
+The shared `record.json` includes exact journal source bytes, expected and observed references,
+acknowledgment and optional latest content verification. Portable inspection reads only that file.
+Consistency is not producer authentication, executable equivalence, perpetual retention, vulnerability
+analysis, signing, Xray ingestion or Lifecycle/IQ analysis.
+
+### OCI demonstrations and registry scope
+
+The installed-binary synthetic walkthrough and the opt-in real-registry harness are documented under
+`tools/demo-oci/` and `tools/demo-oci/integration/`. Synthetic protocol tests are labeled as such and
+are not vendor compatibility evidence. Actual versions, repository recipe/routing, auth, immutability
+and observed descriptor/read-back facts belong in version-specific integration evidence.
+
+Distribution 3.1.2, zot 2.1.21, Nexus native OCI 3.94.0+, and Artifactory OCI with Referrers 7.90.1+
+are the planned integration targets. These floors are documented capabilities, not a claim that all
+versions or deployment modes have been tested. In particular, older Nexus Docker repository support
+is not proof of the required native OCI/Referrers contract. Nexus and Artifactory registry storage and
+discovery do not imply security-analysis ingestion. Consult the observed-evidence support matrix
+before claiming a tested configuration; unavailable vendor evidence remains explicitly open.

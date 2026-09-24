@@ -2,8 +2,10 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,9 +14,11 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/delivery/oci"
 	"github.com/rebaze/rio/internal/delivery/record"
 	"github.com/rebaze/rio/internal/delivery/runner"
+	"github.com/rebaze/rio/internal/evidence"
 )
 
 func TestReconcileOCIWithoutSourcesWithRotatedCredentialsAndCA(t *testing.T) {
@@ -142,5 +146,208 @@ func TestReconcileOCIWithoutSourcesWithRotatedCredentialsAndCA(t *testing.T) {
 	code = Main([]string{"delivery", "inspect", "--record", journal}, &stdout, &stderr)
 	if code != 0 || stdout.Len() != 0 {
 		t.Fatal(code, stdout.String(), stderr.String())
+	}
+	for _, fact := range []string{"verification: verified", "expected oci:manifest:"} {
+		if !strings.Contains(stderr.String(), fact) {
+			t.Errorf("missing human fact %s: %s", fact, stderr.String())
+		}
+	}
+	testMixedPortableOCIRecord(t, ip, cfg, config, journal, retry)
+
+}
+
+func testMixedPortableOCIRecord(t *testing.T, ip, cfg, config, journal, retry string) {
+	t.Helper()
+	config += "    security:\n      type: dependency-track\n      url: https://unused.invalid\n"
+	if e := os.WriteFile(cfg, []byte(config), 0600); e != nil {
+		t.Fatal(e)
+	}
+	c, plan, e := batchPreflight(cfg, deliveryOptions{index: ip})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(plan.Jobs) != 2 {
+		t.Fatal("mixed batch plan missing targets")
+	}
+	var job delivery.Job
+	for _, j := range plan.Jobs {
+		if j.Description.Type == "dependency-track" {
+			job = j
+		}
+	}
+	intent, e := runner.PrepareIntent(runner.Prepared{Verified: job.Verified, Description: job.Description, Intent: record.Intent{RioVersion: "test", Binding: job.Target, ConfigSHA256: c.SHA256}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	dtrackJournal := filepath.Join(t.TempDir(), "dtrack")
+	w, e := record.Create(dtrackJournal, intent)
+	if e != nil {
+		t.Fatal(e)
+	}
+	refs := []delivery.Reference{{Kind: "dependency-track:event-token", Value: "f90934f5-cb88-47ce-81cb-db06fc67d4b4"}}
+	sub := delivery.Submission{Disposition: "accepted", References: refs, Observations: []delivery.Observation{{Kind: "acknowledgment", Value: "accepted", Origin: "receiver", Code: "accepted", HTTPStatus: 200, References: refs}}}
+	b, _ := json.Marshal(sub)
+	if e = w.Append("submission", b); e != nil {
+		t.Fatal(e)
+	}
+	if e = w.Close(); e != nil {
+		t.Fatal(e)
+	}
+	oldBuild, oldEnv := deliveryBuild, deliveryLookupEnv
+	deliveryBuild = func(delivery.Provider, delivery.Description) (delivery.Target, error) {
+		t.Fatal("record built client")
+		return nil, nil
+	}
+	deliveryLookupEnv = func(string) (string, bool) { t.Fatal("record resolved credential"); return "", false }
+	defer func() { deliveryBuild, deliveryLookupEnv = oldBuild, oldEnv }()
+	paths := []string{journal, retry, dtrackJournal}
+	doc, e := evidence.Collect(ip, paths, "test", validateSnapshot, recordPolicy)
+	if e != nil {
+		t.Fatal(e)
+	}
+	raw, e := evidence.Marshal(doc)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var readable map[string]any
+	json.Unmarshal(raw, &readable)
+	for _, entry := range readable["deliveries"].([]any) {
+		d := entry.(map[string]any)
+		kind := d["intent"].(map[string]any)["destination"].(map[string]any)["type"]
+		summary := d["summary"].(map[string]any)
+		if kind == "oci" && summary["latestVerification"] == nil {
+			t.Error("OCI verification absent from shared summary")
+		}
+		if kind == "dependency-track" && summary["latestVerification"] != nil {
+			t.Error("DTrack invented content verification")
+		}
+	}
+	os.RemoveAll(filepath.Dir(ip))
+	for _, p := range paths {
+		os.RemoveAll(p)
+	}
+	portable := filepath.Join(t.TempDir(), "record.json")
+	if e = os.WriteFile(portable, raw, 0600); e != nil {
+		t.Fatal(e)
+	}
+	var stdout, stderr bytes.Buffer
+	code := Main([]string{"record", "inspect", "--file", portable, "--json"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatal(code, stderr.String())
+	}
+	if _, e = evidence.Parse(raw, validateSnapshot, recordPolicy); e != nil {
+		t.Fatal("portable record rejected", e)
+	}
+}
+
+func TestOCICompleteJSONExitContracts(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		status, exit     int
+		corrupt, persist bool
+	}{{"accepted", 201, 0, false, false}, {"bad-receipt", 201, 4, true, false}, {"rejected", 403, 5, false, false}, {"ambiguous", 500, 4, false, false}, {"persistence", 201, 3, false, true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			journal := filepath.Join(t.TempDir(), "journal")
+			var puts atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v2/" {
+					w.WriteHeader(200)
+					return
+				}
+				if r.Method == "HEAD" {
+					w.WriteHeader(200)
+					return
+				}
+				if r.Method == "GET" {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(404)
+					fmt.Fprint(w, `{"errors":[{"code":"MANIFEST_UNKNOWN"}]}`)
+					return
+				}
+				if r.Method == "PUT" {
+					puts.Add(1)
+					raw, _ := io.ReadAll(r.Body)
+					dg := "sha256:" + delivery.Digest(raw)
+					if !tc.corrupt {
+						w.Header().Set("Docker-Content-Digest", dg)
+					}
+					w.Header().Set("Location", "/v2/acme/app/manifests/"+dg)
+					if tc.persist {
+						os.Mkdir(filepath.Join(journal, "obstruction"), 0700)
+					}
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(tc.status)
+					if tc.status != 201 {
+						fmt.Fprint(w, `{"errors":[{"code":"DENIED","message":"never-copy-this-synthetic-body"}]}`)
+					}
+					return
+				}
+				t.Error("unexpected upload")
+			}))
+			defer server.Close()
+			ip, cfg := deliveryFixture(t, "https://unused.invalid")
+			config := fmt.Sprintf("version: 1\nartifacts: [{id: app, sbom: bom.json}]\ndelivery:\n  targets:\n    registry:\n      type: oci\n      registry: '%s'\n      repository: acme/app\n      auth: {anonymous: true}\n      allowHTTP: true\n", strings.TrimPrefix(server.URL, "http://"))
+			os.WriteFile(cfg, []byte(config), 0600)
+			var stdout, stderr bytes.Buffer
+			code := Main([]string{"deliver", "--index", ip, "--manifest", cfg, "--record", journal, "--json", "--quiet"}, &stdout, &stderr)
+			if code != tc.exit {
+				t.Fatal(code, stderr.String())
+			}
+			if strings.Contains(stdout.String()+stderr.String(), "never-copy-this-synthetic-body") {
+				t.Fatal("body leaked")
+			}
+			var result runner.BatchResult
+			dec := json.NewDecoder(&stdout)
+			if e := dec.Decode(&result); e != nil {
+				t.Fatal(e)
+			}
+			var extra any
+			if e := dec.Decode(&extra); e != io.EOF {
+				t.Fatal("extra stdout")
+			}
+			if result.SchemaVersion != 2 || len(result.Items) != 1 || result.Items[0].Result == nil || puts.Load() != 1 || !result.RequestMayHaveOccurred {
+				t.Fatal("incomplete result")
+			}
+			one := result.Items[0].Result
+			if one.SchemaVersion != 1 || one.Source == nil || one.Destination == nil || len(one.ExpectedReferences) != 3 || len(one.Observations) != 1 {
+				t.Fatal("incomplete per-attempt result")
+			}
+			want := "unknown"
+			if tc.exit == 0 || tc.exit == 3 {
+				want = "accepted"
+			}
+			if tc.exit == 5 {
+				want = "rejected"
+			}
+			if one.Acknowledgment != want || one.Persisted == tc.persist {
+				t.Fatal(one.Acknowledgment, one.Persisted)
+			}
+		})
+	}
+}
+func TestOCIWholeBatchIntentLimitBeforeHTTP(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests.Add(1); w.WriteHeader(200) }))
+	defer server.Close()
+	ip, cfg := deliveryFixture(t, "https://unused.invalid")
+	config := fmt.Sprintf("version: 1\nartifacts: [{id: app, sbom: bom.json}]\ndelivery:\n  targets:\n    first:\n      type: dependency-track\n      url: '%s'\n      allowHTTP: true\n    last:\n      type: oci\n      registry: '%s'\n      repository: acme/app\n      allowHTTP: true\n      auth: {usernameEnv: %s, passwordEnv: %s}\n", server.URL, strings.TrimPrefix(server.URL, "http://"), strings.Repeat("U", 300000), strings.Repeat("P", 300000))
+	os.WriteFile(cfg, []byte(config), 0600)
+	old := deliveryLookupEnv
+	deliveryLookupEnv = func(string) (string, bool) { return "synthetic-value", true }
+	defer func() { deliveryLookupEnv = old }()
+	var stdout, stderr bytes.Buffer
+	code := Main([]string{"deliver", "--index", ip, "--manifest", cfg, "--json"}, &stdout, &stderr)
+	if code != 2 || requests.Load() != 0 {
+		t.Fatal("HTTP before complete intent bound", code, requests.Load())
+	}
+	var result runner.BatchResult
+	if e := json.Unmarshal(stdout.Bytes(), &result); e != nil {
+		t.Fatal(e)
+	}
+	if result.Error == nil || result.Error.Code != "size_limit" {
+		t.Fatal("wrong refusal", result.Error)
+	}
+	if _, e := os.Stat(filepath.Join(filepath.Dir(ip), "deliveries")); !os.IsNotExist(e) {
+		t.Fatal("oversized batch left journals")
 	}
 }
