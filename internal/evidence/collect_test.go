@@ -3,6 +3,7 @@ package evidence
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -291,5 +292,88 @@ func TestCollectSourceAndJournalLimits(t *testing.T) {
 	f.Close()
 	if _, e := Collect(ip, nil, "collector", validateFixture); e == nil {
 		t.Fatal("index byte limit ignored")
+	}
+}
+
+func TestCollectCombinedEventLimit(t *testing.T) {
+	ip, p, q := fixture(t)
+	paths := []string{p, q}
+	for _, path := range paths {
+		raw, _ := os.ReadFile(filepath.Join(path, "00000000000000000000.json"))
+		var first record.Event
+		json.Unmarshal(raw, &first)
+		if path == q {
+			sub := delivery.Submission{Disposition: "unknown", References: []delivery.Reference{}, Observations: []delivery.Observation{}}
+			data, _ := json.Marshal(sub)
+			b, _ := json.Marshal(record.Event{SchemaVersion: 1, Sequence: 1, AttemptID: first.AttemptID, ObservedAt: first.ObservedAt, Kind: "submission", Data: data})
+			os.WriteFile(filepath.Join(path, "00000000000000000001.json"), b, 0600)
+		}
+		data, _ := json.Marshal(record.Reconciliation{Observation: delivery.Observation{Kind: "unavailable", Value: "unavailable", Origin: "local", Code: "query_failed", References: []delivery.Reference{}}, ConfigSHA256: strings.Repeat("a", 64)})
+		for n := 2; n < 5000; n++ {
+			b, _ := json.Marshal(record.Event{SchemaVersion: 1, Sequence: n, AttemptID: first.AttemptID, ObservedAt: first.ObservedAt, Kind: "reconciliation", Data: data})
+			if e := os.WriteFile(filepath.Join(path, fmt.Sprintf("%020d.json", n)), b, 0600); e != nil {
+				t.Fatal(e)
+			}
+		}
+	}
+	d, e := Collect(ip, paths, "collector", validateFixture)
+	if e != nil || len(d.Evidence) != 10001 {
+		t.Fatal("exact aggregate event count refused", e)
+	}
+	last, _ := os.ReadFile(filepath.Join(q, "00000000000000004999.json"))
+	last = bytes.Replace(last, []byte(`"sequence":4999`), []byte(`"sequence":5000`), 1)
+	os.WriteFile(filepath.Join(q, "00000000000000005000.json"), last, 0600)
+	if _, e = Collect(ip, paths, "collector", validateFixture); e == nil {
+		t.Fatal("aggregate event count truncated or ignored")
+	}
+}
+func TestCollectExactJournalCount(t *testing.T) {
+	ip, p, _ := fixture(t)
+	raw, _ := os.ReadFile(filepath.Join(p, "00000000000000000000.json"))
+	var first record.Event
+	json.Unmarshal(raw, &first)
+	parent := t.TempDir()
+	paths := []string{}
+	for n := 0; n < 256; n++ {
+		path := filepath.Join(parent, fmt.Sprint(n))
+		os.Mkdir(path, 0700)
+		first.AttemptID = fmt.Sprintf("%032x", n)
+		b, _ := json.Marshal(first)
+		os.WriteFile(filepath.Join(path, "00000000000000000000.json"), b, 0600)
+		paths = append(paths, path)
+	}
+	d, e := Collect(ip, paths, "collector", validateFixture)
+	if e != nil || len(d.Deliveries) != 256 {
+		t.Fatal("exact journal limit refused", e)
+	}
+	b, e := Marshal(d)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = Parse(b, validateFixture); e != nil {
+		t.Fatal("exact journal inspection refused", e)
+	}
+	paths = append(paths, paths[0])
+	if _, e = Collect(ip, paths, "collector", validateFixture); e == nil {
+		t.Fatal("journal limit ignored")
+	}
+}
+
+func TestMarshalDisablesHTMLEscapingInReadableEvents(t *testing.T) {
+	ip, p, _ := fixture(t)
+	mutateIntent(t, p, func(i *record.Intent) {
+		i.Destination.Identity = json.RawMessage(`{"url":"https://example.invalid/?a=1&b=2"}`)
+		i.Destination.Options = json.RawMessage(`{"marker":"<original>"}`)
+	})
+	d, e := Collect(ip, []string{p}, "collector", validateFixture)
+	if e != nil {
+		t.Fatal(e)
+	}
+	b, e := Marshal(d)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if bytes.Contains(b, []byte(`\u0026`)) || bytes.Contains(b, []byte(`\u003c`)) {
+		t.Fatal("readable raw JSON escaped HTML despite canonical output contract")
 	}
 }

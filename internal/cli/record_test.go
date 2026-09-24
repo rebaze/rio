@@ -212,3 +212,78 @@ func TestRecordPreservesProducerContextAndEnrichmentChanges(t *testing.T) {
 		})
 	}
 }
+
+func TestRecordFailedGateAndReceiverOutcomesRemainSuccessfulEvidence(t *testing.T) {
+	for _, disposition := range []string{"accepted", "rejected", "unknown"} {
+		t.Run(disposition, func(t *testing.T) {
+			ip, p, _ := recordFixture(t)
+			raw, _ := os.ReadFile(ip)
+			raw = bytes.Replace(raw, []byte(`"gate": "ok"`), []byte(`"gate": "fail"`), 1)
+			os.WriteFile(ip, raw, 0600)
+			file := filepath.Join(p, "00000000000000000000.json")
+			b, _ := os.ReadFile(file)
+			var ev record.Event
+			json.Unmarshal(b, &ev)
+			var i record.Intent
+			json.Unmarshal(ev.Data, &i)
+			i.Source.IndexSHA256 = delivery.Digest(raw)
+			i.Source.Gate = "fail"
+			i.Source.AllowFailedGate = true
+			ev.Data, _ = json.Marshal(i)
+			b, _ = json.Marshal(ev)
+			os.WriteFile(file, b, 0600)
+			sub := delivery.Submission{Disposition: disposition, References: []delivery.Reference{}, Observations: []delivery.Observation{}}
+			o := delivery.Observation{Kind: "acknowledgment", Value: disposition, Origin: "receiver", Code: "accepted", HTTPStatus: 200, References: []delivery.Reference{}}
+			switch disposition {
+			case "accepted":
+				sub.References = []delivery.Reference{{Kind: "dependency-track:event-token", Value: "f90934f5-cb88-47ce-81cb-db06fc67d4b4"}}
+				o.References = sub.References
+			case "rejected":
+				o.Code = "upload_rejected"
+				o.HTTPStatus = 403
+			case "unknown":
+				o.Kind = "unavailable"
+				o.Value = "unavailable"
+				o.Origin = "local"
+				o.Code = "transport_unavailable"
+				o.HTTPStatus = 0
+			}
+			sub.Observations = append(sub.Observations, o)
+			w, e := record.Open(p)
+			if e != nil {
+				t.Fatal(e)
+			}
+			b, _ = json.Marshal(sub)
+			if e = w.Append("submission", b); e != nil {
+				t.Fatal(e)
+			}
+			w.Close()
+			out := filepath.Join(t.TempDir(), "record.json")
+			code, r, err := recordRun(t, "record", "--index", ip, "--delivery-record", p, "--output", out)
+			if code != 0 {
+				t.Fatal("recorded outcome became collector failure", disposition, code, r, err)
+			}
+			code, r, err = recordRun(t, "record", "inspect", "--file", out)
+			if code != 0 {
+				t.Fatal("recorded outcome became inspect failure", code, r, err)
+			}
+		})
+	}
+}
+func TestRecordRejectsContradictoryAdapterSubmission(t *testing.T) {
+	ip, p, _ := recordFixture(t)
+	w, e := record.Open(p)
+	if e != nil {
+		t.Fatal(e)
+	}
+	b, _ := json.Marshal(delivery.Submission{Disposition: "accepted", References: []delivery.Reference{}, Observations: []delivery.Observation{{Kind: "acknowledgment", Value: "accepted", Origin: "receiver", Code: "accepted", HTTPStatus: 200, References: []delivery.Reference{}}}})
+	if e = w.Append("submission", b); e != nil {
+		t.Fatal("generic journal should permit adapter-owned evidence", e)
+	}
+	w.Close()
+	out := filepath.Join(t.TempDir(), "record.json")
+	code, r, _ := recordRun(t, "record", "--index", ip, "--delivery-record", p, "--output", out)
+	if code != 2 || r["error"] == nil {
+		t.Fatal("unsupported acceptance evidence exported", code, r)
+	}
+}

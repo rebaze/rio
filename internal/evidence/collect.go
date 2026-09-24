@@ -135,6 +135,20 @@ func assemble(raw []byte, captures []record.Capture, version string, validate Va
 		if len(s.OrphanTemps) > 0 {
 			d.Coverage.CollectionNotes = append(d.Coverage.CollectionNotes, CollectionNote{"orphan-temporary-files", id, len(s.OrphanTemps), "collector"})
 		}
+		// RawMessage fields were validated by the shared readers, which may
+		// escape HTML while binding JSON. Canonicalize only the readable copies;
+		// evidence data remains the exact captured bytes.
+		x.Intent.Destination.Identity, _ = canonicalJSON(x.Intent.Destination.Identity)
+		x.Intent.Destination.Options, _ = canonicalJSON(x.Intent.Destination.Options)
+		x.Events = append([]record.Event{}, x.Events...)
+		for n := range x.Events {
+			x.Events[n].Data, _ = canonicalJSON(x.Events[n].Data)
+		}
+		for _, o := range []*Observation{x.Summary.LatestActivity, x.Summary.LastObservation} {
+			if o != nil && o.Observation.Details != nil {
+				o.Observation.Details, _ = canonicalJSON(o.Observation.Details)
+			}
+		}
 		d.Deliveries = append(d.Deliveries, x)
 	}
 	missing := map[string]bool{}

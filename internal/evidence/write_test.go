@@ -130,3 +130,24 @@ func TestPublishNoReplaceAtPublication(t *testing.T) {
 		t.Fatal("changed uncooperative writer output")
 	}
 }
+
+func TestPublishActualLockCleanupFailurePreservesFinal(t *testing.T) {
+	d, ip, _, _ := collectFixture(t)
+	b, _ := Marshal(d)
+	out := filepath.Join(t.TempDir(), "record.json")
+	r, e := publish(out, ip, nil, b, validateFixture, nil, func(point string) error {
+		if point == "read-back" {
+			return os.WriteFile(filepath.Join(out+".lock", "obstruction"), nil, 0600)
+		}
+		return nil
+	})
+	if e == nil || !r.OutputMayExist || r.Output != nil {
+		t.Fatal("actual cleanup failure hidden", r, e)
+	}
+	if _, e = os.Stat(out); e != nil {
+		t.Fatal("final removed on cleanup failure")
+	}
+	if _, e = os.Stat(filepath.Join(out+".lock", "obstruction")); e != nil {
+		t.Fatal("removed foreign obstruction")
+	}
+}

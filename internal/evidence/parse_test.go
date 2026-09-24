@@ -275,3 +275,76 @@ func TestRecordRawBudgetExactAndOverflow(t *testing.T) {
 		t.Fatal("aggregate overflow accepted")
 	}
 }
+
+func TestParseRejectsLatestActivityEdits(t *testing.T) {
+	ip, p, _ := fixture(t)
+	w, e := record.Open(p)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, value := range []string{"processing", "not-observed"} {
+		b, _ := json.Marshal(record.Reconciliation{Observation: delivery.Observation{Kind: "activity", Value: value, Origin: "receiver", Code: "activity_observed", References: []delivery.Reference{}}, ConfigSHA256: strings.Repeat("a", 64)})
+		if e = w.Append("reconciliation", b); e != nil {
+			t.Fatal(e)
+		}
+	}
+	w.Close()
+	d, e := Collect(ip, []string{p}, "collector", validateFixture)
+	if e != nil {
+		t.Fatal(e)
+	}
+	b, _ := Marshal(d)
+	m := recordMap(t, b)
+	m["deliveries"].([]any)[0].(map[string]any)["summary"].(map[string]any)["latestActivity"].(map[string]any)["observation"].(map[string]any)["value"] = "processing"
+	b, _ = json.Marshal(m)
+	if _, e = Parse(b, validateFixture); e == nil {
+		t.Fatal("edited activity accepted")
+	}
+}
+func TestRecordFileLimitBeforeParsingOrEncoding(t *testing.T) {
+	d, _, _, _ := collectFixture(t)
+	d.Tool.Version = strings.Repeat("x", int(FileLimit))
+	if _, e := Marshal(d); e == nil {
+		t.Fatal("output size exceeded")
+	}
+	if _, e := Parse([]byte(d.Tool.Version+"x"), validateFixture); e == nil {
+		t.Fatal("serialized input size exceeded")
+	}
+}
+func TestParseRequiredFieldsAndReferences(t *testing.T) {
+	d, _, _, _ := collectFixture(t)
+	b, _ := Marshal(d)
+	for _, kind := range []string{"missing-root", "missing-evidence", "null-source", "null-intent", "null-source-ref", "null-payload", "wrong-kind-ref", "reverse-deliveries", "reverse-sources", "context"} {
+		t.Run(kind, func(t *testing.T) {
+			m := recordMap(t, b)
+			ds := m["deliveries"].([]any)
+			switch kind {
+			case "missing-root":
+				delete(m, "coverage")
+			case "missing-evidence":
+				delete(m, "evidence")
+			case "null-source":
+				m["evidence"].([]any)[0] = nil
+			case "null-intent":
+				ds[0].(map[string]any)["intent"] = nil
+			case "null-source-ref":
+				ds[0].(map[string]any)["intent"].(map[string]any)["source"] = nil
+			case "null-payload":
+				ds[0].(map[string]any)["intent"].(map[string]any)["payloads"] = []any{nil}
+			case "wrong-kind-ref":
+				ds[0].(map[string]any)["evidenceIds"].([]any)[0] = "normalization-index"
+			case "reverse-deliveries":
+				ds[0], ds[1] = ds[1], ds[0]
+			case "reverse-sources":
+				es := m["evidence"].([]any)
+				es[0], es[1] = es[1], es[0]
+			case "context":
+				m["normalization"].(map[string]any)["index"].(map[string]any)["artifacts"].([]any)[0].(map[string]any)["context"] = map[string]any{"invented": "authenticated"}
+			}
+			bad, _ := json.Marshal(m)
+			if _, e := Parse(bad, validateFixture); e == nil {
+				t.Fatal("invalid reference/shape accepted")
+			}
+		})
+	}
+}
