@@ -2,13 +2,23 @@
 
 Run `python3 tools/demo-delivery/run.py /absolute/path/to/rio` with Python 3.9+.
 On Windows use `python tools/demo-delivery/run.py C:\path\rio.exe`.
-Only the installed Rio binary and Python standard library are needed; no Go invocation occurs.
+Only an installed Rio binary and the Python standard library are needed. The demo never builds Rio.
 
-A temporary local HTTP receiver emits explicitly **synthetic** receipts/status. The demo retains
-its output directory, verifies exact uploaded bytes, shows direct name/version, UUID and subject
-selection, failed-gate refusal/override, digest tampering, malformed/lost receipts, offline
-inspection and read-only reconciliation. Missing version and unmapped p2 examples retain the
-index and unsigned statements. A future CycloneDX spec demonstrates skipped schema validation;
-that fact stays visible and is not a claim of valid schema or ingestion.
+The normal path runs `rio normalize`, `rio delivery plan`, and `rio deliver` with default filenames,
+using one rio.yaml. Three synthetic artifact-set modules feed two loopback receivers. The demo
+retains its temporary directory and demonstrates:
 
-See [configuration and evidence semantics](../README.md#native-verified-delivery).
+- Index membership remains authoritative after source modules change.
+- Default subject projects, target fan-out, overrides/exclusions, unused rules and exact upload bytes.
+- Duplicate project and later missing-credential refusal before any upload.
+- Automatic journal paths and unchanged-rerun refusal.
+- Partial acceptance followed by a lost response, unattempted work, filtered completion and deliberate retry.
+- Journal inspection and read-only receipt activity reconciliation.
+- Explicit UUID, digest tampering, failed-gate refusal/override, malformed receipt and skipped schema validation.
+
+All receiver receipts/statuses are explicitly **synthetic**. They prove the demo behavior and do
+not establish Dependency-Track compatibility, ingestion or content retention. The separately
+retained [real 5.1.1 integration evidence](integration/README.md) covers the unchanged adapter's
+transport contract; this demo does not relabel or refresh that historical evidence.
+
+See [configuration, limits and recovery semantics](../README.md#native-verified-delivery).

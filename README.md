@@ -115,47 +115,40 @@ The [offline onboarding examples](tools/README.md#agent-integration-examples) ru
 ## Deliver to Dependency-Track
 
 Native delivery requires a Rio build with `rio deliver` available; it is not included in the
-v0.4.0 sample release above. To deliver the normalized quick-start sample, save this as
-`$demo_dir/delivery.yaml`, replacing the server URL and project name/version with an existing
-test project:
+v0.4.0 sample release above. Add targets to the existing `rio.yaml`:
 
 ```yaml
-version: 1
-destinations:
-  security:
-    type: dependency-track
-    options:
+delivery:
+  targets:
+    security:
+      type: dependency-track
       url: https://dtrack.example.com
-      apiKeyEnv: DTRACK_API_KEY
-deliveries:
-  application-security:
-    artifact: desktop
-    destination: security
-    options:
-      project:
-        name: acme-desktop
-        version: "1.0.0"
-      autoCreate: false
 ```
 
-Inject `DTRACK_API_KEY` into the environment through your secret manager or CI, then upload:
+Inject `DTRACK_API_KEY` through your secret manager or CI, then run the normal pipeline:
 
 ```sh
-rio deliver --index "$demo_dir/out/index.json" \
-  --config "$demo_dir/delivery.yaml" --delivery application-security \
-  --record "$demo_dir/delivery-record" --json
-rio delivery inspect --record "$demo_dir/delivery-record"
+rio normalize --gate fail
+rio delivery plan
+rio deliver
 ```
 
-Rio checks the recorded gate and output digest, then sends the exact verified SBOM bytes directly
-by project name/version. The upload replaces that project's component inventory. Project creation
-is disabled by default, and each attempt needs a new journal directory. An accepted receipt means
-submission was acknowledged; it does not prove successful ingestion. The directory at
-`$demo_dir/delivery-record` retains the delivery history independently of the normalized files.
+Every indexed artifact goes to every eligible target, using its verified SBOM subject name and
+version as the Dependency-Track project. Project creation is disabled by default; opt in with
+`autoCreate: true` on the target. Rio refuses duplicate project routing and preflights the complete
+batch before uploading. Each attempt receives an automatic journal under `target/rio/deliveries/`.
+An unchanged rerun refuses existing journals. An accepted receipt acknowledges submission only;
+it does not prove ingestion. A partially completed batch retains each attempt independently.
 
-Use `rio delivery plan` to preview offline and `rio delivery reconcile` to query saved receipt
-activity without resubmitting. See [delivery configuration and the runnable demo](tools/README.md#native-verified-delivery)
-for UUID/subject targeting, optional creation, TLS, retry behavior and the tested server version.
+For the quick-start sample's custom output location, use
+`rio deliver --manifest "$demo_dir/rio.yaml" --index "$demo_dir/out/index.json"`.
+Changing only delivery settings after normalization is supported; the index retains its original
+manifest digest, while each delivery records the current manifest digest.
+
+Use the reported journal path with `rio delivery inspect --record PATH` or
+`rio delivery reconcile --record PATH` to query saved receipt activity without resubmitting.
+See [delivery configuration and the runnable demo](tools/README.md#native-verified-delivery)
+for filters, overrides, UUID selectors, deliberate retries, and tested server versions.
 
 ## Configure your project
 

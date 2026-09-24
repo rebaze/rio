@@ -682,55 +682,94 @@ that SBOM needs p2 repair. See the [README's project configuration](../README.md
 
 ## Native verified delivery
 
-Native delivery checks index v1 structure, gate outcome and the output SHA-256, then sends the
-exact retained snapshot. It never rewrites a BOM to match the destination. One artifact and
-one destination are selected per command. Normalization, existing plan, delivery preview and
-inspection stay offline, with no secret resolution or TLS client construction.
+Native delivery checks the complete index v1 structure, each selected gate outcome and output
+SHA-256, then sends the retained snapshots. Every indexed artifact goes to every configured
+eligible target, in index artifact order and then lexical target order. Delivery uses the index's
+members even when artifact-set source membership has changed. Normalization, intake planning,
+delivery planning and inspection remain offline.
 
 ```yaml
-# delivery.yaml (separate from rio.yaml)
+# rio.yaml: intake and delivery in one file
 version: 1
-destinations:
-  security:
-    type: dependency-track
-    options:
+artifacts:
+  - id: application
+    sbom: target/bom.json
+delivery:
+  targets:
+    security:
+      type: dependency-track
       url: https://dtrack.example.com
-      apiKeyEnv: DTRACK_API_KEY
-      # caFile: company-ca.pem  # relative to this configuration file
+      # autoCreate: true      # optional; defaults to false
+      # apiKeyEnv: DTRACK_API_KEY
+      # caFile: company-ca.pem  # relative to rio.yaml
       # allowHTTP: true       # explicit local development opt-in only
-deliveries:
-  application-security:
-    artifact: application
-    destination: security
-    options:
-      project:
-        name: acme-application
-        version: "1.2.3"
-      autoCreate: false
+      exclude: [test-fixtures]
+      overrides:
+        legacy-service:
+          project: {name: existing-project, version: "2.4.0"}
 ```
 
-Inject the API key through the selected environment variable using your CI secret facility.
-Never put API keys in YAML, command arguments or committed files. HTTPS verifies hostnames and
-uses system roots plus an optional custom CA; redirects are refused. The API URL may contain
-a deployment prefix, and must be the base before `/api/v1`. Standard Go proxy environment
-variables apply. Preview does not need the secret or CA file.
+Inject the API key using your CI secret facility. No credentials belong in YAML or command
+arguments. HTTPS verifies hostnames with system roots plus an optional CA; redirects are refused.
+Use the server base before `/api/v1`, optionally including a deployment prefix. Standard Go proxy
+environment variables apply. Preview reads no secrets or CA files.
 
 ```sh
-rio delivery plan --delivery application-security --json
-rio deliver --delivery application-security --record delivery-record --json
-rio delivery inspect --record delivery-record --json
-rio delivery reconcile --record delivery-record --wait 30s --json
+rio normalize --gate fail
+rio delivery plan --json
+rio deliver --json
+rio delivery inspect --record target/rio/deliveries/PAIR_KEY --json
+rio delivery reconcile --record target/rio/deliveries/PAIR_KEY --wait 30s --json
 ```
 
-Default paths are `target/rio/index.json` and `delivery.yaml`; override with `--index` and
-`--config`. Delivery commands reject `--manifest` and `--out`. The `--record` path is a new
-**directory**, not a JSON file. `--quiet` suppresses human progress, never requested JSON.
-Use `project: {uuid: f90934f5-cb88-47ce-81cb-db06fc67d4b4}` for UUID targeting (synthetic UUID),
-or `project: {fromSubject: true}` to explicitly use the verified BOM subject's name/version.
-Do not combine selectors. Quote numeric-looking versions. UUID mode forbids `autoCreate`,
-even `false`. Name/version uploads go directly to the upload endpoint with no UUID lookup or
-portfolio-read prerequisite. Creating a missing project requires explicit `autoCreate: true`
-and appropriate receiver permissions. Uploading replaces the project's component inventory.
+Defaults are `rio.yaml` and `target/rio/index.json`, both selected from cwd. Use `--manifest`
+and `--index` explicitly for other locations; changing manifest location does not change the index
+default. Delivery rejects `--out`; inspection also rejects an explicit `--manifest`.
+`--target NAME` and `--artifact ID` are repeatable literal filters. Unknown or repeated values
+refuse; no eligible pairs is an error. Exclusions/overrides for IDs absent from the index are
+reported as unused rules. `--quiet` suppresses progress, never errors or requested JSON.
+
+Default project selection uses the verified SBOM subject's complete name/version. Override it
+per target or artifact with a literal pair or `project: {uuid: f90934f5-cb88-47ce-81cb-db06fc67d4b4}`
+(synthetic UUID). Quote versions; mixed, partial or coerced selectors are invalid. UUID mode
+forbids any explicitly present `autoCreate` at the applicable target or override, even false.
+Name/version uploads need no UUID lookup or portfolio-read permission. Creation requires explicit
+`autoCreate: true` and receiver permission. Uploads replace project inventories: duplicate effective
+receiver/project routes refuse before any upload, including aliases. Multiple artifacts with mixed
+UUID and name/version modes at the same server also refuse because their independence is unproven.
+
+All selected payloads and credentials are checked, then every journal path is reserved before any
+intent or request. Payload snapshots are shared across targets. A later local failure sends nothing.
+Execution is sequential and stops on the first nonacceptance or persistence failure. Earlier attempts
+remain recorded; later items are unattempted in that invocation. There is no remote transaction,
+rollback, automatic retry or automatic resume.
+
+Automatic paths are `<index-directory>/deliveries/<pair-key>/`. The key hashes the raw index digest,
+artifact ID, output digest, adapter type and canonical target identity. Renaming a target or rotating
+credentials/CA cannot evade same-pair reuse refusal. This guard is scoped to that output directory;
+a different output directory or an explicit new path can still authorize another attempt.
+
+For advanced single-pair control:
+
+```sh
+rio deliver --artifact application --target security --record chosen-attempt
+rio deliver --artifact application --target security --retry-of chosen-attempt --record fresh-attempt
+```
+
+`--record` denotes a new directory and requires exactly one selected pair. `--retry-of` additionally
+requires an explicit fresh path. Inspect attempted pairs after a partial outcome; use filters for
+unattempted pairs or deliberate single-pair retry. Do not automatically resend accepted/unknown work.
+
+Migration from the unreleased separate-file interface: move destination transport fields into
+`delivery.targets.NAME` in rio.yaml; move an old binding's explicit `project` and `autoCreate` into
+that target's `overrides.ARTIFACT`. Remove the separate configuration file. `--config` and `--delivery`
+refuse with migration guidance. Old v1 journals remain inspectable without any configuration and
+reconcilable using `--manifest`, their recorded destination name/artifact and matching effective
+selector/policies. The old binding string is historical metadata and needs no binding map.
+
+Normalization records the raw manifest digest used then; delivery records the raw current rio.yaml
+digest. They may differ after delivery-only edits, without rewriting any index or SBOM. Neither
+digest excludes delivery text, authenticates a producer, or contains a secret value.
 
 `--allow-failed-gate` permits a recorded failed gate and is retained in evidence. It cannot
 bypass invalid records, unknown gate outcomes or digest mismatch. Skipped schema validation
@@ -748,7 +787,7 @@ authentication, executable equivalence, vulnerability absence or software accept
 Code 0 never establishes ingestion. Inspect can return 0 with an `unknown` outcome. A token
 returning `processing:false` means **no processing observed**; it does not prove a valid token,
 successful ingestion or content retention. Reconciliation retains acknowledgment separately
-from activity, and never uploads. It requires the same binding, artifact and effective target;
+from activity, and never uploads. It requires the recorded artifact and destination name, effective selector and policies;
 API-key env references and CA files may rotate. It needs no original index or SBOM files.
 
 Every attempt writes immutable, numbered journal events. An intent without a submission result
@@ -766,18 +805,19 @@ reduce crash hazards but do not promise power-loss durability on every filesyste
 storage is supported only when it provides reliable exclusive directory creation and same-directory
 publication. Windows uses native filesystem operations and the same cooperative lock/validation.
 
-Limits: configuration 1 MiB, index 16 MiB, selected SBOM 64 MiB, receiver JSON 64 KiB,
+Limits: delivery declaration 1 MiB (no new cap on historical intake), index 16 MiB, each selected
+SBOM 64 MiB, total selected snapshots 256 MiB, selected pairs 1,024, receiver JSON 64 KiB,
 each journal event 1 MiB, journal 10,000 events. Each request has a 30-second deadline;
 `--wait` polls every 3 seconds for at most 10 minutes, persisting each observation.
 
-The existing `rio-dtrack-upload.sh` remains available for batch/parent workflows. Native v1
-has no batch, parent hierarchy or merge behavior and does not claim script parity. The shell
+The existing `rio-dtrack-upload.sh` remains available for batch/parent workflows. Native delivery
+has no parent hierarchy or merge behavior and does not claim script parity. The shell
 uploader's weaker handoff checks remain tracked separately in #43; native validation does not
 silently complete that work. Integration support is limited to versions with retained real-server
 evidence; synthetic demo responses alone do not establish a tested server version.
 
 Run the [synthetic installed-binary demo](demo-delivery/README.md) with
-`python3 tools/demo-delivery/run.py /absolute/path/to/rio`. It uses only a loopback stub,
+`python3 tools/demo-delivery/run.py /absolute/path/to/rio`. It uses only loopback stubs,
 retains inspectable evidence, and needs no Go toolchain.
 
 The adapter's real-server contract is tested against **Dependency-Track 5.1.1**. Retained

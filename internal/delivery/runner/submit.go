@@ -14,6 +14,7 @@ type Prepared struct {
 	Description delivery.Description
 	Intent      record.Intent
 	Target      delivery.Target
+	Reservation *record.Reservation
 }
 type Result struct {
 	SchemaVersion          int                    `json:"schemaVersion"`
@@ -76,14 +77,16 @@ func Submit(ctx context.Context, p Prepared, path string) (r Result, err error) 
 	if p.Target == nil || len(p.Verified.Payloads()) == 0 {
 		return Failure(r, delivery.Fail("invalid_prepared", "verified payload and target required"), 2)
 	}
-	intent := p.Intent
-	intent.Source = source
-	intent.Destination = p.Description
-	intent.Payloads = []delivery.PayloadRef{}
-	for _, payload := range p.Verified.Payloads() {
-		intent.Payloads = append(intent.Payloads, payload.Ref())
+	intent, e := PrepareIntent(p)
+	if e != nil {
+		return Failure(r, e, PreflightCode(e))
 	}
-	w, e := record.Create(path, intent)
+	var w *record.Writer
+	if p.Reservation != nil {
+		w, e = p.Reservation.Create(intent)
+	} else {
+		w, e = record.Create(path, intent)
+	}
 	if e != nil {
 		return Failure(r, e, PreflightCode(e))
 	}
@@ -140,4 +143,20 @@ func Retry(prior record.Snapshot, v delivery.Verified, d delivery.Description, p
 		return nil, delivery.Fail("retry_mismatch", "retry requires same source, target and policies")
 	}
 	return &record.Retry{AttemptID: prior.Events[0].AttemptID, SHA256: prior.SHA256, PathHint: path}, nil
+}
+
+// PrepareIntent assembles authoritative verified fields and checks the exact
+// complete journal envelope before any batch attempt may begin.
+func PrepareIntent(p Prepared) (record.Intent, error) {
+	intent := p.Intent
+	intent.Source = p.Verified.Source()
+	intent.Destination = p.Description
+	intent.Payloads = []delivery.PayloadRef{}
+	for _, payload := range p.Verified.Payloads() {
+		intent.Payloads = append(intent.Payloads, payload.Ref())
+	}
+	if e := record.CheckIntent(intent); e != nil {
+		return record.Intent{}, e
+	}
+	return intent, nil
 }

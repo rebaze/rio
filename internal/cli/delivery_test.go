@@ -26,8 +26,8 @@ func deliveryFixture(t *testing.T, url string) (string, string) {
 	idx := index.New("test", index.FileRef{Path: "rio.yaml", SHA256: h})
 	idx.Artifacts = []index.Artifact{{ID: "app", Input: index.FileRef{Path: "bom.json", SHA256: h}, Output: index.FileRef{Path: "bom.json", SHA256: h}, SpecVersion: index.SpecVersions{Input: "1.6", Output: "1.6"}, Gate: index.GateOK}}
 	index.Write(dir, idx)
-	cfg := filepath.Join(dir, "delivery.yaml")
-	s := fmt.Sprintf("version: 1\ndestinations:\n  security:\n    type: dependency-track\n    options: {url: '%s', allowHTTP: true}\ndeliveries:\n  app-security:\n    artifact: app\n    destination: security\n    options:\n      project: {name: app, version: '1'}\n", url)
+	cfg := filepath.Join(dir, "rio.yaml")
+	s := fmt.Sprintf("version: 1\nartifacts: [{id: app, sbom: bom.json}]\ndelivery:\n  targets:\n    security:\n      type: dependency-track\n      url: '%s'\n      allowHTTP: true\n      project: {name: app, version: '1'}\n", url)
 	os.WriteFile(cfg, []byte(s), 0600)
 	return filepath.Join(dir, "index.json"), cfg
 }
@@ -44,7 +44,18 @@ func deliveryRun(t *testing.T, args ...string) (int, map[string]any, string) {
 	if e := d.Decode(&extra); e != io.EOF {
 		t.Fatal("extra stdout")
 	}
-	if result["schemaVersion"] != float64(1) || result["observations"] == nil {
+	if result["schemaVersion"] == float64(2) {
+		if result["items"] == nil {
+			t.Fatal(result)
+		}
+		// These inherited single-attempt tests inspect the unchanged nested v1 result.
+		items := result["items"].([]any)
+		if len(items) == 1 {
+			if one, ok := items[0].(map[string]any)["result"].(map[string]any); ok {
+				result = one
+			}
+		}
+	} else if result["schemaVersion"] != float64(1) || result["observations"] == nil {
 		t.Fatal(result)
 	}
 	return code, result, err.String()
@@ -69,7 +80,7 @@ func TestDeliveryCommandRoundTrip(t *testing.T) {
 	ip, cfg := deliveryFixture(t, s.URL)
 	p := filepath.Join(t.TempDir(), "journal")
 	t.Setenv("DTRACK_API_KEY", "synthetic-key")
-	args := []string{"deliver", "--index", ip, "--config", cfg, "--delivery", "app-security", "--record", p}
+	args := []string{"deliver", "--index", ip, "--manifest", cfg, "--target", "security", "--record", p}
 	code, r, _ := deliveryRun(t, args...)
 	if code != 0 || r["outcome"] != "accepted" || posts.Load() != 1 {
 		t.Fatal(code, r)
@@ -82,16 +93,16 @@ func TestDeliveryCommandRoundTrip(t *testing.T) {
 	os.Remove(ip)
 	os.Remove(filepath.Join(filepath.Dir(ip), "bom.json"))
 	b, _ := os.ReadFile(cfg)
-	b = bytes.Replace(b, []byte("allowHTTP: true"), []byte("allowHTTP: true, apiKeyEnv: ROTATED_KEY"), 1)
+	b = bytes.Replace(b, []byte("allowHTTP: true"), []byte("allowHTTP: true\n      apiKeyEnv: ROTATED_KEY"), 1)
 	os.WriteFile(cfg, b, 0600)
 	t.Setenv("ROTATED_KEY", "rotated-synthetic-key")
-	code, r, _ = deliveryRun(t, "delivery", "reconcile", "--record", p, "--config", cfg)
+	code, r, _ = deliveryRun(t, "delivery", "reconcile", "--record", p, "--manifest", cfg)
 	if code != 0 || r["activity"] != "not-observed" || r["acknowledgment"] != "accepted" || key.Load() != "rotated-synthetic-key" || gets.Load() != 1 || posts.Load() != 1 {
 		t.Fatal(code, r, key.Load())
 	}
 	b = bytes.Replace(b, []byte(s.URL), []byte("http://127.0.0.1:1"), 1)
 	os.WriteFile(cfg, b, 0600)
-	code, _, _ = deliveryRun(t, "delivery", "reconcile", "--record", p, "--config", cfg)
+	code, _, _ = deliveryRun(t, "delivery", "reconcile", "--record", p, "--manifest", cfg)
 	if code != 2 || gets.Load() != 1 {
 		t.Fatal("drift not refused", code)
 	}
@@ -100,19 +111,19 @@ func TestDeliveryOfflineAndPreflight(t *testing.T) {
 	ip, cfg := deliveryFixture(t, "http://127.0.0.1:1")
 	t.Setenv("DTRACK_API_KEY", "bad\nkey")
 	p := filepath.Join(t.TempDir(), "journal")
-	code, r, _ := deliveryRun(t, "delivery", "plan", "--index", ip, "--config", cfg, "--delivery", "app-security", "--quiet")
+	code, r, _ := deliveryRun(t, "delivery", "plan", "--index", ip, "--manifest", cfg, "--target", "security", "--quiet")
 	if code != 0 || r["outcome"] != "ready" {
 		t.Fatal(code, r)
 	}
-	code, _, _ = deliveryRun(t, "deliver", "--index", ip, "--config", cfg, "--delivery", "app-security", "--record", p)
+	code, _, _ = deliveryRun(t, "deliver", "--index", ip, "--manifest", cfg, "--target", "security", "--record", p)
 	if code != 2 {
 		t.Fatal(code)
 	}
 	if _, e := os.Stat(p); !os.IsNotExist(e) {
 		t.Fatal("journal created on credential failure")
 	}
-	for _, flag := range []string{"--manifest", "--out"} {
-		code, _, _ = deliveryRun(t, "delivery", "plan", "--index", ip, "--config", cfg, "--delivery", "app-security", flag, "ignored")
+	for _, flag := range []string{"--out"} {
+		code, _, _ = deliveryRun(t, "delivery", "plan", "--index", ip, "--manifest", cfg, "--target", "security", flag, "ignored")
 		if code != 2 {
 			t.Fatal("inherited flag ignored")
 		}
@@ -131,7 +142,7 @@ func TestDeliveryRetry(t *testing.T) {
 	t.Setenv("DTRACK_API_KEY", "synthetic-key")
 	dir := t.TempDir()
 	prior := filepath.Join(dir, "prior")
-	args := []string{"deliver", "--index", ip, "--config", cfg, "--delivery", "app-security"}
+	args := []string{"deliver", "--index", ip, "--manifest", cfg, "--target", "security"}
 	if code, _, _ := deliveryRun(t, append(args, "--record", prior)...); code != 0 {
 		t.Fatal(code)
 	}
@@ -175,13 +186,13 @@ func TestDeliveryExitCodes(t *testing.T) {
 			ip, cfg := deliveryFixture(t, s.URL)
 			t.Setenv("DTRACK_API_KEY", "canary-never-print")
 			p := filepath.Join(t.TempDir(), "journal")
-			code, r, errout := deliveryRun(t, "deliver", "--index", ip, "--config", cfg, "--delivery", "app-security", "--record", p)
+			code, r, errout := deliveryRun(t, "deliver", "--index", ip, "--manifest", cfg, "--target", "security", "--record", p)
 			b, _ := json.Marshal(r)
 			if code != tc.exit || strings.Contains(string(b)+errout, "never-print") {
 				t.Fatal(code, r, errout)
 			}
 			if tc.exit == 4 {
-				code, _, _ = deliveryRun(t, "delivery", "reconcile", "--record", p, "--config", cfg)
+				code, _, _ = deliveryRun(t, "delivery", "reconcile", "--record", p, "--manifest", cfg)
 				if code != 2 {
 					t.Fatal("missing token not refused")
 				}
@@ -201,7 +212,7 @@ func TestDeliveryOfflineNeverBuildsClient(t *testing.T) {
 	deliveryLookupEnv = func(s string) (string, bool) { secrets++; return oldLookup(s) }
 	ip, cfg := deliveryFixture(t, "https://unreachable.invalid")
 	t.Setenv("DTRACK_API_KEY", "invalid\nkey")
-	code, _, _ := deliveryRun(t, "delivery", "plan", "--index", ip, "--config", cfg, "--delivery", "app-security")
+	code, _, _ := deliveryRun(t, "delivery", "plan", "--index", ip, "--manifest", cfg, "--target", "security")
 	if code != 0 {
 		t.Fatal(code)
 	}
@@ -210,7 +221,7 @@ func TestDeliveryOfflineNeverBuildsClient(t *testing.T) {
 		Main(args, &out, &err)
 	}
 	p := filepath.Join(t.TempDir(), "journal")
-	c, v, d, _, e := preflight(deliveryOptions{index: ip, config: cfg, binding: "app-security"})
+	c, v, d, _, e := singlePreflight(cfg, ip, false)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -259,7 +270,7 @@ func TestDeliveryPersistenceFailureReportsAcceptance(t *testing.T) {
 	defer s.Close()
 	ip, cfg := deliveryFixture(t, s.URL)
 	t.Setenv("DTRACK_API_KEY", "synthetic-key")
-	code, r, _ := deliveryRun(t, "deliver", "--index", ip, "--config", cfg, "--delivery", "app-security", "--record", p)
+	code, r, _ := deliveryRun(t, "deliver", "--index", ip, "--manifest", cfg, "--target", "security", "--record", p)
 	if code != 3 || r["outcome"] != "accepted" || r["persisted"] != false || r["requestMayHaveOccurred"] != true || calls != 1 {
 		t.Fatal(code, r, calls)
 	}
@@ -268,7 +279,7 @@ func TestDeliveryPersistenceFailureReportsAcceptance(t *testing.T) {
 func TestHumanDeliveryPlanShowsVerifiedFacts(t *testing.T) {
 	ip, cfg := deliveryFixture(t, "https://example.test")
 	var out, stderr bytes.Buffer
-	code := Main([]string{"delivery", "plan", "--index", ip, "--config", cfg, "--delivery", "app-security"}, &out, &stderr)
+	code := Main([]string{"delivery", "plan", "--index", ip, "--manifest", cfg, "--target", "security"}, &out, &stderr)
 	text := out.String() + stderr.String()
 	if code != 0 {
 		t.Fatal(code, text)
@@ -282,7 +293,7 @@ func TestHumanDeliveryPlanShowsVerifiedFacts(t *testing.T) {
 
 func TestPreflightUsesOneConfigurationSnapshot(t *testing.T) {
 	ip, cfg := deliveryFixture(t, "https://original.example")
-	c, e := delivery.LoadConfig(cfg)
+	c, e := loadDeliveryConfig(cfg)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -290,7 +301,13 @@ func TestPreflightUsesOneConfigurationSnapshot(t *testing.T) {
 	b = bytes.ReplaceAll(b, []byte("original.example"), []byte("replacement.example"))
 	b = bytes.ReplaceAll(b, []byte("artifact: app"), []byte("artifact: other"))
 	os.WriteFile(cfg, b, 0600)
-	_, v, d, _, e := preflightLoaded(c, deliveryOptions{index: ip, config: cfg, binding: "app-security"})
+	plan, e := delivery.PlanBatch(c, ip, delivery.PlanOptions{}, providers(c.Directory))
+	var v delivery.Verified
+	var d delivery.Description
+	if e == nil {
+		v = plan.Jobs[0].Verified
+		d = plan.Jobs[0].Description
+	}
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -301,7 +318,7 @@ func TestPreflightUsesOneConfigurationSnapshot(t *testing.T) {
 
 func TestHumanInspectSeparatesEvidenceAndReportsTemps(t *testing.T) {
 	ip, cfg := deliveryFixture(t, "https://example.test")
-	c, v, d, _, e := preflight(deliveryOptions{index: ip, config: cfg, binding: "app-security", allowFailed: true})
+	c, v, d, _, e := singlePreflight(cfg, ip, true)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -348,7 +365,7 @@ func TestReconcileReportsCleanupFailureBeforeJSON(t *testing.T) {
 	ip, cfg := deliveryFixture(t, s.URL)
 	p := filepath.Join(t.TempDir(), "record")
 	t.Setenv("DTRACK_API_KEY", "synthetic-key")
-	if code, _, _ := deliveryRun(t, "deliver", "--index", ip, "--config", cfg, "--delivery", "app-security", "--record", p); code != 0 {
+	if code, _, _ := deliveryRun(t, "deliver", "--index", ip, "--manifest", cfg, "--target", "security", "--record", p); code != 0 {
 		t.Fatal(code)
 	}
 	old := deliveryBuild
@@ -359,7 +376,7 @@ func TestReconcileReportsCleanupFailureBeforeJSON(t *testing.T) {
 		}
 		return nil, delivery.Fail("invalid_credential", "injected preflight failure")
 	}
-	code, r, _ := deliveryRun(t, "delivery", "reconcile", "--record", p, "--config", cfg)
+	code, r, _ := deliveryRun(t, "delivery", "reconcile", "--record", p, "--manifest", cfg)
 	if code != 3 || r["requestMayHaveOccurred"] != false || r["error"].(map[string]any)["code"] != "persistence_failed" {
 		t.Fatal(code, r)
 	}
@@ -391,7 +408,7 @@ func TestMalformedSubjectRequiresOnlySubjectSelectorToRefuse(t *testing.T) {
 			b = bytes.Replace(b, []byte("{name: app, version: '1'}"), []byte(selector), 1)
 			os.WriteFile(cfg, b, 0600)
 			t.Setenv("DTRACK_API_KEY", "synthetic-key")
-			code, r, _ := deliveryRun(t, "deliver", "--index", ip, "--config", cfg, "--delivery", "app-security", "--record", filepath.Join(t.TempDir(), "record"), "--allow-failed-gate")
+			code, r, _ := deliveryRun(t, "deliver", "--index", ip, "--manifest", cfg, "--target", "security", "--record", filepath.Join(t.TempDir(), "record"), "--allow-failed-gate")
 			if strings.Contains(selector, "fromSubject") {
 				if code != 2 || calls != 0 || r["error"].(map[string]any)["code"] != "invalid_subject" {
 					t.Fatal(code, r, calls)
@@ -401,4 +418,13 @@ func TestMalformedSubjectRequiresOnlySubjectSelectorToRefuse(t *testing.T) {
 			}
 		})
 	}
+}
+
+func singlePreflight(cfg, ip string, allow bool) (delivery.Config, delivery.Verified, delivery.Description, delivery.Provider, error) {
+	c, p, e := batchPreflight(cfg, deliveryOptions{index: ip, allowFailed: allow})
+	if e != nil {
+		return c, delivery.Verified{}, delivery.Description{}, nil, e
+	}
+	j := p.Jobs[0]
+	return c, j.Verified, j.Description, j.Provider, nil
 }

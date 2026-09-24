@@ -244,3 +244,13 @@ func TestVerifyRetainsPayloadWithUnusableSubject(t *testing.T) {
 		})
 	}
 }
+
+func TestParseIndexWithoutOutputs(t *testing.T) {
+	ip, op := verifiedFixture(t)
+	raw, _ := os.ReadFile(ip)
+	os.Remove(op)
+	idx, e := ParseIndex(raw)
+	if e != nil || len(idx.Artifacts) != 1 {
+		t.Fatal(e, idx)
+	}
+}

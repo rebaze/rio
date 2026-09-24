@@ -1,27 +1,15 @@
 package delivery
 
 import (
-	"bytes"
 	"gopkg.in/yaml.v3"
-	"io"
-	"path/filepath"
+	"regexp"
 	"strings"
 )
 
 type Config struct {
-	Directory    string
-	SHA256       string
-	Destinations map[string]Destination
-	Deliveries   map[string]Binding
-}
-type Destination struct {
-	Type    string
-	Options yaml.Node
-}
-type Binding struct {
-	Artifact    string
-	Destination string
-	Options     yaml.Node
+	Directory string
+	SHA256    string
+	Targets   map[string]TargetConfig
 }
 
 // YAMLMap rejects aliases, merge keys, duplicate/non-string keys and unknown keys.
@@ -67,81 +55,116 @@ func YAMLBool(n yaml.Node, field string) (bool, error) {
 	}
 	return b, nil
 }
-func LoadConfig(path string) (Config, error) {
-	var c Config
-	b, e := ReadBounded(path, ConfigLimit)
+
+// TargetConfig holds a flat declaration; no credentials or files are resolved here.
+type TargetConfig struct {
+	Type      string
+	Options   yaml.Node
+	Exclude   []string
+	Overrides map[string]yaml.Node
+}
+
+var targetID = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+
+func validateYAML(n yaml.Node, depth int, size *int64) error {
+	if depth > 100 || n.Kind == yaml.AliasNode || n.Anchor != "" {
+		return Fail("invalid_config", "delivery aliases or depth")
+	}
+	*size += int64(len(n.Value) + len(n.HeadComment) + len(n.LineComment) + len(n.FootComment))
+	if *size > ConfigLimit {
+		return Fail("size_limit", "delivery declaration")
+	}
+	if n.Kind == yaml.MappingNode {
+		if _, e := YAMLMap(n); e != nil {
+			return e
+		}
+	}
+	for _, c := range n.Content {
+		if e := validateYAML(*c, depth+1, size); e != nil {
+			return e
+		}
+	}
+	return nil
+}
+
+// ParseConfig consumes the delivery node captured from one raw rio.yaml snapshot.
+// Common shape validation stays independent of concrete adapters and network clients.
+func ParseConfig(n yaml.Node, directory, sha256 string) (Config, error) {
+	c := Config{Directory: directory, SHA256: sha256, Targets: map[string]TargetConfig{}}
+	if n.IsZero() {
+		return c, nil
+	}
+	var size int64
+	if e := validateYAML(n, 0, &size); e != nil {
+		return c, e
+	}
+	encoded, e := yaml.Marshal(n)
+	if e != nil {
+		return c, Fail("invalid_config", "delivery declaration")
+	}
+	if int64(len(encoded)) > ConfigLimit {
+		return c, Fail("size_limit", "delivery declaration")
+	}
+	root, e := YAMLMap(n, "targets")
 	if e != nil {
 		return c, e
 	}
-	d := yaml.NewDecoder(bytes.NewReader(b))
-	var n yaml.Node
-	if d.Decode(&n) != nil || len(n.Content) != 1 {
-		return c, Fail("invalid_config", "YAML document")
-	}
-	var extra yaml.Node
-	if d.Decode(&extra) != io.EOF {
-		return c, Fail("invalid_config", "extra YAML document")
-	}
-	root, e := YAMLMap(*n.Content[0], "version", "destinations", "deliveries")
+	ts, e := YAMLMap(root["targets"])
 	if e != nil {
 		return c, e
 	}
-	v := root["version"]
-	if v.Tag != "!!int" || v.Value != "1" {
-		return c, Fail("unsupported_version", "config.version")
+	if len(ts) == 0 {
+		return c, Fail("invalid_config", "delivery.targets must not be empty")
 	}
-	ds, e := YAMLMap(root["destinations"])
-	if e != nil {
-		return c, e
-	}
-	bs, e := YAMLMap(root["deliveries"])
-	if e != nil {
-		return c, e
-	}
-	if len(ds) == 0 || len(bs) == 0 {
-		return c, Fail("invalid_config", "empty destinations or deliveries")
-	}
-	c.Directory, e = filepath.Abs(filepath.Dir(path))
-	if e != nil {
-		return Config{}, Fail("invalid_config", "config directory")
-	}
-	c.SHA256 = Digest(b)
-	c.Destinations = map[string]Destination{}
-	c.Deliveries = map[string]Binding{}
-	for name, n := range ds {
-		m, e := YAMLMap(n, "type", "options")
+	for id, n := range ts {
+		if !targetID.MatchString(id) {
+			return c, Fail("invalid_config", "delivery target id")
+		}
+		fields, e := YAMLMap(n)
 		if e != nil {
-			return Config{}, e
+			return c, e
 		}
-		typ, e := YAMLString(m["type"], "destination.type")
+		typ, e := YAMLString(fields["type"], "target.type")
 		if e != nil {
-			return Config{}, e
+			return c, e
 		}
-		if _, e = YAMLMap(m["options"]); e != nil {
-			return Config{}, e
+		t := TargetConfig{Type: typ, Overrides: map[string]yaml.Node{}}
+		t.Options = yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		for i := 0; i < len(n.Content); i += 2 {
+			if k := n.Content[i].Value; k != "type" && k != "exclude" && k != "overrides" {
+				t.Options.Content = append(t.Options.Content, n.Content[i], n.Content[i+1])
+			}
 		}
-		c.Destinations[name] = Destination{typ, m["options"]}
-	}
-	for name, n := range bs {
-		m, e := YAMLMap(n, "artifact", "destination", "options")
-		if e != nil {
-			return Config{}, e
+		if ex, ok := fields["exclude"]; ok {
+			if ex.Kind != yaml.SequenceNode || ex.Tag != "!!seq" {
+				return c, Fail("invalid_config", "target.exclude list required")
+			}
+			seen := map[string]bool{}
+			for _, v := range ex.Content {
+				id, e := YAMLString(*v, "exclude artifact id")
+				if e != nil || !targetID.MatchString(id) || seen[id] {
+					return c, Fail("invalid_config", "target.exclude artifact id")
+				}
+				seen[id] = true
+				t.Exclude = append(t.Exclude, id)
+			}
 		}
-		a, e := YAMLString(m["artifact"], "delivery.artifact")
-		if e != nil {
-			return Config{}, e
+		if ov, ok := fields["overrides"]; ok {
+			ovs, e := YAMLMap(ov)
+			if e != nil {
+				return c, e
+			}
+			for id, n := range ovs {
+				if !targetID.MatchString(id) {
+					return c, Fail("invalid_config", "override artifact id")
+				}
+				if _, e := YAMLMap(n, "project", "autoCreate"); e != nil {
+					return c, e
+				}
+				t.Overrides[id] = n
+			}
 		}
-		dest, e := YAMLString(m["destination"], "delivery.destination")
-		if e != nil {
-			return Config{}, e
-		}
-		if _, ok := c.Destinations[dest]; !ok {
-			return Config{}, Fail("invalid_config", "unknown destination reference")
-		}
-		if _, e = YAMLMap(m["options"]); e != nil {
-			return Config{}, e
-		}
-		c.Deliveries[name] = Binding{a, dest, m["options"]}
+		c.Targets[id] = t
 	}
 	return c, nil
 }
