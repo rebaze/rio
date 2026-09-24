@@ -14,6 +14,9 @@ func Parse(raw []byte, validate Validator, retryPolicy ...RetryValidator) (Docum
 	if int64(len(raw)) > FileLimit {
 		return Document{}, limitError()
 	}
+	if e := preflightRecord(raw); e != nil {
+		return Document{}, e
+	}
 	var d Document
 	if e := delivery.DecodeJSON(raw, &d, true); e != nil {
 		return Document{}, e
