@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"sort"
@@ -18,7 +17,7 @@ func invalid() error {
 	return delivery.Fail("invalid_evidence", "record structure or evidence relationship")
 }
 func limitError() error { return delivery.Fail("size_limit", "consolidated record limit") }
-func Collect(indexPath string, journalPaths []string, toolVersion string, validate Validator) (Document, error) {
+func Collect(indexPath string, journalPaths []string, toolVersion string, validate Validator, retryPolicy ...RetryValidator) (Document, error) {
 	if len(journalPaths) > MaxJournals {
 		return Document{}, limitError()
 	}
@@ -46,13 +45,13 @@ func Collect(indexPath string, journalPaths []string, toolVersion string, valida
 		}
 		captures = append(captures, c)
 	}
-	return assemble(raw, captures, toolVersion, validate)
+	return assemble(raw, captures, toolVersion, validate, retryPolicy...)
 }
 func source(id, kind string, b []byte) SourceDocument {
 	return SourceDocument{id, kind, "application/json", delivery.Digest(b), int64(len(b)), "base64", base64.StdEncoding.EncodeToString(b)}
 }
 func eventID(id string, n int) string { return fmt.Sprintf("delivery/%s/%020d", id, n) }
-func assemble(raw []byte, captures []record.Capture, version string, validate Validator) (Document, error) {
+func assemble(raw []byte, captures []record.Capture, version string, validate Validator, retryPolicy ...RetryValidator) (Document, error) {
 	var d Document
 	if version == "" || int64(len(raw)) > delivery.IndexLimit || len(captures) > MaxJournals {
 		return d, invalid()
@@ -152,7 +151,7 @@ func assemble(raw []byte, captures []record.Capture, version string, validate Va
 			missing[retry.AttemptID] = true
 			continue
 		}
-		if !compatible(c.Snapshot.Intent, prior.Snapshot.Intent) {
+		if !compatible(c.Snapshot.Intent, prior.Snapshot.Intent, retryPolicy...) {
 			return Document{}, delivery.Fail("retry_mismatch", "retry source target or policies differ")
 		}
 		h := sha256.New()
@@ -202,23 +201,18 @@ func assemble(raw []byte, captures []record.Capture, version string, validate Va
 	}
 	sort.Strings(d.Coverage.ArtifactIDsWithoutSelectedDeliveries)
 	sort.Strings(d.Coverage.RetryAttemptIDsNotIncluded)
+	d.validator = validate
+	if len(retryPolicy) > 0 {
+		d.retryValidator = retryPolicy[0]
+	}
 	return d, nil
 }
-func compatible(a, b record.Intent) bool {
+func compatible(a, b record.Intent, policy ...RetryValidator) bool {
 	if a.Source != b.Source || !reflect.DeepEqual(a.Payloads, b.Payloads) || a.Destination.Type != b.Destination.Type || !jsonEqual(a.Destination.Identity, b.Destination.Identity) {
 		return false
 	}
-	// V1 retry policy permits the same credential/CA reference rotation as native
-	// reconciliation. All other declared options, including selector policy, match.
-	var ao, bo map[string]json.RawMessage
-	if json.Unmarshal(a.Destination.Options, &ao) != nil || json.Unmarshal(b.Destination.Options, &bo) != nil {
-		return false
+	if len(policy) > 0 && policy[0] != nil {
+		return policy[0](a, b) == nil
 	}
-	for _, key := range []string{"apiKeyEnv", "caFile"} {
-		delete(ao, key)
-		delete(bo, key)
-	}
-	ar, _ := json.Marshal(ao)
-	br, _ := json.Marshal(bo)
-	return jsonEqual(ar, br)
+	return jsonEqual(a.Destination.Options, b.Destination.Options)
 }

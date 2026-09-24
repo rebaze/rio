@@ -42,6 +42,12 @@ func Marshal(d Document) ([]byte, error) {
 	if encodedSize(reflect.ValueOf(d))+1 > FileLimit {
 		return nil, limitError()
 	}
+	if _, e := validateDocument(d, d.validator, d.retryValidator); e != nil {
+		return nil, e
+	}
+	return encodeDocument(d)
+}
+func encodeDocument(d Document) ([]byte, error) {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
@@ -95,6 +101,9 @@ func encodedSize(v reflect.Value) int64 {
 		count := 0
 		t := v.Type()
 		for i := 0; i < v.NumField(); i++ {
+			if !t.Field(i).IsExported() {
+				continue
+			}
 			tag := strings.Split(t.Field(i).Tag.Get("json"), ",")
 			if tag[0] == "-" {
 				continue

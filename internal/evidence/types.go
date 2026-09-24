@@ -18,14 +18,19 @@ const (
 
 type Validator func(record.Snapshot) error
 
+// RetryValidator supplies adapter-owned policy compatibility without client construction.
+type RetryValidator func(record.Intent, record.Intent) error
+
 type Document struct {
-	SchemaVersion int              `json:"schemaVersion"`
-	Kind          string           `json:"kind"`
-	Tool          index.Tool       `json:"tool"`
-	Normalization Normalization    `json:"normalization"`
-	Deliveries    []Delivery       `json:"deliveries"`
-	Coverage      Coverage         `json:"coverage"`
-	Evidence      []SourceDocument `json:"evidence"`
+	validator      Validator
+	retryValidator RetryValidator
+	SchemaVersion  int              `json:"schemaVersion"`
+	Kind           string           `json:"kind"`
+	Tool           index.Tool       `json:"tool"`
+	Normalization  Normalization    `json:"normalization"`
+	Deliveries     []Delivery       `json:"deliveries"`
+	Coverage       Coverage         `json:"coverage"`
+	Evidence       []SourceDocument `json:"evidence"`
 }
 type SourceDocument struct {
 	ID        string `json:"id"`
