@@ -210,3 +210,37 @@ func TestVerifyCaseVariantCannotPromoteSchemaValidation(t *testing.T) {
 		t.Fatal("case variant promoted validation", v.Source(), e)
 	}
 }
+
+func TestVerifyRetainsPayloadWithUnusableSubject(t *testing.T) {
+	for _, metadata := range []string{`null`, `[]`, `{"component":null}`, `{"component":[]}`, `{"component":{"name":12,"version":"1"}}`, `{"component":{"name":"app","version":null}}`} {
+		t.Run(metadata, func(t *testing.T) {
+			ip, op := verifiedFixture(t)
+			payload := []byte(`{"bomFormat":"CycloneDX","metadata":` + metadata + `}`)
+			os.WriteFile(op, payload, 0600)
+			b, _ := os.ReadFile(ip)
+			var idx map[string]any
+			json.Unmarshal(b, &idx)
+			a := idx["artifacts"].([]any)[0].(map[string]any)
+			a["output"].(map[string]any)["sha256"] = Digest(payload)
+			a["gate"] = "fail"
+			b, _ = json.Marshal(idx)
+			os.WriteFile(ip, b, 0600)
+			if _, e := Verify(ip, "application", false); e == nil {
+				t.Fatal("failed gate bypassed")
+			}
+			v, e := Verify(ip, "application", true)
+			if e != nil {
+				t.Fatal("explicit target cannot use verified snapshot", e)
+			}
+			if v.Subject().Name != "" || v.Subject().Version != "" {
+				t.Fatal("unusable subject became partial identity", v.Subject())
+			}
+			reader := v.Payloads()[0].Open()
+			defer reader.Close()
+			got, _ := io.ReadAll(reader)
+			if !bytes.Equal(got, payload) || v.Source().SchemaValidated {
+				t.Fatal("payload or verification facts changed")
+			}
+		})
+	}
+}

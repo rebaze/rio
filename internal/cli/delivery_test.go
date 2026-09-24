@@ -360,3 +360,41 @@ func TestReconcileReportsCleanupFailureBeforeJSON(t *testing.T) {
 		t.Fatal(code, r)
 	}
 }
+
+func TestMalformedSubjectRequiresOnlySubjectSelectorToRefuse(t *testing.T) {
+	for _, selector := range []string{"{name: app, version: '1'}", "{uuid: f90934f5-cb88-47ce-81cb-db06fc67d4b4}", "{fromSubject: true}"} {
+		t.Run(selector, func(t *testing.T) {
+			calls := 0
+			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				io.Copy(io.Discard, r.Body)
+				w.Header().Set("Content-Type", "application/json")
+				io.WriteString(w, `{"token":"f90934f5-cb88-47ce-81cb-db06fc67d4b4"}`)
+			}))
+			defer s.Close()
+			ip, cfg := deliveryFixture(t, s.URL)
+			payload := []byte(`{"bomFormat":"CycloneDX","metadata":{"component":{"name":12,"version":"1"}}}`)
+			os.WriteFile(filepath.Join(filepath.Dir(ip), "bom.json"), payload, 0600)
+			b, _ := os.ReadFile(ip)
+			var idx map[string]any
+			json.Unmarshal(b, &idx)
+			a := idx["artifacts"].([]any)[0].(map[string]any)
+			a["output"].(map[string]any)["sha256"] = delivery.Digest(payload)
+			a["gate"] = "fail"
+			b, _ = json.Marshal(idx)
+			os.WriteFile(ip, b, 0600)
+			b, _ = os.ReadFile(cfg)
+			b = bytes.Replace(b, []byte("{name: app, version: '1'}"), []byte(selector), 1)
+			os.WriteFile(cfg, b, 0600)
+			t.Setenv("DTRACK_API_KEY", "synthetic-key")
+			code, r, _ := deliveryRun(t, "deliver", "--index", ip, "--config", cfg, "--delivery", "app-security", "--record", filepath.Join(t.TempDir(), "record"), "--allow-failed-gate")
+			if strings.Contains(selector, "fromSubject") {
+				if code != 2 || calls != 0 || r["error"].(map[string]any)["code"] != "invalid_subject" {
+					t.Fatal(code, r, calls)
+				}
+			} else if code != 0 || calls != 1 {
+				t.Fatal(code, r, calls)
+			}
+		})
+	}
+}

@@ -112,26 +112,25 @@ func Verify(indexPath, artifactID string, allowFailed bool) (Verified, error) {
 	if json.Unmarshal(bom["bomFormat"], &format) != nil || format != "CycloneDX" {
 		return bad("invalid_sbom", "bomFormat")
 	}
-	var subject Subject
-	if m, ok := bom["metadata"]; ok {
-		var meta map[string]json.RawMessage
-		if DecodeJSON(m, &meta, false) != nil {
-			return bad("invalid_sbom", "metadata")
-		}
-		if component, ok := meta["component"]; ok {
-			var fields map[string]json.RawMessage
-			if DecodeJSON(component, &fields, false) != nil {
-				return bad("invalid_sbom", "metadata.component")
-			}
-			for key, dst := range map[string]*string{"name": &subject.Name, "version": &subject.Version} {
-				if raw, ok := fields[key]; ok {
-					if DecodeJSON(raw, dst, false) != nil {
-						return bad("invalid_sbom", "metadata.component subject field")
-					}
-				}
-			}
-		}
-	}
+	subject := readSubject(bom)
 
 	return Verified{source: Source{Digest(b), a.ID, a.Output.SHA256, string(a.Gate), a.SchemaValidated, allowFailed}, subject: subject, payloads: []Payload{{ref: PayloadRef{"sbom", "application/vnd.cyclonedx+json", a.Output.SHA256, int64(len(payload)), a.Output.SHA256, "identity"}, data: payload}}}, nil
+}
+
+// Subject fields are an optional source of destination identity, not a second
+// schema-validation gate. Explicit selectors may deliver verified bytes with
+// unusable subject metadata; fromSubject must still resolve a complete pair.
+func readSubject(bom map[string]json.RawMessage) Subject {
+	var meta, component map[string]json.RawMessage
+	if DecodeJSON(bom["metadata"], &meta, false) != nil {
+		return Subject{}
+	}
+	if DecodeJSON(meta["component"], &component, false) != nil {
+		return Subject{}
+	}
+	var subject Subject
+	if DecodeJSON(component["name"], &subject.Name, false) != nil || DecodeJSON(component["version"], &subject.Version, false) != nil {
+		return Subject{}
+	}
+	return subject
 }
