@@ -275,13 +275,13 @@ func supportedRejection(resp *http.Response) bool {
 		var env struct {
 			Errors []errorItem `json:"errors"`
 		}
-		if delivery.PreflightJSON(raw, &env, 10000) != nil || delivery.DecodeJSON(raw, &env, true) != nil {
+		if delivery.PreflightJSON(raw, &env) != nil || delivery.DecodeJSON(raw, &env, true) != nil {
 			return false
 		}
 		items = env.Errors
 	} else {
 		var item errorItem
-		if delivery.PreflightJSON(raw, &item, 10000) != nil || delivery.DecodeJSON(raw, &item, true) != nil {
+		if delivery.PreflightJSON(raw, &item) != nil || delivery.DecodeJSON(raw, &item, true) != nil {
 			return false
 		}
 		items = append(items, item)

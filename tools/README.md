@@ -894,8 +894,8 @@ Every request has a 30-second deadline, and each submit/reconcile traversal has 
 bounded by caller cancellation. Manifest, subject and Referrers documents are at most 4 MiB each;
 auth/error JSON is at most 64 KiB; the unchanged SBOM snapshot is at most 64 MiB. Referrers traversal
 allows at most 100 pages and 10,000 descriptors, counted before decoding an excess entry. Index,
-configuration and event byte limits continue to apply. Journal events additionally allow at most
-10,000 combined JSON object properties and array entries, checked before their trees are allocated.
+configuration and event byte limits continue to apply. Journal and adapter JSON use typed streaming validation before retaining collections or opaque
+regions; no extra generic entry count narrows the existing journal format.
 Limits refuse rather than truncate.
 
 ### Packaging, attachment and evidence

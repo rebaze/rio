@@ -324,7 +324,7 @@ func (t *safeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			return refuse("invalid_auth_response")
 		}
 		var m map[string]json.RawMessage
-		if delivery.PreflightJSON(raw, &m, 10000) != nil || delivery.DecodeJSON(raw, &m, false) != nil {
+		if delivery.PreflightJSON(raw, &m) != nil || delivery.DecodeJSON(raw, &m, false) != nil {
 			return refuse("invalid_auth_response")
 		}
 		for key := range m {

@@ -239,8 +239,8 @@ reading or adding environment/credential values.
 
 Limits are 16 MiB raw index, 1 MiB per event, 10,000 events per journal and across the entire selected
 set, 256 selected journals, 32 MiB total raw sources, 128 MiB serialized record, and 20,000 directory
-entries per captured journal including ignored temps. Each event also permits at most 10,000
-combined JSON object properties and array elements; a streaming check applies before allocation.
+entries per captured journal including ignored temps. Typed streaming validation applies before retaining nested event data; no additional collection-entry
+limit narrows the existing event byte/schema contract.
 Limits refuse; they never truncate evidence.
 A streaming envelope preflight checks array counts before retaining their elements, and capture
 applies remaining aggregate event capacity before reading any next-journal event.

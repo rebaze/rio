@@ -111,7 +111,7 @@ func validateObservation(o delivery.Observation, expected []delivery.Reference, 
 		return invalid("OCI observation origin")
 	}
 	var d details
-	if delivery.PreflightJSON(o.Details, &d, record.JSONEntryLimit) != nil || delivery.DecodeJSON(o.Details, &d, true) != nil {
+	if delivery.PreflightJSON(o.Details, &d) != nil || delivery.DecodeJSON(o.Details, &d, true) != nil {
 		return invalid("OCI details")
 	}
 	f := d.OCI

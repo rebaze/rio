@@ -313,10 +313,10 @@ func ValidateDescription(d delivery.Description) (Options, Identity, error) {
 	if int64(len(d.Options)) > record.EventLimit || int64(len(d.Identity)) > record.EventLimit {
 		return o, id, delivery.Fail("size_limit", "OCI description bytes")
 	}
-	if e := delivery.PreflightJSON(d.Options, &o, record.JSONEntryLimit); e != nil {
+	if e := delivery.PreflightJSON(d.Options, &o); e != nil {
 		return o, id, e
 	}
-	if e := delivery.PreflightJSON(d.Identity, &id, record.JSONEntryLimit); e != nil {
+	if e := delivery.PreflightJSON(d.Identity, &id); e != nil {
 		return o, id, e
 	}
 	if e := delivery.DecodeJSON(d.Options, &o, true); e != nil {
