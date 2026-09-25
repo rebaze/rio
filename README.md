@@ -18,8 +18,8 @@ and what later checks observed. Lost responses remain visible as uncertainty, wi
 resubmission. Normalization stays offline; delivery uses the network explicitly. Both run in one
 binary, on your workstation or in CI.
 
-Delivery destinations include analysis platforms and artifact registries. **Dependency-Track is
-implemented on `main`; [OCI registry delivery is in review](https://github.com/rebaze/rio/issues/83).**
+Delivery destinations include **Dependency-Track** and **OCI artifact registries**, with separate
+delivery acknowledgments, transport facts and content verification.
 
 [First delivery](#deliver-your-first-sbom) · [Try without a server](#quick-start) · [Verified delivery](#deliver-to-dependency-track) · [OCI registries](#deliver-to-an-oci-registry) · [One evidence record](#one-evidence-record) · [Configuration](#configure-your-project) · [For agents](#for-agents) · [Reference](#reference)
 
@@ -29,10 +29,11 @@ Already generating `target/bom.json`? Choose one destination below, save its con
 **`rio.yaml`**, and deliver the normalized SBOM in two commands. Intake and delivery share this one file.
 No server yet? Start with the [released, account-free normalization example](#quick-start).
 
-**Availability:** these delivery examples are unreleased. Dependency-Track delivery and `rio record`
-are merged on `main`; OCI delivery is implemented in [#83](https://github.com/rebaze/rio/issues/83)
-and awaiting review/integration. The latest release, v0.4.0, supports the normalization quick start
-but does not contain these delivery or record commands. Use a build containing the chosen feature.
+**Availability:** these examples target Rio **v0.5.0** or a build containing its delivery features.
+They include Dependency-Track, OCI, portable records and the explicit TLS-verification override.
+Rio v0.4.0 supports the account-free normalization quick start below, but does not contain these
+delivery or record commands. Check the [release notes](https://github.com/rebaze/rio/releases) for
+the version you install.
 
 With either configuration below:
 
@@ -111,17 +112,17 @@ Rio retains the variable name in evidence, never the API-key value.
 For an internal CA, obtain its public certificate from your administrator, save it as
 `certs/dtrack-ca.pem`, and add `caFile: certs/dtrack-ca.pem` under `security`. The path is relative to
 `rio.yaml`; certificate and hostname verification remain enabled. This is the preferred option.
-The unreleased [#83 candidate](https://github.com/rebaze/rio/issues/83) also implements
+Rio v0.5.0 also provides
 `insecureSkipVerify: true` under `security` for explicitly skipping certificate-chain and hostname
 verification. It requires HTTPS and cannot be combined with `caFile`. The choice is saved in the
 journal and portable record alongside observed TLS facts; it does not imply the certificate was
-invalid. Protocol failures still fail, with no fallback or automatic replay. This option is awaiting
-review/integration and is not in v0.4.0. [TLS policy and synthetic demo](tools/README.md#native-verified-delivery).
+invalid. Protocol failures still fail, with no fallback or automatic replay.
+[TLS policy and synthetic demo](tools/README.md#native-verified-delivery).
 
 This example explicitly enables project creation; omit `autoCreate` when you provision projects
 yourself. [Permissions and options](tools/README.md#native-verified-delivery).
 
-### Store in an OCI registry — preview
+### Store in an OCI registry
 
 Use this alternative `rio.yaml` to retain the same SBOM in a writable OCI repository:
 
