@@ -3,6 +3,7 @@ package delivery
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"reflect"
 	"strings"
 	"sync"
@@ -103,8 +104,7 @@ func (r *jsonReader) quoted() []byte {
 func (r *jsonReader) key() string {
 	r.space()
 	raw := r.quoted()
-	var s string
-	_ = json.Unmarshal(raw, &s)
+	s := unquoteJSON(raw)
 	r.space()
 	r.pos++
 	return s
@@ -284,6 +284,19 @@ func (r *jsonReader) value(t reflect.Type, v reflect.Value, strict bool, depth i
 		}
 		r.pos++
 		return nil
+	case reflect.String:
+		// Named string types may own UnmarshalJSON validation (for example index.Gate).
+		if t != reflect.TypeFor[string]() {
+			break
+		}
+		if r.raw[r.pos] != '"' {
+			return Fail("invalid_json", "string required")
+		}
+		raw := r.quoted()
+		if v.IsValid() {
+			v.SetString(unquoteJSON(raw))
+		}
+		return nil
 	case reflect.Map:
 		// Preserve native map-value decoding semantics. In particular RawMessage
 		// map values stay opaque; their adapter subsequently applies its schema.
@@ -381,10 +394,7 @@ func equalJSONValue(a, b []byte) bool {
 			}
 		}
 	case '"':
-		var av, bv string
-		_ = json.Unmarshal(a, &av)
-		_ = json.Unmarshal(b, &bv)
-		return av == bv
+		return unquoteJSON(a) == unquoteJSON(b)
 	default:
 		return bytes.Equal(a, b)
 	}
@@ -398,4 +408,13 @@ func ValidateJSON(raw []byte) error {
 	}
 	r := jsonReader{raw: raw}
 	return r.skip(0)
+}
+
+// Input is already syntax-validated. Direct unquoting bounds each allocation to
+// this string, avoiding decoder pools carrying a previous large opaque value.
+// AppendUnquote preserves encoding/json's replacement of invalid UTF-8 and
+// unpaired surrogates; the returned error only reports those replaced bytes.
+func unquoteJSON(raw []byte) string {
+	value, _ := jsontext.AppendUnquote(nil, raw)
+	return string(value)
 }

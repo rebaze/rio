@@ -117,6 +117,17 @@ func validateDocument(d Document, validate Validator, retryPolicy ...RetryValida
 		prev = pos
 	}
 	expected.Coverage.CollectionNotes = append([]CollectionNote{}, d.Coverage.CollectionNotes...)
+	// Compare opaque summary facts before re-encoding the whole readable document.
+	// A forged projection must not make the JSON encoder repeatedly buffer a large
+	// adapter-owned value. Raw evidence still supplies the independently rebuilt facts.
+	if len(d.Deliveries) != len(expected.Deliveries) {
+		return Document{}, invalid()
+	}
+	for i, x := range d.Deliveries {
+		if x.AttemptID != expected.Deliveries[i].AttemptID || !summaryDetailsEqual(x.Summary, expected.Deliveries[i].Summary) {
+			return Document{}, delivery.Fail("evidence_mismatch", "readable facts differ from embedded sources")
+		}
+	}
 	// Canonical JSON values preserve integer tokens instead of passing through float64.
 	claimed, e := encodeDocument(d)
 	if e != nil {
@@ -130,4 +141,23 @@ func validateDocument(d Document, validate Validator, retryPolicy ...RetryValida
 		return Document{}, delivery.Fail("evidence_mismatch", "readable facts differ from embedded sources")
 	}
 	return expected, nil
+}
+
+func summaryDetailsEqual(a, b Summary) bool {
+	for _, pair := range [][2]*Observation{{a.LatestVerification, b.LatestVerification}, {a.LatestActivity, b.LatestActivity}, {a.LastObservation, b.LastObservation}} {
+		if (pair[0] == nil) != (pair[1] == nil) {
+			return false
+		}
+		if pair[0] == nil {
+			continue
+		}
+		ar, br := pair[0].Observation.Details, pair[1].Observation.Details
+		if len(ar) == 0 && len(br) == 0 {
+			continue
+		}
+		if !jsonEqual(ar, br) {
+			return false
+		}
+	}
+	return true
 }
