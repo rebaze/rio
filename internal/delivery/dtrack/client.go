@@ -4,12 +4,13 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"github.com/rebaze/rio/internal/delivery"
 	"io"
 	"mime"
 	"net/http"
+	"net/http/httptrace"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -42,26 +43,39 @@ func (Provider) Build(d delivery.Description, lookup func(string) (string, bool)
 		}
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.TLSClientConfig = &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}
+	transport.TLSClientConfig = &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12, InsecureSkipVerify: o.InsecureSkipVerify} // Explicit, persisted HTTPS-only policy.
 	transport.DisableKeepAlives = true
 	return &client{http: &http.Client{Transport: transport, Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, options: o, identity: id, key: key}, nil
 }
-func (c *client) request(ctx context.Context, method, path, ct string, body io.Reader) (*http.Response, error) {
+func (c *client) request(ctx context.Context, method, path, ct string, body io.Reader) (*http.Response, bool, error) {
 	req, e := http.NewRequestWithContext(ctx, method, c.identity.URL+path, body)
 	if e != nil {
-		return nil, delivery.Fail("request_invalid", "request construction")
+		return nil, false, delivery.Fail("request_invalid", "request construction")
 	}
 	req.Header.Set("X-Api-Key", c.key)
 	req.Header.Set("Accept", "application/json")
 	if ct != "" {
 		req.Header.Set("Content-Type", ct)
 	}
+	var observed atomic.Bool
+	req = req.WithContext(httptrace.WithClientTrace(req.Context(), &httptrace.ClientTrace{
+		// GotConn is emitted after CONNECT and the origin TLS handshake. A
+		// TLSHandshakeDone callback alone may describe only an HTTPS proxy.
+		// Retain this fact even when the subsequent HTTP response is lost.
+		GotConn: func(info httptrace.GotConnInfo) {
+			if req.URL.Scheme == "https" {
+				if conn, ok := info.Conn.(*tls.Conn); ok && conn.ConnectionState().HandshakeComplete {
+					observed.Store(true)
+				}
+			}
+		},
+	}))
 	// body has no GetBody and no idempotency key; no redirect or upload replay.
 	resp, e := c.http.Do(req)
 	if e != nil {
-		return nil, delivery.Fail("transport_unavailable", "request outcome unavailable")
+		return nil, observed.Load(), delivery.Fail("transport_unavailable", "request outcome unavailable")
 	}
-	return resp, nil
+	return resp, observed.Load(), nil
 }
 func responseJSON(resp *http.Response, out any) error {
 	typ, _, e := mime.ParseMediaType(resp.Header.Get("Content-Type"))
@@ -89,11 +103,8 @@ func ValidateEvidence(refs []delivery.Reference, observations []delivery.Observa
 		}
 	}
 	for _, o := range observations {
-		if o.Details != nil {
-			var m map[string]json.RawMessage
-			if delivery.DecodeJSON(o.Details, &m, true) != nil || len(m) != 0 {
-				return delivery.Fail("invalid_record", "Dependency-Track details")
-			}
+		if _, e := ReadTLS(o); e != nil {
+			return e
 		}
 		if o.Kind == "activity" && (o.Origin != "receiver" || o.HTTPStatus != 200 || o.Code != "activity_observed" || (o.Value != "processing" && o.Value != "not-observed") || len(o.References) != 0) {
 			return delivery.Fail("invalid_record", "Dependency-Track activity")

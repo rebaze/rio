@@ -67,7 +67,11 @@ func runDeliverBatch(cmd *cobra.Command, g *globalOptions, o deliveryOptions) (r
 			}
 			return r, e
 		}
-		p := runner.Prepared{Verified: j.Verified, Description: j.Description, Intent: intent, Target: target}
+		entry, e := adapter(j.Description.Type)
+		if e != nil {
+			return r, e
+		}
+		p := runner.Prepared{ExpectedReferences: j.ExpectedReferences, ValidateIntent: entry.ValidateIntent, Verified: j.Verified, Description: j.Description, Intent: intent, Target: target}
 		p.Intent, e = runner.PrepareIntent(p)
 		if e != nil {
 			r.Items[i].State = "error"

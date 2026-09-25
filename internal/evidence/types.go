@@ -62,9 +62,10 @@ type Journal struct {
 	LastSequence int    `json:"lastSequence"`
 }
 type Summary struct {
-	Acknowledgment  string       `json:"acknowledgment"`
-	LatestActivity  *Observation `json:"latestActivity,omitempty"`
-	LastObservation *Observation `json:"lastObservation,omitempty"`
+	LatestVerification *Observation `json:"latestVerification,omitempty"`
+	Acknowledgment     string       `json:"acknowledgment"`
+	LatestActivity     *Observation `json:"latestActivity,omitempty"`
+	LastObservation    *Observation `json:"lastObservation,omitempty"`
 }
 type Observation struct {
 	Sequence    int                  `json:"sequence"`

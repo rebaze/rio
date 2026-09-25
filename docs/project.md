@@ -33,7 +33,8 @@ what is running. Rio's own release pipeline separately [checks staged assets bef
 Normalization, planning and delivery inspection run locally without network calls, including
 schema validation and p2 mapping. Schemas and built-in mappings are embedded; the binary has no
 runtime dependency on external tools. Explicit native delivery and reconciliation communicate
-with Dependency-Track. Supporting mapping preparation and delivery examples live in
+with Dependency-Track or OCI registries. OCI provides unchanged SBOM storage and optional
+exact-subject discovery, with acknowledgment and current content verification kept separate. Supporting mapping preparation and delivery examples live in
 [tools/README.md](../tools/README.md).
 
 Current exclusions include SBOM merging, component filtering, reading assembled release artifacts,

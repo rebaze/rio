@@ -11,8 +11,14 @@ import (
 	"strings"
 )
 
-func (c *client) Submit(ctx context.Context, payloads []delivery.Payload) (delivery.Submission, error) {
-	sub := delivery.Submission{Disposition: "unknown", References: []delivery.Reference{}, Observations: []delivery.Observation{}}
+func (c *client) Submit(ctx context.Context, payloads []delivery.Payload) (sub delivery.Submission, err error) {
+	sub = delivery.Submission{Disposition: "unknown", References: []delivery.Reference{}, Observations: []delivery.Observation{}}
+	var tlsObserved bool
+	defer func() {
+		for i := range sub.Observations {
+			c.addTLS(&sub.Observations[i], tlsObserved)
+		}
+	}()
 	if len(payloads) != 1 || payloads[0].Ref().Role != "sbom" || payloads[0].Ref().Transformation != "identity" || payloads[0].Ref().MediaType != "application/vnd.cyclonedx+json" || !delivery.ValidDigest(payloads[0].Ref().SHA256) {
 		return sub, delivery.Fail("unsupported_payload", "one verified identity SBOM required")
 	}
@@ -39,7 +45,8 @@ func (c *client) Submit(ctx context.Context, payloads []delivery.Payload) (deliv
 	snapshot := payloads[0].Open()
 	defer snapshot.Close()
 	body := io.NopCloser(io.MultiReader(bytes.NewReader(prefix), snapshot, bytes.NewReader(suffix)))
-	resp, e := c.request(ctx, "POST", "/api/v1/bom", mw.FormDataContentType(), body)
+	resp, observed, e := c.request(ctx, "POST", "/api/v1/bom", mw.FormDataContentType(), body)
+	tlsObserved = observed
 	if e != nil {
 		sub.Observations = append(sub.Observations, observation("unavailable", "unavailable", "local", "transport_unavailable", 0))
 		return sub, e

@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/delivery/record"
 )
 
@@ -44,7 +45,11 @@ func (s *recordScanner) value(t reflect.Type, scope string, depth int) error {
 		return invalid()
 	}
 	if t == rawType {
-		t = nil
+		var raw json.RawMessage
+		if s.dec.Decode(&raw) != nil || delivery.ValidateJSON(raw) != nil {
+			return invalid()
+		}
+		return nil
 	}
 	if t != nil && t.Kind() == reflect.Pointer {
 		t = t.Elem()
@@ -64,6 +69,7 @@ func (s *recordScanner) value(t reflect.Type, scope string, depth int) error {
 			}
 			seen := map[string]bool{}
 			for s.dec.More() {
+
 				key, e := s.dec.Token()
 				if e != nil {
 					return invalid()
@@ -90,6 +96,7 @@ func (s *recordScanner) value(t reflect.Type, scope string, depth int) error {
 						childScope = "references"
 					}
 				}
+
 				if e = s.value(child, childScope, depth+1); e != nil {
 					return e
 				}
@@ -115,6 +122,7 @@ func (s *recordScanner) value(t reflect.Type, scope string, depth int) error {
 				limit = MaxJournals
 			}
 			for s.dec.More() {
+
 				if limit >= 0 && count >= limit {
 					return limitError()
 				}

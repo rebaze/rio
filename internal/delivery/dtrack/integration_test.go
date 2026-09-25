@@ -80,7 +80,7 @@ func TestIntegrationDependencyTrack(t *testing.T) {
 		t.Helper()
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		resp, e := c.request(ctx, "GET", path, "", nil)
+		resp, _, e := c.request(ctx, "GET", path, "", nil)
 		if e != nil {
 			t.Fatal(e)
 		}

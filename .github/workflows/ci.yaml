@@ -63,7 +63,7 @@ jobs:
           # Fixtures, golden files and the embedded CycloneDX schemas are
           # inputs to the test suite, so a change to any of them has to run it.
           # Missing that is how a stale golden file reaches main.
-          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery|record)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$)' <<<"$CHANGED" >/dev/null; then go=true; fi
+          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery|record|oci|dtrack-tls)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$)' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.github/workflows/.*\.ya?ml$' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.goreleaser\.yaml$' <<<"$CHANGED" >/dev/null; then goreleaser=true; fi
           if grep -E '\.sh$' <<<"$CHANGED" >/dev/null; then shell=true; fi
@@ -229,4 +229,67 @@ jobs:
         run: |
           go build -trimpath -o rio-demo.exe ./cmd/rio
           python tools/demo-delivery/run.py "$PWD/rio-demo.exe"
+          python tools/demo-dtrack-tls/run.py "$PWD/rio-demo.exe"
           python tools/demo-record/run.py "$PWD/rio-demo.exe"
+          python tools/demo-oci/run.py "$PWD/rio-demo.exe"
+
+
+  oci-distribution:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.9"
+      - name: Create disposable TLS and Basic-auth fixtures
+        run: python tools/demo-oci/integration/setup.py "$RUNNER_TEMP/rio-oci"
+      - name: Start pinned real Distribution and zot
+        env:
+          RIO_OCI_FIXTURE_ROOT: ${{ runner.temp }}/rio-oci
+        run: docker compose -p rio-oci-ci -f tools/demo-oci/integration/compose.yaml --profile zot up -d
+      - name: Real Distribution TLS/auth, read-back, required-API refusal and recovery
+        env:
+          RIO_OCI_FIXTURE_ROOT: ${{ runner.temp }}/rio-oci
+          RIO_OCI_TEST_EVIDENCE: ${{ runner.temp }}/rio-oci-distribution-evidence.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source "$RUNNER_TEMP/rio-oci/test.env"
+          set +a
+          docker compose -p rio-oci-ci -f tools/demo-oci/integration/compose.yaml exec -T distribution /bin/registry --version
+          go test ./internal/delivery/oci -list '^TestIntegrationOCI$' | grep -x TestIntegrationOCI
+          go test ./internal/delivery/oci -run '^TestIntegrationOCI$' -count=1 -v
+      - name: Real zot TLS/auth, positive Referrers and crash recovery
+        env:
+          RIO_OCI_FIXTURE_ROOT: ${{ runner.temp }}/rio-oci
+          RIO_OCI_TEST_EVIDENCE: ${{ runner.temp }}/rio-oci-zot-evidence.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source "$RUNNER_TEMP/rio-oci/test.env"
+          set +a
+          export RIO_OCI_TEST_REGISTRY=127.0.0.1:15001
+          export RIO_OCI_TEST_PRODUCT=zot
+          export RIO_OCI_TEST_VERSION=2.1.21
+          export RIO_OCI_TEST_IMAGE_DIGEST=sha256:8258443838e95989c13c891f78a02bc1c391b5a00591ffef24cb8c17cde28038
+          export RIO_OCI_TEST_REFERRERS=required
+          docker compose -p rio-oci-ci -f tools/demo-oci/integration/compose.yaml exec -T zot /usr/local/bin/zot-linux-amd64 --version
+          go test ./internal/delivery/oci -run '^TestIntegrationOCI$' -count=1 -v
+      - name: Retain sanitized real-registry observations
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: oci-registry-evidence
+          path: ${{ runner.temp }}/rio-oci-*-evidence.json
+          if-no-files-found: warn
+      - name: Remove only this job's disposable registry and volume
+        if: always()
+        env:
+          RIO_OCI_FIXTURE_ROOT: ${{ runner.temp }}/rio-oci
+        run: docker compose -p rio-oci-ci -f tools/demo-oci/integration/compose.yaml --profile zot down -v

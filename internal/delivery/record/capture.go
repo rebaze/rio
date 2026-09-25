@@ -62,16 +62,24 @@ func DecodeEvents(rawEvents [][]byte) (Snapshot, error) {
 	s.SHA256 = hex.EncodeToString(h.Sum(nil))
 	return s, nil
 }
-func replayRaw(s *Snapshot, b []byte) error {
-	if int64(len(b)) > EventLimit {
-		return delivery.Fail("size_limit", "maximum event bytes")
+func decodeEvent(raw []byte) (Event, error) {
+	var event Event
+	if err := preflight(raw, &event); err != nil {
+		return event, err
 	}
-	var e Event
-	if delivery.DecodeJSON(b, &e, true) != nil {
-		return invalid()
+	if delivery.DecodeJSON(raw, &event, true) != nil {
+		return event, invalid()
 	}
-	return addEvent(s, e)
+	return event, nil
 }
+func replayRaw(s *Snapshot, raw []byte) error {
+	event, err := decodeEvent(raw)
+	if err != nil {
+		return err
+	}
+	return addEvent(s, event)
+}
+
 func (w *Writer) capture(empty bool, budget int64, retain bool, maxEvents ...int) (c Capture, err error) {
 	c = Capture{Snapshot: emptySnapshot(), RawEvents: [][]byte{}}
 	eventCapacity := MaxEvents

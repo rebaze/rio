@@ -40,3 +40,28 @@ permissions for verification; setup may need project/access management. These ar
 permissions, not normal direct name/version upload prerequisites. Normal Rio upload does not
 look up projects. Tear down the dedicated Docker project/database to clean up; Rio has no
 project-deletion behavior. With opt-in unset the test reports a skip, not real-server coverage.
+
+## HTTPS and explicit certificate-verification policy
+
+The native TLS addition was also exercised against a new disposable Dependency-Track **5.1.1**
+receiver, with a local HTTPS gateway presenting an untrusted test certificate. The API behind that
+gateway used loopback HTTP. This establishes the client-to-gateway TLS behavior with a real
+Dependency-Track receiver; it does not claim coverage of a particular production ingress or
+Dependency-Track's own TLS termination.
+
+- [HTTPS integration](dependency-track-5.1.1-https.json) is a fresh race-enabled run of the existing
+  full integration harness, using the gateway and a supplied CA certificate. Upload, project,
+  permission and activity checks passed.
+- [TLS policy evidence](dependency-track-5.1.1-tls-policy.json) was recorded by an installed-binary
+  check of source `89d577cbe129328fd921cbbce0bf69ede5579079`. Default trust refused before any
+  application upload. A supplied CA succeeded with verification enforced. Explicit
+  `insecureSkipVerify: true` succeeded with verification disabled and a successful TLS handshake
+  recorded. Reconciliation preserved that mode; changing it refused before another upload.
+  A portable record retained the facts and remained inspectable after its workspace was removed.
+
+The TLS facts distinguish configured verification from an observed handshake. Disabled verification
+does not assert that the certificate was invalid; an accepted upload still does not prove ingestion.
+Neither file includes API keys, private certificate material, raw authentication responses, or
+production identifiers. The endpoint, database, teams and projects were dedicated synthetic test
+infrastructure. The [installed-binary HTTPS demo](../../demo-dtrack-tls/README.md) reproduces the
+verification-policy and portable-record behavior with a clearly labeled local synthetic receiver.

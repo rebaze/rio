@@ -1,0 +1,12 @@
+{
+  "distSpecVersion": "1.1.0",
+  "storage": {"rootDirectory": "/var/lib/zot", "gc": false},
+  "http": {
+    "address": "0.0.0.0",
+    "port": "5000",
+    "realm": "rio-synthetic",
+    "auth": {"htpasswd": {"path": "/auth/htpasswd"}},
+    "tls": {"cert": "/tls/cert.pem", "key": "/tls/key.pem"}
+  },
+  "log": {"level": "error"}
+}

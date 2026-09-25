@@ -1,0 +1,680 @@
+{
+  "schemaVersion": 1,
+  "kind": "rio-evidence-record",
+  "tool": {
+    "name": "rio",
+    "version": "dev"
+  },
+  "normalization": {
+    "evidenceId": "normalization-index",
+    "indexSHA256": "acd68649b254e3dfc747eba8e4f1938a0c7f23dea0979288fd9caf5db787454b",
+    "index": {
+      "artifacts": [
+        {
+          "components": 0,
+          "gate": "ok",
+          "gateFindings": [],
+          "id": "application",
+          "input": {
+            "path": "bom.json",
+            "sha256": "5f9f3d8746c775c87992b8d58bf93a11dd30accea33f8ea9e950c411a4ef98f4"
+          },
+          "output": {
+            "path": "application.cdx.json",
+            "sha256": "ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c"
+          },
+          "schemaValidated": true,
+          "specVersion": {
+            "input": "1.6",
+            "output": "1.6"
+          },
+          "transforms": []
+        }
+      ],
+      "manifest": {
+        "path": "rio.yaml",
+        "sha256": "97b70992bd690fe3aac7659d63ca00be2cd13e48d058aa062db1eb6366cf48ad"
+      },
+      "schemaVersion": 1,
+      "tool": {
+        "name": "rio",
+        "version": "dev"
+      }
+    },
+    "sbomBytesVerification": "not-performed"
+  },
+  "deliveries": [
+    {
+      "attemptId": "66454168ea7a5cc0db61700b1fd929d6",
+      "artifactId": "application",
+      "intent": {
+        "rioVersion": "dev",
+        "source": {
+          "indexSHA256": "acd68649b254e3dfc747eba8e4f1938a0c7f23dea0979288fd9caf5db787454b",
+          "artifactId": "application",
+          "outputSHA256": "ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c",
+          "gate": "ok",
+          "schemaValidated": true,
+          "allowFailedGate": false
+        },
+        "payloads": [
+          {
+            "role": "sbom",
+            "mediaType": "application/vnd.cyclonedx+json",
+            "sha256": "ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c",
+            "size": 918,
+            "sourceSHA256": "ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c",
+            "transformation": "identity"
+          }
+        ],
+        "binding": "security",
+        "destination": {
+          "type": "dependency-track",
+          "destinationName": "security",
+          "identity": {
+            "project": {
+              "name": "synthetic-app",
+              "version": "1.2.3"
+            },
+            "url": "http://127.0.0.1:49508"
+          },
+          "options": {
+            "allowHTTP": true,
+            "apiKeyEnv": "RIO_DTRACK_DEMO_KEY",
+            "autoCreate": false,
+            "project": {
+              "fromSubject": true
+            },
+            "url": "http://127.0.0.1:49508"
+          },
+          "credentialRefs": [
+            "RIO_DTRACK_DEMO_KEY"
+          ],
+          "capabilities": [
+            "submit",
+            "observe-activity"
+          ]
+        },
+        "configSHA256": "97b70992bd690fe3aac7659d63ca00be2cd13e48d058aa062db1eb6366cf48ad"
+      },
+      "events": [
+        {
+          "schemaVersion": 1,
+          "sequence": 0,
+          "attemptId": "66454168ea7a5cc0db61700b1fd929d6",
+          "observedAt": "2026-09-24T22:19:21.647533Z",
+          "kind": "intent",
+          "data": {
+            "binding": "security",
+            "configSHA256": "97b70992bd690fe3aac7659d63ca00be2cd13e48d058aa062db1eb6366cf48ad",
+            "destination": {
+              "capabilities": [
+                "submit",
+                "observe-activity"
+              ],
+              "credentialRefs": [
+                "RIO_DTRACK_DEMO_KEY"
+              ],
+              "destinationName": "security",
+              "identity": {
+                "project": {
+                  "name": "synthetic-app",
+                  "version": "1.2.3"
+                },
+                "url": "http://127.0.0.1:49508"
+              },
+              "options": {
+                "allowHTTP": true,
+                "apiKeyEnv": "RIO_DTRACK_DEMO_KEY",
+                "autoCreate": false,
+                "project": {
+                  "fromSubject": true
+                },
+                "url": "http://127.0.0.1:49508"
+              },
+              "type": "dependency-track"
+            },
+            "payloads": [
+              {
+                "mediaType": "application/vnd.cyclonedx+json",
+                "role": "sbom",
+                "sha256": "ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c",
+                "size": 918,
+                "sourceSHA256": "ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c",
+                "transformation": "identity"
+              }
+            ],
+            "rioVersion": "dev",
+            "source": {
+              "allowFailedGate": false,
+              "artifactId": "application",
+              "gate": "ok",
+              "indexSHA256": "acd68649b254e3dfc747eba8e4f1938a0c7f23dea0979288fd9caf5db787454b",
+              "outputSHA256": "ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c",
+              "schemaValidated": true
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "sequence": 1,
+          "attemptId": "66454168ea7a5cc0db61700b1fd929d6",
+          "observedAt": "2026-09-24T22:19:21.659886Z",
+          "kind": "submission",
+          "data": {
+            "disposition": "accepted",
+            "observations": [
+              {
+                "code": "accepted",
+                "httpStatus": 200,
+                "kind": "acknowledgment",
+                "origin": "receiver",
+                "references": [
+                  {
+                    "kind": "dependency-track:event-token",
+                    "value": "f90934f5-cb88-47ce-81cb-db06fc67d4b4"
+                  }
+                ],
+                "value": "accepted"
+              }
+            ],
+            "references": [
+              {
+                "kind": "dependency-track:event-token",
+                "value": "f90934f5-cb88-47ce-81cb-db06fc67d4b4"
+              }
+            ]
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "sequence": 2,
+          "attemptId": "66454168ea7a5cc0db61700b1fd929d6",
+          "observedAt": "2026-09-24T22:19:21.712506Z",
+          "kind": "reconciliation",
+          "data": {
+            "configSHA256": "97b70992bd690fe3aac7659d63ca00be2cd13e48d058aa062db1eb6366cf48ad",
+            "observation": {
+              "code": "activity_observed",
+              "httpStatus": 200,
+              "kind": "activity",
+              "origin": "receiver",
+              "references": [],
+              "value": "not-observed"
+            }
+          }
+        }
+      ],
+      "journal": {
+        "sha256": "9c01fbcba299624888410847d6131225820cd25c1f0ff1dc0698fabf18aae32b",
+        "eventCount": 3,
+        "lastSequence": 2
+      },
+      "evidenceIds": [
+        "delivery/66454168ea7a5cc0db61700b1fd929d6/00000000000000000000",
+        "delivery/66454168ea7a5cc0db61700b1fd929d6/00000000000000000001",
+        "delivery/66454168ea7a5cc0db61700b1fd929d6/00000000000000000002"
+      ],
+      "summary": {
+        "acknowledgment": "accepted",
+        "latestActivity": {
+          "sequence": 2,
+          "observedAt": "2026-09-24T22:19:21.712506Z",
+          "observation": {
+            "kind": "activity",
+            "value": "not-observed",
+            "origin": "receiver",
+            "code": "activity_observed",
+            "httpStatus": 200,
+            "references": []
+          }
+        },
+        "lastObservation": {
+          "sequence": 2,
+          "observedAt": "2026-09-24T22:19:21.712506Z",
+          "observation": {
+            "kind": "activity",
+            "value": "not-observed",
+            "origin": "receiver",
+            "code": "activity_observed",
+            "httpStatus": 200,
+            "references": []
+          }
+        }
+      }
+    },
+    {
+      "attemptId": "7a2ac3f14f0de251ba1aae0aa06f0ca5",
+      "artifactId": "application",
+      "intent": {
+        "expectedReferences": [
+          {
+            "kind": "oci:manifest",
+            "value": "127.0.0.1:49508/demo/application@sha256:4472fc2169660aebc342e11d7a292e0ac352b6d8fa45a9b70af0e5d84569ebfd"
+          },
+          {
+            "kind": "oci:blob",
+            "value": "sha256:ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c"
+          },
+          {
+            "kind": "oci:tag",
+            "value": "127.0.0.1:49508/demo/application:rio-sbom-sha256-4472fc2169660aebc342e11d7a292e0ac352b6d8fa45a9b70af0e5d84569ebfd"
+          },
+          {
+            "kind": "oci:subject",
+            "value": "127.0.0.1:49508/demo/application@sha256:b885c0c14dfdc86cd18f88c012d12a75439905d9995b0a4da82568bdd4da7a6e"
+          }
+        ],
+        "rioVersion": "dev",
+        "source": {
+          "indexSHA256": "acd68649b254e3dfc747eba8e4f1938a0c7f23dea0979288fd9caf5db787454b",
+          "artifactId": "application",
+          "outputSHA256": "ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c",
+          "gate": "ok",
+          "schemaValidated": true,
+          "allowFailedGate": false
+        },
+        "payloads": [
+          {
+            "role": "sbom",
+            "mediaType": "application/vnd.cyclonedx+json",
+            "sha256": "ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c",
+            "size": 918,
+            "sourceSHA256": "ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c",
+            "transformation": "identity"
+          }
+        ],
+        "binding": "registry",
+        "destination": {
+          "type": "oci",
+          "destinationName": "registry",
+          "identity": {
+            "registry": "127.0.0.1:49508",
+            "repository": "demo/application",
+            "subject": {
+              "digest": "sha256:b885c0c14dfdc86cd18f88c012d12a75439905d9995b0a4da82568bdd4da7a6e",
+              "mediaType": "application/vnd.oci.image.index.v1+json",
+              "size": 146
+            },
+            "tag": "rio-sbom-sha256-4472fc2169660aebc342e11d7a292e0ac352b6d8fa45a9b70af0e5d84569ebfd"
+          },
+          "options": {
+            "allowHTTP": true,
+            "auth": {
+              "passwordEnv": "RIO_OCI_DEMO_PASSWORD",
+              "usernameEnv": "RIO_OCI_DEMO_USERNAME"
+            },
+            "publication": {
+              "config": {
+                "digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+                "mediaType": "application/vnd.oci.empty.v1+json",
+                "size": 2
+              },
+              "manifest": {
+                "digest": "sha256:4472fc2169660aebc342e11d7a292e0ac352b6d8fa45a9b70af0e5d84569ebfd",
+                "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                "size": 764
+              },
+              "manifestJSON": "{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"artifactType\":\"application/vnd.cyclonedx+json\",\"config\":{\"mediaType\":\"application/vnd.oci.empty.v1+json\",\"digest\":\"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\",\"size\":2},\"layers\":[{\"mediaType\":\"application/vnd.cyclonedx+json\",\"digest\":\"sha256:ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c\",\"size\":918,\"annotations\":{\"org.opencontainers.image.title\":\"sbom.cdx.json\"}}],\"subject\":{\"mediaType\":\"application/vnd.oci.image.index.v1+json\",\"digest\":\"sha256:b885c0c14dfdc86cd18f88c012d12a75439905d9995b0a4da82568bdd4da7a6e\",\"size\":146},\"annotations\":{\"io.rebaze.rio.index.sha256\":\"acd68649b254e3dfc747eba8e4f1938a0c7f23dea0979288fd9caf5db787454b\"}}",
+              "payload": {
+                "mediaType": "application/vnd.cyclonedx+json",
+                "role": "sbom",
+                "sha256": "ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c",
+                "size": 918,
+                "sourceSHA256": "ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c",
+                "transformation": "identity"
+              },
+              "subject": {
+                "digest": "sha256:b885c0c14dfdc86cd18f88c012d12a75439905d9995b0a4da82568bdd4da7a6e",
+                "mediaType": "application/vnd.oci.image.index.v1+json",
+                "size": 146
+              },
+              "tag": "rio-sbom-sha256-4472fc2169660aebc342e11d7a292e0ac352b6d8fa45a9b70af0e5d84569ebfd"
+            },
+            "registry": "127.0.0.1:49508",
+            "repository": "demo/application",
+            "subject": {
+              "digest": "sha256:b885c0c14dfdc86cd18f88c012d12a75439905d9995b0a4da82568bdd4da7a6e",
+              "mediaType": "application/vnd.oci.image.index.v1+json",
+              "size": 146
+            }
+          },
+          "credentialRefs": [
+            "RIO_OCI_DEMO_USERNAME",
+            "RIO_OCI_DEMO_PASSWORD"
+          ],
+          "capabilities": [
+            "submit",
+            "observe-content",
+            "observe-referrers"
+          ]
+        },
+        "configSHA256": "57b61073d8646697711c41d9f3a1e8a7203073a1beb8531002476a505475e956"
+      },
+      "events": [
+        {
+          "schemaVersion": 1,
+          "sequence": 0,
+          "attemptId": "7a2ac3f14f0de251ba1aae0aa06f0ca5",
+          "observedAt": "2026-09-24T22:19:22.190895Z",
+          "kind": "intent",
+          "data": {
+            "binding": "registry",
+            "configSHA256": "57b61073d8646697711c41d9f3a1e8a7203073a1beb8531002476a505475e956",
+            "destination": {
+              "capabilities": [
+                "submit",
+                "observe-content",
+                "observe-referrers"
+              ],
+              "credentialRefs": [
+                "RIO_OCI_DEMO_USERNAME",
+                "RIO_OCI_DEMO_PASSWORD"
+              ],
+              "destinationName": "registry",
+              "identity": {
+                "registry": "127.0.0.1:49508",
+                "repository": "demo/application",
+                "subject": {
+                  "digest": "sha256:b885c0c14dfdc86cd18f88c012d12a75439905d9995b0a4da82568bdd4da7a6e",
+                  "mediaType": "application/vnd.oci.image.index.v1+json",
+                  "size": 146
+                },
+                "tag": "rio-sbom-sha256-4472fc2169660aebc342e11d7a292e0ac352b6d8fa45a9b70af0e5d84569ebfd"
+              },
+              "options": {
+                "allowHTTP": true,
+                "auth": {
+                  "passwordEnv": "RIO_OCI_DEMO_PASSWORD",
+                  "usernameEnv": "RIO_OCI_DEMO_USERNAME"
+                },
+                "publication": {
+                  "config": {
+                    "digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+                    "mediaType": "application/vnd.oci.empty.v1+json",
+                    "size": 2
+                  },
+                  "manifest": {
+                    "digest": "sha256:4472fc2169660aebc342e11d7a292e0ac352b6d8fa45a9b70af0e5d84569ebfd",
+                    "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                    "size": 764
+                  },
+                  "manifestJSON": "{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"artifactType\":\"application/vnd.cyclonedx+json\",\"config\":{\"mediaType\":\"application/vnd.oci.empty.v1+json\",\"digest\":\"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\",\"size\":2},\"layers\":[{\"mediaType\":\"application/vnd.cyclonedx+json\",\"digest\":\"sha256:ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c\",\"size\":918,\"annotations\":{\"org.opencontainers.image.title\":\"sbom.cdx.json\"}}],\"subject\":{\"mediaType\":\"application/vnd.oci.image.index.v1+json\",\"digest\":\"sha256:b885c0c14dfdc86cd18f88c012d12a75439905d9995b0a4da82568bdd4da7a6e\",\"size\":146},\"annotations\":{\"io.rebaze.rio.index.sha256\":\"acd68649b254e3dfc747eba8e4f1938a0c7f23dea0979288fd9caf5db787454b\"}}",
+                  "payload": {
+                    "mediaType": "application/vnd.cyclonedx+json",
+                    "role": "sbom",
+                    "sha256": "ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c",
+                    "size": 918,
+                    "sourceSHA256": "ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c",
+                    "transformation": "identity"
+                  },
+                  "subject": {
+                    "digest": "sha256:b885c0c14dfdc86cd18f88c012d12a75439905d9995b0a4da82568bdd4da7a6e",
+                    "mediaType": "application/vnd.oci.image.index.v1+json",
+                    "size": 146
+                  },
+                  "tag": "rio-sbom-sha256-4472fc2169660aebc342e11d7a292e0ac352b6d8fa45a9b70af0e5d84569ebfd"
+                },
+                "registry": "127.0.0.1:49508",
+                "repository": "demo/application",
+                "subject": {
+                  "digest": "sha256:b885c0c14dfdc86cd18f88c012d12a75439905d9995b0a4da82568bdd4da7a6e",
+                  "mediaType": "application/vnd.oci.image.index.v1+json",
+                  "size": 146
+                }
+              },
+              "type": "oci"
+            },
+            "expectedReferences": [
+              {
+                "kind": "oci:manifest",
+                "value": "127.0.0.1:49508/demo/application@sha256:4472fc2169660aebc342e11d7a292e0ac352b6d8fa45a9b70af0e5d84569ebfd"
+              },
+              {
+                "kind": "oci:blob",
+                "value": "sha256:ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c"
+              },
+              {
+                "kind": "oci:tag",
+                "value": "127.0.0.1:49508/demo/application:rio-sbom-sha256-4472fc2169660aebc342e11d7a292e0ac352b6d8fa45a9b70af0e5d84569ebfd"
+              },
+              {
+                "kind": "oci:subject",
+                "value": "127.0.0.1:49508/demo/application@sha256:b885c0c14dfdc86cd18f88c012d12a75439905d9995b0a4da82568bdd4da7a6e"
+              }
+            ],
+            "payloads": [
+              {
+                "mediaType": "application/vnd.cyclonedx+json",
+                "role": "sbom",
+                "sha256": "ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c",
+                "size": 918,
+                "sourceSHA256": "ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c",
+                "transformation": "identity"
+              }
+            ],
+            "rioVersion": "dev",
+            "source": {
+              "allowFailedGate": false,
+              "artifactId": "application",
+              "gate": "ok",
+              "indexSHA256": "acd68649b254e3dfc747eba8e4f1938a0c7f23dea0979288fd9caf5db787454b",
+              "outputSHA256": "ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c",
+              "schemaValidated": true
+            }
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "sequence": 1,
+          "attemptId": "7a2ac3f14f0de251ba1aae0aa06f0ca5",
+          "observedAt": "2026-09-24T22:19:22.233305Z",
+          "kind": "reconciliation",
+          "data": {
+            "configSHA256": "57b61073d8646697711c41d9f3a1e8a7203073a1beb8531002476a505475e956",
+            "observation": {
+              "code": "content_verified",
+              "details": {
+                "oci": {
+                  "blob": "verified",
+                  "config": "verified",
+                  "discovery": "observed",
+                  "manifest": "verified",
+                  "phase": "readback",
+                  "publicationBegan": false,
+                  "subject": "verified",
+                  "tag": "expected"
+                }
+              },
+              "httpStatus": 200,
+              "kind": "content",
+              "origin": "receiver",
+              "references": [
+                {
+                  "kind": "oci:manifest",
+                  "value": "127.0.0.1:49508/demo/application@sha256:4472fc2169660aebc342e11d7a292e0ac352b6d8fa45a9b70af0e5d84569ebfd"
+                },
+                {
+                  "kind": "oci:blob",
+                  "value": "sha256:ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c"
+                },
+                {
+                  "kind": "oci:tag",
+                  "value": "127.0.0.1:49508/demo/application:rio-sbom-sha256-4472fc2169660aebc342e11d7a292e0ac352b6d8fa45a9b70af0e5d84569ebfd"
+                },
+                {
+                  "kind": "oci:subject",
+                  "value": "127.0.0.1:49508/demo/application@sha256:b885c0c14dfdc86cd18f88c012d12a75439905d9995b0a4da82568bdd4da7a6e"
+                }
+              ],
+              "value": "verified"
+            }
+          }
+        }
+      ],
+      "journal": {
+        "sha256": "76fdbf63d42b9b7f1634cd7ccb877ab713f5308c93b645154663d8114854f782",
+        "eventCount": 2,
+        "lastSequence": 1
+      },
+      "evidenceIds": [
+        "delivery/7a2ac3f14f0de251ba1aae0aa06f0ca5/00000000000000000000",
+        "delivery/7a2ac3f14f0de251ba1aae0aa06f0ca5/00000000000000000001"
+      ],
+      "summary": {
+        "latestVerification": {
+          "sequence": 1,
+          "observedAt": "2026-09-24T22:19:22.233305Z",
+          "observation": {
+            "kind": "content",
+            "value": "verified",
+            "origin": "receiver",
+            "code": "content_verified",
+            "httpStatus": 200,
+            "references": [
+              {
+                "kind": "oci:manifest",
+                "value": "127.0.0.1:49508/demo/application@sha256:4472fc2169660aebc342e11d7a292e0ac352b6d8fa45a9b70af0e5d84569ebfd"
+              },
+              {
+                "kind": "oci:blob",
+                "value": "sha256:ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c"
+              },
+              {
+                "kind": "oci:tag",
+                "value": "127.0.0.1:49508/demo/application:rio-sbom-sha256-4472fc2169660aebc342e11d7a292e0ac352b6d8fa45a9b70af0e5d84569ebfd"
+              },
+              {
+                "kind": "oci:subject",
+                "value": "127.0.0.1:49508/demo/application@sha256:b885c0c14dfdc86cd18f88c012d12a75439905d9995b0a4da82568bdd4da7a6e"
+              }
+            ],
+            "details": {
+              "oci": {
+                "blob": "verified",
+                "config": "verified",
+                "discovery": "observed",
+                "manifest": "verified",
+                "phase": "readback",
+                "publicationBegan": false,
+                "subject": "verified",
+                "tag": "expected"
+              }
+            }
+          }
+        },
+        "acknowledgment": "unknown",
+        "lastObservation": {
+          "sequence": 1,
+          "observedAt": "2026-09-24T22:19:22.233305Z",
+          "observation": {
+            "kind": "content",
+            "value": "verified",
+            "origin": "receiver",
+            "code": "content_verified",
+            "httpStatus": 200,
+            "references": [
+              {
+                "kind": "oci:manifest",
+                "value": "127.0.0.1:49508/demo/application@sha256:4472fc2169660aebc342e11d7a292e0ac352b6d8fa45a9b70af0e5d84569ebfd"
+              },
+              {
+                "kind": "oci:blob",
+                "value": "sha256:ade302377681703dd6082b852da06122d3442c8067e08a88bc090fa37112134c"
+              },
+              {
+                "kind": "oci:tag",
+                "value": "127.0.0.1:49508/demo/application:rio-sbom-sha256-4472fc2169660aebc342e11d7a292e0ac352b6d8fa45a9b70af0e5d84569ebfd"
+              },
+              {
+                "kind": "oci:subject",
+                "value": "127.0.0.1:49508/demo/application@sha256:b885c0c14dfdc86cd18f88c012d12a75439905d9995b0a4da82568bdd4da7a6e"
+              }
+            ],
+            "details": {
+              "oci": {
+                "blob": "verified",
+                "config": "verified",
+                "discovery": "observed",
+                "manifest": "verified",
+                "phase": "readback",
+                "publicationBegan": false,
+                "subject": "verified",
+                "tag": "expected"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "coverage": {
+    "deliverySelection": "explicit",
+    "selectedDeliveryCount": 2,
+    "artifactIdsWithoutSelectedDeliveries": [],
+    "retryAttemptIdsNotIncluded": [],
+    "sbomFiles": "not-included",
+    "normalizationInputs": "not-included",
+    "normalizationStatements": "not-included",
+    "signatures": "not-included",
+    "workerIdentity": "not-recorded",
+    "authenticatedProducerIdentity": "not-established",
+    "collectionNotes": []
+  },
+  "evidence": [
+    {
+      "id": "normalization-index",
+      "kind": "normalization-index",
+      "mediaType": "application/json",
+      "sha256": "acd68649b254e3dfc747eba8e4f1938a0c7f23dea0979288fd9caf5db787454b",
+      "size": 763,
+      "encoding": "base64",
+      "data": "ewogICJzY2hlbWFWZXJzaW9uIjogMSwKICAidG9vbCI6IHsKICAgICJuYW1lIjogInJpbyIsCiAgICAidmVyc2lvbiI6ICJkZXYiCiAgfSwKICAibWFuaWZlc3QiOiB7CiAgICAicGF0aCI6ICJyaW8ueWFtbCIsCiAgICAic2hhMjU2IjogIjk3YjcwOTkyYmQ2OTBmZTNhYWM3NjU5ZDYzY2EwMGJlMmNkMTNlNDhkMDU4YWEwNjJkYjFlYjYzNjZjZjQ4YWQiCiAgfSwKICAiYXJ0aWZhY3RzIjogWwogICAgewogICAgICAiaWQiOiAiYXBwbGljYXRpb24iLAogICAgICAiaW5wdXQiOiB7CiAgICAgICAgInBhdGgiOiAiYm9tLmpzb24iLAogICAgICAgICJzaGEyNTYiOiAiNWY5ZjNkODc0NmM3NzVjODc5OTJiOGQ1OGJmOTNhMTFkZDMwYWNjZWEzM2Y4ZWE5ZTk1MGM0MTFhNGVmOThmNCIKICAgICAgfSwKICAgICAgIm91dHB1dCI6IHsKICAgICAgICAicGF0aCI6ICJhcHBsaWNhdGlvbi5jZHguanNvbiIsCiAgICAgICAgInNoYTI1NiI6ICJhZGUzMDIzNzc2ODE3MDNkZDYwODJiODUyZGEwNjEyMmQzNDQyYzgwNjdlMDhhODhiYzA5MGZhMzcxMTIxMzRjIgogICAgICB9LAogICAgICAic3BlY1ZlcnNpb24iOiB7CiAgICAgICAgImlucHV0IjogIjEuNiIsCiAgICAgICAgIm91dHB1dCI6ICIxLjYiCiAgICAgIH0sCiAgICAgICJzY2hlbWFWYWxpZGF0ZWQiOiB0cnVlLAogICAgICAiY29tcG9uZW50cyI6IDAsCiAgICAgICJ0cmFuc2Zvcm1zIjogW10sCiAgICAgICJnYXRlIjogIm9rIiwKICAgICAgImdhdGVGaW5kaW5ncyI6IFtdCiAgICB9CiAgXQp9Cg=="
+    },
+    {
+      "id": "delivery/66454168ea7a5cc0db61700b1fd929d6/00000000000000000000",
+      "kind": "delivery-event",
+      "mediaType": "application/json",
+      "sha256": "cab56e088139f3c10278530b4d485f1e6af3e62f5b36571d183ef1ed7f8b298c",
+      "size": 1627,
+      "encoding": "base64",
+      "data": "ewogICJzY2hlbWFWZXJzaW9uIjogMSwKICAic2VxdWVuY2UiOiAwLAogICJhdHRlbXB0SWQiOiAiNjY0NTQxNjhlYTdhNWNjMGRiNjE3MDBiMWZkOTI5ZDYiLAogICJvYnNlcnZlZEF0IjogIjIwMjYtMDktMjRUMjI6MTk6MjEuNjQ3NTMzWiIsCiAgImtpbmQiOiAiaW50ZW50IiwKICAiZGF0YSI6IHsKICAgICJyaW9WZXJzaW9uIjogImRldiIsCiAgICAic291cmNlIjogewogICAgICAiaW5kZXhTSEEyNTYiOiAiYWNkNjg2NDliMjU0ZTNkZmM3NDdlYmE4ZTRmMTkzOGEwYzdmMjNkZWEwOTc5Mjg4ZmQ5Y2FmNWRiNzg3NDU0YiIsCiAgICAgICJhcnRpZmFjdElkIjogImFwcGxpY2F0aW9uIiwKICAgICAgIm91dHB1dFNIQTI1NiI6ICJhZGUzMDIzNzc2ODE3MDNkZDYwODJiODUyZGEwNjEyMmQzNDQyYzgwNjdlMDhhODhiYzA5MGZhMzcxMTIxMzRjIiwKICAgICAgImdhdGUiOiAib2siLAogICAgICAic2NoZW1hVmFsaWRhdGVkIjogdHJ1ZSwKICAgICAgImFsbG93RmFpbGVkR2F0ZSI6IGZhbHNlCiAgICB9LAogICAgInBheWxvYWRzIjogWwogICAgICB7CiAgICAgICAgInJvbGUiOiAic2JvbSIsCiAgICAgICAgIm1lZGlhVHlwZSI6ICJhcHBsaWNhdGlvbi92bmQuY3ljbG9uZWR4K2pzb24iLAogICAgICAgICJzaGEyNTYiOiAiYWRlMzAyMzc3NjgxNzAzZGQ2MDgyYjg1MmRhMDYxMjJkMzQ0MmM4MDY3ZTA4YTg4YmMwOTBmYTM3MTEyMTM0YyIsCiAgICAgICAgInNpemUiOiA5MTgsCiAgICAgICAgInNvdXJjZVNIQTI1NiI6ICJhZGUzMDIzNzc2ODE3MDNkZDYwODJiODUyZGEwNjEyMmQzNDQyYzgwNjdlMDhhODhiYzA5MGZhMzcxMTIxMzRjIiwKICAgICAgICAidHJhbnNmb3JtYXRpb24iOiAiaWRlbnRpdHkiCiAgICAgIH0KICAgIF0sCiAgICAiYmluZGluZyI6ICJzZWN1cml0eSIsCiAgICAiZGVzdGluYXRpb24iOiB7CiAgICAgICJ0eXBlIjogImRlcGVuZGVuY3ktdHJhY2siLAogICAgICAiZGVzdGluYXRpb25OYW1lIjogInNlY3VyaXR5IiwKICAgICAgImlkZW50aXR5IjogewogICAgICAgICJ1cmwiOiAiaHR0cDovLzEyNy4wLjAuMTo0OTUwOCIsCiAgICAgICAgInByb2plY3QiOiB7CiAgICAgICAgICAibmFtZSI6ICJzeW50aGV0aWMtYXBwIiwKICAgICAgICAgICJ2ZXJzaW9uIjogIjEuMi4zIgogICAgICAgIH0KICAgICAgfSwKICAgICAgIm9wdGlvbnMiOiB7CiAgICAgICAgInVybCI6ICJodHRwOi8vMTI3LjAuMC4xOjQ5NTA4IiwKICAgICAgICAiYXBpS2V5RW52IjogIlJJT19EVFJBQ0tfREVNT19LRVkiLAogICAgICAgICJhbGxvd0hUVFAiOiB0cnVlLAogICAgICAgICJwcm9qZWN0IjogewogICAgICAgICAgImZyb21TdWJqZWN0IjogdHJ1ZQogICAgICAgIH0sCiAgICAgICAgImF1dG9DcmVhdGUiOiBmYWxzZQogICAgICB9LAogICAgICAiY3JlZGVudGlhbFJlZnMiOiBbCiAgICAgICAgIlJJT19EVFJBQ0tfREVNT19LRVkiCiAgICAgIF0sCiAgICAgICJjYXBhYmlsaXRpZXMiOiBbCiAgICAgICAgInN1Ym1pdCIsCiAgICAgICAgIm9ic2VydmUtYWN0aXZpdHkiCiAgICAgIF0KICAgIH0sCiAgICAiY29uZmlnU0hBMjU2IjogIjk3YjcwOTkyYmQ2OTBmZTNhYWM3NjU5ZDYzY2EwMGJlMmNkMTNlNDhkMDU4YWEwNjJkYjFlYjYzNjZjZjQ4YWQiCiAgfQp9Cg=="
+    },
+    {
+      "id": "delivery/66454168ea7a5cc0db61700b1fd929d6/00000000000000000001",
+      "kind": "delivery-event",
+      "mediaType": "application/json",
+      "sha256": "3325a54c997359a010cf0721e3cfaae57751196eba3407cae0ba51b9047cb4ee",
+      "size": 721,
+      "encoding": "base64",
+      "data": "ewogICJzY2hlbWFWZXJzaW9uIjogMSwKICAic2VxdWVuY2UiOiAxLAogICJhdHRlbXB0SWQiOiAiNjY0NTQxNjhlYTdhNWNjMGRiNjE3MDBiMWZkOTI5ZDYiLAogICJvYnNlcnZlZEF0IjogIjIwMjYtMDktMjRUMjI6MTk6MjEuNjU5ODg2WiIsCiAgImtpbmQiOiAic3VibWlzc2lvbiIsCiAgImRhdGEiOiB7CiAgICAiZGlzcG9zaXRpb24iOiAiYWNjZXB0ZWQiLAogICAgInJlZmVyZW5jZXMiOiBbCiAgICAgIHsKICAgICAgICAia2luZCI6ICJkZXBlbmRlbmN5LXRyYWNrOmV2ZW50LXRva2VuIiwKICAgICAgICAidmFsdWUiOiAiZjkwOTM0ZjUtY2I4OC00N2NlLTgxY2ItZGIwNmZjNjdkNGI0IgogICAgICB9CiAgICBdLAogICAgIm9ic2VydmF0aW9ucyI6IFsKICAgICAgewogICAgICAgICJraW5kIjogImFja25vd2xlZGdtZW50IiwKICAgICAgICAidmFsdWUiOiAiYWNjZXB0ZWQiLAogICAgICAgICJvcmlnaW4iOiAicmVjZWl2ZXIiLAogICAgICAgICJjb2RlIjogImFjY2VwdGVkIiwKICAgICAgICAiaHR0cFN0YXR1cyI6IDIwMCwKICAgICAgICAicmVmZXJlbmNlcyI6IFsKICAgICAgICAgIHsKICAgICAgICAgICAgImtpbmQiOiAiZGVwZW5kZW5jeS10cmFjazpldmVudC10b2tlbiIsCiAgICAgICAgICAgICJ2YWx1ZSI6ICJmOTA5MzRmNS1jYjg4LTQ3Y2UtODFjYi1kYjA2ZmM2N2Q0YjQiCiAgICAgICAgICB9CiAgICAgICAgXQogICAgICB9CiAgICBdCiAgfQp9Cg=="
+    },
+    {
+      "id": "delivery/66454168ea7a5cc0db61700b1fd929d6/00000000000000000002",
+      "kind": "delivery-event",
+      "mediaType": "application/json",
+      "sha256": "f839e16dd35dd4b477ba7c59900c0f09f530f6263724061fe72f69ccde8b64bf",
+      "size": 468,
+      "encoding": "base64",
+      "data": "ewogICJzY2hlbWFWZXJzaW9uIjogMSwKICAic2VxdWVuY2UiOiAyLAogICJhdHRlbXB0SWQiOiAiNjY0NTQxNjhlYTdhNWNjMGRiNjE3MDBiMWZkOTI5ZDYiLAogICJvYnNlcnZlZEF0IjogIjIwMjYtMDktMjRUMjI6MTk6MjEuNzEyNTA2WiIsCiAgImtpbmQiOiAicmVjb25jaWxpYXRpb24iLAogICJkYXRhIjogewogICAgIm9ic2VydmF0aW9uIjogewogICAgICAia2luZCI6ICJhY3Rpdml0eSIsCiAgICAgICJ2YWx1ZSI6ICJub3Qtb2JzZXJ2ZWQiLAogICAgICAib3JpZ2luIjogInJlY2VpdmVyIiwKICAgICAgImNvZGUiOiAiYWN0aXZpdHlfb2JzZXJ2ZWQiLAogICAgICAiaHR0cFN0YXR1cyI6IDIwMCwKICAgICAgInJlZmVyZW5jZXMiOiBbXQogICAgfSwKICAgICJjb25maWdTSEEyNTYiOiAiOTdiNzA5OTJiZDY5MGZlM2FhYzc2NTlkNjNjYTAwYmUyY2QxM2U0OGQwNThhYTA2MmRiMWViNjM2NmNmNDhhZCIKICB9Cn0K"
+    },
+    {
+      "id": "delivery/7a2ac3f14f0de251ba1aae0aa06f0ca5/00000000000000000000",
+      "kind": "delivery-event",
+      "mediaType": "application/json",
+      "sha256": "933bbec173cb38e038934c9ad655d9c7b7fbb79da3251dfdf0b9f79a0dc98d38",
+      "size": 4908,
+      "encoding": "base64",
+      "data": "ewogICJzY2hlbWFWZXJzaW9uIjogMSwKICAic2VxdWVuY2UiOiAwLAogICJhdHRlbXB0SWQiOiAiN2EyYWMzZjE0ZjBkZTI1MWJhMWFhZTBhYTA2ZjBjYTUiLAogICJvYnNlcnZlZEF0IjogIjIwMjYtMDktMjRUMjI6MTk6MjIuMTkwODk1WiIsCiAgImtpbmQiOiAiaW50ZW50IiwKICAiZGF0YSI6IHsKICAgICJleHBlY3RlZFJlZmVyZW5jZXMiOiBbCiAgICAgIHsKICAgICAgICAia2luZCI6ICJvY2k6bWFuaWZlc3QiLAogICAgICAgICJ2YWx1ZSI6ICIxMjcuMC4wLjE6NDk1MDgvZGVtby9hcHBsaWNhdGlvbkBzaGEyNTY6NDQ3MmZjMjE2OTY2MGFlYmMzNDJlMTFkN2EyOTJlMGFjMzUyYjZkOGZhNDVhOWI3MGFmMGU1ZDg0NTY5ZWJmZCIKICAgICAgfSwKICAgICAgewogICAgICAgICJraW5kIjogIm9jaTpibG9iIiwKICAgICAgICAidmFsdWUiOiAic2hhMjU2OmFkZTMwMjM3NzY4MTcwM2RkNjA4MmI4NTJkYTA2MTIyZDM0NDJjODA2N2UwOGE4OGJjMDkwZmEzNzExMjEzNGMiCiAgICAgIH0sCiAgICAgIHsKICAgICAgICAia2luZCI6ICJvY2k6dGFnIiwKICAgICAgICAidmFsdWUiOiAiMTI3LjAuMC4xOjQ5NTA4L2RlbW8vYXBwbGljYXRpb246cmlvLXNib20tc2hhMjU2LTQ0NzJmYzIxNjk2NjBhZWJjMzQyZTExZDdhMjkyZTBhYzM1MmI2ZDhmYTQ1YTliNzBhZjBlNWQ4NDU2OWViZmQiCiAgICAgIH0sCiAgICAgIHsKICAgICAgICAia2luZCI6ICJvY2k6c3ViamVjdCIsCiAgICAgICAgInZhbHVlIjogIjEyNy4wLjAuMTo0OTUwOC9kZW1vL2FwcGxpY2F0aW9uQHNoYTI1NjpiODg1YzBjMTRkZmRjODZjZDE4Zjg4YzAxMmQxMmE3NTQzOTkwNWQ5OTk1YjBhNGRhODI1NjhiZGQ0ZGE3YTZlIgogICAgICB9CiAgICBdLAogICAgInJpb1ZlcnNpb24iOiAiZGV2IiwKICAgICJzb3VyY2UiOiB7CiAgICAgICJpbmRleFNIQTI1NiI6ICJhY2Q2ODY0OWIyNTRlM2RmYzc0N2ViYThlNGYxOTM4YTBjN2YyM2RlYTA5NzkyODhmZDljYWY1ZGI3ODc0NTRiIiwKICAgICAgImFydGlmYWN0SWQiOiAiYXBwbGljYXRpb24iLAogICAgICAib3V0cHV0U0hBMjU2IjogImFkZTMwMjM3NzY4MTcwM2RkNjA4MmI4NTJkYTA2MTIyZDM0NDJjODA2N2UwOGE4OGJjMDkwZmEzNzExMjEzNGMiLAogICAgICAiZ2F0ZSI6ICJvayIsCiAgICAgICJzY2hlbWFWYWxpZGF0ZWQiOiB0cnVlLAogICAgICAiYWxsb3dGYWlsZWRHYXRlIjogZmFsc2UKICAgIH0sCiAgICAicGF5bG9hZHMiOiBbCiAgICAgIHsKICAgICAgICAicm9sZSI6ICJzYm9tIiwKICAgICAgICAibWVkaWFUeXBlIjogImFwcGxpY2F0aW9uL3ZuZC5jeWNsb25lZHgranNvbiIsCiAgICAgICAgInNoYTI1NiI6ICJhZGUzMDIzNzc2ODE3MDNkZDYwODJiODUyZGEwNjEyMmQzNDQyYzgwNjdlMDhhODhiYzA5MGZhMzcxMTIxMzRjIiwKICAgICAgICAic2l6ZSI6IDkxOCwKICAgICAgICAic291cmNlU0hBMjU2IjogImFkZTMwMjM3NzY4MTcwM2RkNjA4MmI4NTJkYTA2MTIyZDM0NDJjODA2N2UwOGE4OGJjMDkwZmEzNzExMjEzNGMiLAogICAgICAgICJ0cmFuc2Zvcm1hdGlvbiI6ICJpZGVudGl0eSIKICAgICAgfQogICAgXSwKICAgICJiaW5kaW5nIjogInJlZ2lzdHJ5IiwKICAgICJkZXN0aW5hdGlvbiI6IHsKICAgICAgInR5cGUiOiAib2NpIiwKICAgICAgImRlc3RpbmF0aW9uTmFtZSI6ICJyZWdpc3RyeSIsCiAgICAgICJpZGVudGl0eSI6IHsKICAgICAgICAicmVnaXN0cnkiOiAiMTI3LjAuMC4xOjQ5NTA4IiwKICAgICAgICAicmVwb3NpdG9yeSI6ICJkZW1vL2FwcGxpY2F0aW9uIiwKICAgICAgICAidGFnIjogInJpby1zYm9tLXNoYTI1Ni00NDcyZmMyMTY5NjYwYWViYzM0MmUxMWQ3YTI5MmUwYWMzNTJiNmQ4ZmE0NWE5YjcwYWYwZTVkODQ1NjllYmZkIiwKICAgICAgICAic3ViamVjdCI6IHsKICAgICAgICAgICJtZWRpYVR5cGUiOiAiYXBwbGljYXRpb24vdm5kLm9jaS5pbWFnZS5pbmRleC52MStqc29uIiwKICAgICAgICAgICJkaWdlc3QiOiAic2hhMjU2OmI4ODVjMGMxNGRmZGM4NmNkMThmODhjMDEyZDEyYTc1NDM5OTA1ZDk5OTViMGE0ZGE4MjU2OGJkZDRkYTdhNmUiLAogICAgICAgICAgInNpemUiOiAxNDYKICAgICAgICB9CiAgICAgIH0sCiAgICAgICJvcHRpb25zIjogewogICAgICAgICJyZWdpc3RyeSI6ICIxMjcuMC4wLjE6NDk1MDgiLAogICAgICAgICJyZXBvc2l0b3J5IjogImRlbW8vYXBwbGljYXRpb24iLAogICAgICAgICJhdXRoIjogewogICAgICAgICAgInVzZXJuYW1lRW52IjogIlJJT19PQ0lfREVNT19VU0VSTkFNRSIsCiAgICAgICAgICAicGFzc3dvcmRFbnYiOiAiUklPX09DSV9ERU1PX1BBU1NXT1JEIgogICAgICAgIH0sCiAgICAgICAgImFsbG93SFRUUCI6IHRydWUsCiAgICAgICAgInN1YmplY3QiOiB7CiAgICAgICAgICAibWVkaWFUeXBlIjogImFwcGxpY2F0aW9uL3ZuZC5vY2kuaW1hZ2UuaW5kZXgudjEranNvbiIsCiAgICAgICAgICAiZGlnZXN0IjogInNoYTI1NjpiODg1YzBjMTRkZmRjODZjZDE4Zjg4YzAxMmQxMmE3NTQzOTkwNWQ5OTk1YjBhNGRhODI1NjhiZGQ0ZGE3YTZlIiwKICAgICAgICAgICJzaXplIjogMTQ2CiAgICAgICAgfSwKICAgICAgICAicHVibGljYXRpb24iOiB7CiAgICAgICAgICAibWFuaWZlc3RKU09OIjogIntcInNjaGVtYVZlcnNpb25cIjoyLFwibWVkaWFUeXBlXCI6XCJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb25cIixcImFydGlmYWN0VHlwZVwiOlwiYXBwbGljYXRpb24vdm5kLmN5Y2xvbmVkeCtqc29uXCIsXCJjb25maWdcIjp7XCJtZWRpYVR5cGVcIjpcImFwcGxpY2F0aW9uL3ZuZC5vY2kuZW1wdHkudjEranNvblwiLFwiZGlnZXN0XCI6XCJzaGEyNTY6NDQxMzZmYTM1NWIzNjc4YTExNDZhZDE2ZjdlODY0OWU5NGZiNGZjMjFmZTc3ZTgzMTBjMDYwZjYxY2FhZmY4YVwiLFwic2l6ZVwiOjJ9LFwibGF5ZXJzXCI6W3tcIm1lZGlhVHlwZVwiOlwiYXBwbGljYXRpb24vdm5kLmN5Y2xvbmVkeCtqc29uXCIsXCJkaWdlc3RcIjpcInNoYTI1NjphZGUzMDIzNzc2ODE3MDNkZDYwODJiODUyZGEwNjEyMmQzNDQyYzgwNjdlMDhhODhiYzA5MGZhMzcxMTIxMzRjXCIsXCJzaXplXCI6OTE4LFwiYW5ub3RhdGlvbnNcIjp7XCJvcmcub3BlbmNvbnRhaW5lcnMuaW1hZ2UudGl0bGVcIjpcInNib20uY2R4Lmpzb25cIn19XSxcInN1YmplY3RcIjp7XCJtZWRpYVR5cGVcIjpcImFwcGxpY2F0aW9uL3ZuZC5vY2kuaW1hZ2UuaW5kZXgudjEranNvblwiLFwiZGlnZXN0XCI6XCJzaGEyNTY6Yjg4NWMwYzE0ZGZkYzg2Y2QxOGY4OGMwMTJkMTJhNzU0Mzk5MDVkOTk5NWIwYTRkYTgyNTY4YmRkNGRhN2E2ZVwiLFwic2l6ZVwiOjE0Nn0sXCJhbm5vdGF0aW9uc1wiOntcImlvLnJlYmF6ZS5yaW8uaW5kZXguc2hhMjU2XCI6XCJhY2Q2ODY0OWIyNTRlM2RmYzc0N2ViYThlNGYxOTM4YTBjN2YyM2RlYTA5NzkyODhmZDljYWY1ZGI3ODc0NTRiXCJ9fSIsCiAgICAgICAgICAibWFuaWZlc3QiOiB7CiAgICAgICAgICAgICJtZWRpYVR5cGUiOiAiYXBwbGljYXRpb24vdm5kLm9jaS5pbWFnZS5tYW5pZmVzdC52MStqc29uIiwKICAgICAgICAgICAgImRpZ2VzdCI6ICJzaGEyNTY6NDQ3MmZjMjE2OTY2MGFlYmMzNDJlMTFkN2EyOTJlMGFjMzUyYjZkOGZhNDVhOWI3MGFmMGU1ZDg0NTY5ZWJmZCIsCiAgICAgICAgICAgICJzaXplIjogNzY0CiAgICAgICAgICB9LAogICAgICAgICAgImNvbmZpZyI6IHsKICAgICAgICAgICAgIm1lZGlhVHlwZSI6ICJhcHBsaWNhdGlvbi92bmQub2NpLmVtcHR5LnYxK2pzb24iLAogICAgICAgICAgICAiZGlnZXN0IjogInNoYTI1Njo0NDEzNmZhMzU1YjM2NzhhMTE0NmFkMTZmN2U4NjQ5ZTk0ZmI0ZmMyMWZlNzdlODMxMGMwNjBmNjFjYWFmZjhhIiwKICAgICAgICAgICAgInNpemUiOiAyCiAgICAgICAgICB9LAogICAgICAgICAgInBheWxvYWQiOiB7CiAgICAgICAgICAgICJyb2xlIjogInNib20iLAogICAgICAgICAgICAibWVkaWFUeXBlIjogImFwcGxpY2F0aW9uL3ZuZC5jeWNsb25lZHgranNvbiIsCiAgICAgICAgICAgICJzaGEyNTYiOiAiYWRlMzAyMzc3NjgxNzAzZGQ2MDgyYjg1MmRhMDYxMjJkMzQ0MmM4MDY3ZTA4YTg4YmMwOTBmYTM3MTEyMTM0YyIsCiAgICAgICAgICAgICJzaXplIjogOTE4LAogICAgICAgICAgICAic291cmNlU0hBMjU2IjogImFkZTMwMjM3NzY4MTcwM2RkNjA4MmI4NTJkYTA2MTIyZDM0NDJjODA2N2UwOGE4OGJjMDkwZmEzNzExMjEzNGMiLAogICAgICAgICAgICAidHJhbnNmb3JtYXRpb24iOiAiaWRlbnRpdHkiCiAgICAgICAgICB9LAogICAgICAgICAgInRhZyI6ICJyaW8tc2JvbS1zaGEyNTYtNDQ3MmZjMjE2OTY2MGFlYmMzNDJlMTFkN2EyOTJlMGFjMzUyYjZkOGZhNDVhOWI3MGFmMGU1ZDg0NTY5ZWJmZCIsCiAgICAgICAgICAic3ViamVjdCI6IHsKICAgICAgICAgICAgIm1lZGlhVHlwZSI6ICJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLmluZGV4LnYxK2pzb24iLAogICAgICAgICAgICAiZGlnZXN0IjogInNoYTI1NjpiODg1YzBjMTRkZmRjODZjZDE4Zjg4YzAxMmQxMmE3NTQzOTkwNWQ5OTk1YjBhNGRhODI1NjhiZGQ0ZGE3YTZlIiwKICAgICAgICAgICAgInNpemUiOiAxNDYKICAgICAgICAgIH0KICAgICAgICB9CiAgICAgIH0sCiAgICAgICJjcmVkZW50aWFsUmVmcyI6IFsKICAgICAgICAiUklPX09DSV9ERU1PX1VTRVJOQU1FIiwKICAgICAgICAiUklPX09DSV9ERU1PX1BBU1NXT1JEIgogICAgICBdLAogICAgICAiY2FwYWJpbGl0aWVzIjogWwogICAgICAgICJzdWJtaXQiLAogICAgICAgICJvYnNlcnZlLWNvbnRlbnQiLAogICAgICAgICJvYnNlcnZlLXJlZmVycmVycyIKICAgICAgXQogICAgfSwKICAgICJjb25maWdTSEEyNTYiOiAiNTdiNjEwNzNkODY0NjY5NzcxMWM0MWQ5ZjNhMWU4YTcyMDMwNzNhMWJlYjg1MzEwMDI0NzZhNTA1NDc1ZTk1NiIKICB9Cn0K"
+    },
+    {
+      "id": "delivery/7a2ac3f14f0de251ba1aae0aa06f0ca5/00000000000000000001",
+      "kind": "delivery-event",
+      "mediaType": "application/json",
+      "sha256": "0392c9a88aa1c4ff170c140b2ad566bd7e06d0f7cc4d69d122bb6faa7ace4d14",
+      "size": 1473,
+      "encoding": "base64",
+      "data": "ewogICJzY2hlbWFWZXJzaW9uIjogMSwKICAic2VxdWVuY2UiOiAxLAogICJhdHRlbXB0SWQiOiAiN2EyYWMzZjE0ZjBkZTI1MWJhMWFhZTBhYTA2ZjBjYTUiLAogICJvYnNlcnZlZEF0IjogIjIwMjYtMDktMjRUMjI6MTk6MjIuMjMzMzA1WiIsCiAgImtpbmQiOiAicmVjb25jaWxpYXRpb24iLAogICJkYXRhIjogewogICAgIm9ic2VydmF0aW9uIjogewogICAgICAia2luZCI6ICJjb250ZW50IiwKICAgICAgInZhbHVlIjogInZlcmlmaWVkIiwKICAgICAgIm9yaWdpbiI6ICJyZWNlaXZlciIsCiAgICAgICJjb2RlIjogImNvbnRlbnRfdmVyaWZpZWQiLAogICAgICAiaHR0cFN0YXR1cyI6IDIwMCwKICAgICAgInJlZmVyZW5jZXMiOiBbCiAgICAgICAgewogICAgICAgICAgImtpbmQiOiAib2NpOm1hbmlmZXN0IiwKICAgICAgICAgICJ2YWx1ZSI6ICIxMjcuMC4wLjE6NDk1MDgvZGVtby9hcHBsaWNhdGlvbkBzaGEyNTY6NDQ3MmZjMjE2OTY2MGFlYmMzNDJlMTFkN2EyOTJlMGFjMzUyYjZkOGZhNDVhOWI3MGFmMGU1ZDg0NTY5ZWJmZCIKICAgICAgICB9LAogICAgICAgIHsKICAgICAgICAgICJraW5kIjogIm9jaTpibG9iIiwKICAgICAgICAgICJ2YWx1ZSI6ICJzaGEyNTY6YWRlMzAyMzc3NjgxNzAzZGQ2MDgyYjg1MmRhMDYxMjJkMzQ0MmM4MDY3ZTA4YTg4YmMwOTBmYTM3MTEyMTM0YyIKICAgICAgICB9LAogICAgICAgIHsKICAgICAgICAgICJraW5kIjogIm9jaTp0YWciLAogICAgICAgICAgInZhbHVlIjogIjEyNy4wLjAuMTo0OTUwOC9kZW1vL2FwcGxpY2F0aW9uOnJpby1zYm9tLXNoYTI1Ni00NDcyZmMyMTY5NjYwYWViYzM0MmUxMWQ3YTI5MmUwYWMzNTJiNmQ4ZmE0NWE5YjcwYWYwZTVkODQ1NjllYmZkIgogICAgICAgIH0sCiAgICAgICAgewogICAgICAgICAgImtpbmQiOiAib2NpOnN1YmplY3QiLAogICAgICAgICAgInZhbHVlIjogIjEyNy4wLjAuMTo0OTUwOC9kZW1vL2FwcGxpY2F0aW9uQHNoYTI1NjpiODg1YzBjMTRkZmRjODZjZDE4Zjg4YzAxMmQxMmE3NTQzOTkwNWQ5OTk1YjBhNGRhODI1NjhiZGQ0ZGE3YTZlIgogICAgICAgIH0KICAgICAgXSwKICAgICAgImRldGFpbHMiOiB7CiAgICAgICAgIm9jaSI6IHsKICAgICAgICAgICJwdWJsaWNhdGlvbkJlZ2FuIjogZmFsc2UsCiAgICAgICAgICAicGhhc2UiOiAicmVhZGJhY2siLAogICAgICAgICAgIm1hbmlmZXN0IjogInZlcmlmaWVkIiwKICAgICAgICAgICJjb25maWciOiAidmVyaWZpZWQiLAogICAgICAgICAgImJsb2IiOiAidmVyaWZpZWQiLAogICAgICAgICAgInRhZyI6ICJleHBlY3RlZCIsCiAgICAgICAgICAic3ViamVjdCI6ICJ2ZXJpZmllZCIsCiAgICAgICAgICAiZGlzY292ZXJ5IjogIm9ic2VydmVkIgogICAgICAgIH0KICAgICAgfQogICAgfSwKICAgICJjb25maWdTSEEyNTYiOiAiNTdiNjEwNzNkODY0NjY5NzcxMWM0MWQ5ZjNhMWU4YTcyMDMwNzNhMWJlYjg1MzEwMDI0NzZhNTA1NDc1ZTk1NiIKICB9Cn0K"
+    }
+  ]
+}

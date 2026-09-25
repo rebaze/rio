@@ -10,13 +10,16 @@ import (
 )
 
 type Prepared struct {
-	Verified    delivery.Verified
-	Description delivery.Description
-	Intent      record.Intent
-	Target      delivery.Target
-	Reservation *record.Reservation
+	ExpectedReferences []delivery.Reference
+	ValidateIntent     func(record.Intent) error
+	Verified           delivery.Verified
+	Description        delivery.Description
+	Intent             record.Intent
+	Target             delivery.Target
+	Reservation        *record.Reservation
 }
 type Result struct {
+	ExpectedReferences     []delivery.Reference   `json:"expectedReferences,omitempty"`
 	SchemaVersion          int                    `json:"schemaVersion"`
 	Operation              string                 `json:"operation"`
 	AttemptID              string                 `json:"attemptId,omitempty"`
@@ -29,6 +32,7 @@ type Result struct {
 	RequestMayHaveOccurred bool                   `json:"requestMayHaveOccurred"`
 	Persisted              bool                   `json:"persisted"`
 	Acknowledgment         string                 `json:"acknowledgment,omitempty"`
+	Verification           string                 `json:"verification,omitempty"`
 	Activity               string                 `json:"activity,omitempty"`
 	Journal                *record.Snapshot       `json:"journal,omitempty"`
 	ExitCode               int                    `json:"-"`
@@ -58,22 +62,30 @@ func FromSnapshot(operation, path string, s record.Snapshot) Result {
 	r.AttemptID = s.Events[0].AttemptID
 	r.Source = &s.Intent.Source
 	r.Destination = &s.Intent.Destination
+	r.ExpectedReferences = append([]delivery.Reference(nil), s.Intent.ExpectedReferences...)
 	r.Outcome = s.Disposition
 	r.Acknowledgment = s.Disposition
 	r.Observations = s.Observations
 	r.Persisted = true
 	for _, o := range s.Observations {
+		if o.Kind == "content" {
+			r.Verification = o.Value
+		}
 		if o.Kind == "activity" {
 			r.Activity = o.Value
 		}
 	}
 	return r
 }
-func Submit(ctx context.Context, p Prepared, path string) (r Result, err error) {
+func Submit(ctx context.Context, p Prepared, path string) (Result, error) {
+	return submitWithJournal(ctx, p, path, nil)
+}
+func submitWithJournal(ctx context.Context, p Prepared, path string, create func(record.Intent) (*record.Writer, error)) (r Result, err error) {
 	r = NewResult("deliver", path)
 	source := p.Verified.Source()
 	r.Source = &source
 	r.Destination = &p.Description
+	r.ExpectedReferences = append([]delivery.Reference(nil), p.ExpectedReferences...)
 	if p.Target == nil || len(p.Verified.Payloads()) == 0 {
 		return Failure(r, delivery.Fail("invalid_prepared", "verified payload and target required"), 2)
 	}
@@ -82,7 +94,9 @@ func Submit(ctx context.Context, p Prepared, path string) (r Result, err error) 
 		return Failure(r, e, PreflightCode(e))
 	}
 	var w *record.Writer
-	if p.Reservation != nil {
+	if create != nil {
+		w, e = create(intent)
+	} else if p.Reservation != nil {
 		w, e = p.Reservation.Create(intent)
 	} else {
 		w, e = record.Create(path, intent)
@@ -100,6 +114,16 @@ func Submit(ctx context.Context, p Prepared, path string) (r Result, err error) 
 		return Failure(r, e, 3)
 	}
 	r.AttemptID = s.Events[0].AttemptID
+	expectedIntent, expectedErr := json.Marshal(intent)
+	committedIntent, committedErr := json.Marshal(s.Intent)
+	if expectedErr != nil || committedErr != nil || !delivery.JSONEqual(expectedIntent, committedIntent) {
+		return Failure(r, delivery.Fail("persistence_failed", "committed intent differs from validated preparation"), 3)
+	}
+	if p.ValidateIntent != nil {
+		if e := p.ValidateIntent(s.Intent); e != nil {
+			return Failure(r, delivery.Fail("persistence_failed", "committed intent failed adapter validation"), 3)
+		}
+	}
 	r.RequestMayHaveOccurred = true
 	sub, submitErr := p.Target.Submit(ctx, p.Verified.Payloads())
 	if sub.Disposition != "accepted" && sub.Disposition != "rejected" {
@@ -114,6 +138,11 @@ func Submit(ctx context.Context, p Prepared, path string) (r Result, err error) 
 	r.Outcome = sub.Disposition
 	r.Acknowledgment = sub.Disposition
 	r.Observations = sub.Observations
+	for _, o := range sub.Observations {
+		if o.Kind == "content" {
+			r.Verification = o.Value
+		}
+	}
 	b, e := json.Marshal(sub)
 	if e != nil {
 		return Failure(r, delivery.Fail("persistence_failed", "remote disposition observed; result not saved"), 3)
@@ -151,9 +180,15 @@ func PrepareIntent(p Prepared) (record.Intent, error) {
 	intent := p.Intent
 	intent.Source = p.Verified.Source()
 	intent.Destination = p.Description
+	intent.ExpectedReferences = append([]delivery.Reference(nil), p.ExpectedReferences...)
 	intent.Payloads = []delivery.PayloadRef{}
 	for _, payload := range p.Verified.Payloads() {
 		intent.Payloads = append(intent.Payloads, payload.Ref())
+	}
+	if p.ValidateIntent != nil {
+		if e := p.ValidateIntent(intent); e != nil {
+			return record.Intent{}, e
+		}
 	}
 	if e := record.CheckIntent(intent); e != nil {
 		return record.Intent{}, e

@@ -5,13 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"github.com/rebaze/rio/internal/delivery"
-	"github.com/rebaze/rio/internal/delivery/dtrack"
-	"github.com/rebaze/rio/internal/delivery/record"
 	"github.com/rebaze/rio/internal/delivery/runner"
 	"github.com/rebaze/rio/internal/manifest"
 	"github.com/spf13/cobra"
 	"io"
 	"os"
+	"strings"
 )
 
 type deliveryOptions struct {
@@ -27,9 +26,6 @@ var deliveryBuild = func(p delivery.Provider, d delivery.Description) (delivery.
 	return p.Build(d, deliveryLookupEnv)
 }
 
-func providers(dir string) map[string]delivery.Provider {
-	return map[string]delivery.Provider{"dependency-track": dtrack.Provider{Directory: dir}}
-}
 func loadDeliveryConfig(path string) (delivery.Config, error) {
 	m, e := manifest.Load(path)
 	if e != nil {
@@ -48,48 +44,6 @@ func batchPreflight(path string, o deliveryOptions) (delivery.Config, delivery.B
 	}
 	plan, e := delivery.PlanBatch(c, o.index, delivery.PlanOptions{Artifacts: o.artifacts, Targets: o.targets, AllowFailedGate: o.allowFailed}, providers(c.Directory))
 	return c, plan, e
-}
-func validateSnapshot(s record.Snapshot) error {
-	if _, _, e := dtrack.ValidateDescription(s.Intent.Destination); e != nil {
-		return e
-	}
-	for _, event := range s.Events {
-		if event.Kind == "submission" {
-			var sub delivery.Submission
-			if e := delivery.DecodeJSON(event.Data, &sub, true); e != nil {
-				return e
-			}
-			if e := dtrack.ValidateSubmission(sub); e != nil {
-				return e
-			}
-		}
-	}
-	return dtrack.ValidateEvidence(s.References, s.Observations)
-}
-func samePolicy(a, b delivery.Description, reconcile bool) bool {
-	ao, ai, e := dtrack.ValidateDescription(a)
-	if e != nil {
-		return false
-	}
-	bo, bi, e := dtrack.ValidateDescription(b)
-	if e != nil {
-		return false
-	}
-	ab, _ := json.Marshal(ai)
-	bb, _ := json.Marshal(bi)
-	if string(ab) != string(bb) || a.Type != b.Type || ao.Project != bo.Project {
-		return false
-	}
-	if (ao.AutoCreate == nil) != (bo.AutoCreate == nil) {
-		return false
-	}
-	if ao.AutoCreate != nil && *ao.AutoCreate != *bo.AutoCreate {
-		return false
-	}
-	if ao.AllowHTTP != bo.AllowHTTP {
-		return false
-	}
-	return true
 }
 func deliveryFinish(r runner.Result, e error, o deliveryOptions, global *globalOptions, stdout, stderr io.Writer) error {
 	if e != nil && r.Error == nil {
@@ -115,6 +69,13 @@ func deliveryFinish(r runner.Result, e error, o deliveryOptions, global *globalO
 		if r.Destination != nil {
 			fmt.Fprintf(stderr, "destination=%s type=%s target=%s capabilities=%v credentialRefs=%v\n", r.Destination.DestinationName, r.Destination.Type, r.Destination.Identity, r.Destination.Capabilities, r.Destination.CredentialRefs)
 		}
+		if r.Destination != nil {
+			if entry, e := adapter(r.Destination.Type); e == nil && entry.HumanTransportPolicy != nil {
+				if policy := entry.HumanTransportPolicy(*r.Destination); policy != "" {
+					fmt.Fprintln(stderr, strings.TrimSpace(policy))
+				}
+			}
+		}
 		if r.Acknowledgment != "" {
 			fmt.Fprintf(stderr, "acknowledgment: %s\n", r.Acknowledgment)
 		}
@@ -124,6 +85,24 @@ func deliveryFinish(r runner.Result, e error, o deliveryOptions, global *globalO
 				activity = "no processing observed"
 			}
 			fmt.Fprintf(stderr, "activity: %s\n", activity)
+		}
+		if r.Verification != "" {
+			fmt.Fprintf(stderr, "verification: %s\n", r.Verification)
+		}
+		for _, ref := range r.ExpectedReferences {
+			fmt.Fprintf(stderr, "expected %s: %s\n", ref.Kind, ref.Value)
+		}
+		if r.Destination != nil {
+			if entry, err := adapter(r.Destination.Type); err == nil && entry.HumanObservation != nil {
+				for i := len(r.Observations) - 1; i >= 0; i-- {
+					if r.Observations[i].Kind == "content" || i == len(r.Observations)-1 {
+						if facts := entry.HumanObservation(r.Observations[i]); facts != "" {
+							fmt.Fprintln(stderr, facts)
+						}
+						break
+					}
+				}
+			}
 		}
 		if r.Journal != nil && len(r.Journal.OrphanTemps) > 0 {
 			fmt.Fprintf(stderr, "orphan temporary files ignored: %d\n", len(r.Journal.OrphanTemps))
@@ -187,19 +166,35 @@ func batchFinish(r runner.BatchResult, e error, o deliveryOptions, g *globalOpti
 		for _, item := range r.Items {
 			fmt.Fprintf(stderr, "artifact=%s target=%s state=%s record=%s", item.ArtifactID, item.Target, item.State, item.Record)
 			if item.Destination != nil {
-				fmt.Fprintf(stderr, " project=%s capabilities=%v", item.Destination.Identity, item.Destination.Capabilities)
-				if options, identity, err := dtrack.ValidateDescription(*item.Destination); err == nil {
-					if identity.Project.UUID != "" {
-						fmt.Fprint(stderr, " autoCreate=not-applicable")
-					} else if options.AutoCreate != nil {
-						fmt.Fprintf(stderr, " autoCreate=%t", *options.AutoCreate)
-					}
+				label := "identity"
+				if entry, e := adapter(item.Destination.Type); e == nil && entry.HumanIdentityLabel != "" {
+					label = entry.HumanIdentityLabel
+				}
+				fmt.Fprintf(stderr, " %s=%s capabilities=%v", label, item.Destination.Identity, item.Destination.Capabilities)
+				if entry, e := adapter(item.Destination.Type); e == nil && entry.HumanDescription != nil {
+					fmt.Fprint(stderr, entry.HumanDescription(*item.Destination))
 				}
 			}
 			if item.Source != nil {
 				fmt.Fprintf(stderr, " gate=%s schemaValidated=%t allowFailedGate=%t sha256=%s", item.Source.Gate, item.Source.SchemaValidated, item.Source.AllowFailedGate, item.Source.OutputSHA256)
 			}
 			fmt.Fprintln(stderr)
+			for _, ref := range item.ExpectedReferences {
+				fmt.Fprintf(stderr, "expected %s: %s\n", ref.Kind, ref.Value)
+			}
+			if item.Result != nil {
+				fmt.Fprintf(stderr, "acknowledgment: %s\n", item.Result.Acknowledgment)
+				if item.Destination != nil {
+					if entry, e := adapter(item.Destination.Type); e == nil && entry.HumanObservation != nil && len(item.Result.Observations) > 0 {
+						if facts := entry.HumanObservation(item.Result.Observations[len(item.Result.Observations)-1]); facts != "" {
+							fmt.Fprintln(stderr, facts)
+						}
+					}
+				}
+				if item.Result.Verification != "" {
+					fmt.Fprintf(stderr, "verification: %s\n", item.Result.Verification)
+				}
+			}
 		}
 		for _, rule := range r.UnusedRules {
 			fmt.Fprintf(stderr, "unused %s rule: target=%s artifact=%s\n", rule.Rule, rule.Target, rule.ArtifactID)

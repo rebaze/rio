@@ -73,6 +73,34 @@ type Submission struct {
 	References   []Reference   `json:"references"`
 	Observations []Observation `json:"observations"`
 }
+type Preparation struct {
+	Description        Description `json:"description"`
+	ExpectedReferences []Reference `json:"expectedReferences,omitempty"`
+}
+type Planner interface {
+	Prepare(Description, Source, []PayloadRef) (Preparation, error)
+}
+
+// Prepare supplies only copied metadata to an optional offline adapter planner.
+func Prepare(p Provider, d Description, s Source, refs []PayloadRef) (Preparation, error) {
+	d.Identity = append(json.RawMessage(nil), d.Identity...)
+	d.Options = append(json.RawMessage(nil), d.Options...)
+	d.CredentialRefs = append([]string{}, d.CredentialRefs...)
+	d.Capabilities = append([]string{}, d.Capabilities...)
+	if planner, ok := p.(Planner); ok {
+		return planner.Prepare(d, s, append([]PayloadRef(nil), refs...))
+	}
+	return Preparation{Description: d}, nil
+}
+func HasCapability(d Description, capability string) bool {
+	for _, c := range d.Capabilities {
+		if c == capability {
+			return true
+		}
+	}
+	return false
+}
+
 type Provider interface {
 	Describe(destination, binding yaml.Node, subject Subject) (Description, error)
 	Build(Description, func(string) (string, bool)) (Target, error)

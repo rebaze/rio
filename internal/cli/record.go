@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/delivery/record"
@@ -129,8 +130,27 @@ func renderRecord(d evidence.Document, w io.Writer) {
 	}
 	for _, x := range d.Deliveries {
 		fmt.Fprintf(w, "attempt=%s artifact=%s destination=%s target=%s acknowledgment=%s\n", x.AttemptID, x.ArtifactID, x.Intent.Destination.DestinationName, x.Intent.Destination.Identity, x.Summary.Acknowledgment)
+		if entry, e := adapter(x.Intent.Destination.Type); e == nil && entry.HumanTransportPolicy != nil {
+			if policy := entry.HumanTransportPolicy(x.Intent.Destination); policy != "" {
+				fmt.Fprintln(w, strings.TrimSpace(policy))
+			}
+			if o := x.Summary.LastObservation; o != nil && entry.HumanObservation != nil {
+				if facts := entry.HumanObservation(o.Observation); facts != "" {
+					fmt.Fprintln(w, facts)
+				}
+			}
+		}
 		if o := x.Summary.LatestActivity; o != nil {
 			fmt.Fprintf(w, "latest activity=%s sequence=%d observedAt=%s\n", o.Observation.Value, o.Sequence, o.ObservedAt)
+		}
+		if o := x.Summary.LatestVerification; o != nil {
+			fmt.Fprintf(w, "latest verification=%s sequence=%d observedAt=%s\n", o.Observation.Value, o.Sequence, o.ObservedAt)
+			if entry, e := adapter(x.Intent.Destination.Type); e == nil && entry.HumanObservation != nil {
+				fmt.Fprintln(w, entry.HumanObservation(o.Observation))
+			}
+		}
+		for _, ref := range x.Intent.ExpectedReferences {
+			fmt.Fprintf(w, "expected %s: %s\n", ref.Kind, ref.Value)
 		}
 		if o := x.Summary.LastObservation; o != nil && o.Observation.Kind == "unavailable" {
 			fmt.Fprintf(w, "last observation=unavailable sequence=%d observedAt=%s\n", o.Sequence, o.ObservedAt)

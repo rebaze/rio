@@ -109,3 +109,38 @@ func TestSubmitBatchChecksCompleteLaterIntentEnvelope(t *testing.T) {
 		}
 	}
 }
+
+func TestSubmitRechecksCommittedIntentBeforeHTTP(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "journal")
+	p := prepared(t, path, false)
+	r, e := submitWithJournal(context.Background(), p, path, func(i record.Intent) (*record.Writer, error) {
+		w, e := record.Create(path, i)
+		if e != nil {
+			return nil, e
+		}
+		eventPath := filepath.Join(path, "00000000000000000000.json")
+		raw, e := os.ReadFile(eventPath)
+		if e != nil {
+			t.Fatal(e)
+		}
+		var event map[string]any
+		if json.Unmarshal(raw, &event) != nil {
+			t.Fatal("fixture event")
+		}
+		event["data"].(map[string]any)["configSHA256"] = strings.Repeat("b", 64)
+		raw, e = json.MarshalIndent(event, "", "  ")
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = os.WriteFile(eventPath, append(raw, '\n'), 0600); e != nil {
+			t.Fatal(e)
+		}
+		return w, nil
+	})
+	if e == nil || r.ExitCode != 3 || r.RequestMayHaveOccurred || p.Target.(*fakeTarget).calls != 0 {
+		t.Fatal("committed intent changed but target was invoked", r, e)
+	}
+	if _, e = os.Stat(path + ".lock"); !os.IsNotExist(e) {
+		t.Fatal("owned lock not released")
+	}
+}

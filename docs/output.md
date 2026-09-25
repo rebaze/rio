@@ -200,9 +200,22 @@ single global transactional instant. Later observations require a new snapshot a
 Every selected attempt joins the exact raw index digest, artifact, output/payload digests, gate and
 schema-validation facts. The inspector replays shared journal validation and offline adapter checks,
 reconstructs readable facts and compares them. Failed gates, rejected submissions, intent-only
-unknown histories and unavailable observations are valid evidence. Last activity and last query
+unknown histories and unavailable observations are valid evidence. `summary.latestVerification` optionally retains the latest OCI content observation with its event
+sequence and time. Expected references remain predictions in the intent; current content or referrer
+presence never upgrades the attempt’s historical acknowledgment. Mixed Dependency-Track and OCI
+attempts join the same exact index. Last activity, latest verification and last query
 are separate, selected by event sequence rather than wall-clock timestamps. `processing:false`
 does not establish ingestion, vulnerability analysis or content retention.
+
+Dependency-Track's optional saved `options.insecureSkipVerify: true` records explicit HTTPS
+certificate-chain/hostname verification bypass. False is omitted, preserving older option bytes.
+New HTTPS acknowledgment, activity and unavailable observations carry allowlisted
+`details.tls: {"certificateVerification":"enforced"|"disabled","observed":true|false}`.
+`observed` means a successful TLS handshake was observed, including a later lost HTTP response;
+it does not assert certificate validity. No peer certificates, private keys or raw transport errors
+are retained. Older histories without TLS details remain valid and have no recorded TLS facts.
+Inspection binds details to the saved HTTPS policy and rejects contradictions. Retry and reconcile
+policy comparisons include the explicit flag; TLS mode does not change destination identity.
 
 Retries retain their original references. When the prior attempt is selected, its recorded digest
 must match a valid committed prefix, so later reconciliation of that prior journal remains valid.
@@ -228,7 +241,7 @@ missing context remains absent. Existing `.intoto.json` statements are not colle
 The record is unsigned: someone can replace both source bytes and hashes consistently. Passing
 inspection establishes internal consistency, not authenticity or tamper-proofness, and does not
 rehash external SBOM bytes. Full input/mapping/SBOM retention and reproduction (#46), signing
-(#14), and OCI evidence (#83) are separate milestones. This file is intended for the same audience
+(#14) remain separate milestones. OCI delivery evidence is included in this same record. This file is intended for the same audience
 as its source records: supplied metadata and internal names/URLs are preserved faithfully, without
 reading or adding environment/credential values.
 
@@ -236,7 +249,9 @@ reading or adding environment/credential values.
 
 Limits are 16 MiB raw index, 1 MiB per event, 10,000 events per journal and across the entire selected
 set, 256 selected journals, 32 MiB total raw sources, 128 MiB serialized record, and 20,000 directory
-entries per captured journal including ignored temps. Limits refuse; they never truncate evidence.
+entries per captured journal including ignored temps. Typed streaming validation applies before retaining nested event data; no additional collection-entry
+limit narrows the existing event byte/schema contract.
+Limits refuse; they never truncate evidence.
 A streaming envelope preflight checks array counts before retaining their elements, and capture
 applies remaining aggregate event capacity before reading any next-journal event.
 

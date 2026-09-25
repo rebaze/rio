@@ -18,10 +18,10 @@ and what later checks observed. Lost responses remain visible as uncertainty, wi
 resubmission. Normalization stays offline; delivery uses the network explicitly. Both run in one
 binary, on your workstation or in CI.
 
-Delivery destinations include analysis platforms and artifact registries. **Dependency-Track is
-implemented on `main`; [OCI registry delivery is in review](https://github.com/rebaze/rio/issues/83).**
+Delivery destinations include **Dependency-Track** and **OCI artifact registries**, with separate
+delivery acknowledgments, transport facts and content verification.
 
-[First delivery](#deliver-your-first-sbom) · [Try without a server](#quick-start) · [Verified delivery](#deliver-to-dependency-track) · [One evidence record](#one-evidence-record) · [Configuration](#configure-your-project) · [For agents](#for-agents) · [Reference](#reference)
+[First delivery](#deliver-your-first-sbom) · [Try without a server](#quick-start) · [Verified delivery](#deliver-to-dependency-track) · [OCI registries](#deliver-to-an-oci-registry) · [One evidence record](#one-evidence-record) · [Configuration](#configure-your-project) · [For agents](#for-agents) · [Reference](#reference)
 
 ## Deliver your first SBOM
 
@@ -29,10 +29,11 @@ Already generating `target/bom.json`? Choose one destination below, save its con
 **`rio.yaml`**, and deliver the normalized SBOM in two commands. Intake and delivery share this one file.
 No server yet? Start with the [released, account-free normalization example](#quick-start).
 
-**Availability:** these delivery examples are unreleased. Dependency-Track delivery and `rio record`
-are merged on `main`; OCI delivery is implemented in [#83](https://github.com/rebaze/rio/issues/83)
-and awaiting review/integration. The latest release, v0.4.0, supports the normalization quick start
-but does not contain these delivery or record commands. Use a build containing the chosen feature.
+**Availability:** these examples target Rio **v0.5.0** or a build containing its delivery features.
+They include Dependency-Track, OCI, portable records and the explicit TLS-verification override.
+Rio v0.4.0 supports the account-free normalization quick start below, but does not contain these
+delivery or record commands. Check the [release notes](https://github.com/rebaze/rio/releases) for
+the version you install.
 
 With either configuration below:
 
@@ -110,13 +111,18 @@ Rio retains the variable name in evidence, never the API-key value.
 
 For an internal CA, obtain its public certificate from your administrator, save it as
 `certs/dtrack-ca.pem`, and add `caFile: certs/dtrack-ca.pem` under `security`. The path is relative to
-`rio.yaml`; certificate and hostname verification remain enabled. An explicit verification-bypass
-option is being added in [#83](https://github.com/rebaze/rio/issues/83) and is not yet on `main`.
+`rio.yaml`; certificate and hostname verification remain enabled. This is the preferred option.
+Rio v0.5.0 also provides
+`insecureSkipVerify: true` under `security` for explicitly skipping certificate-chain and hostname
+verification. It requires HTTPS and cannot be combined with `caFile`. The choice is saved in the
+journal and portable record alongside observed TLS facts; it does not imply the certificate was
+invalid. Protocol failures still fail, with no fallback or automatic replay.
+[TLS policy and synthetic demo](tools/README.md#native-verified-delivery).
 
 This example explicitly enables project creation; omit `autoCreate` when you provision projects
 yourself. [Permissions and options](tools/README.md#native-verified-delivery).
 
-### Store in an OCI registry — preview
+### Store in an OCI registry
 
 Use this alternative `rio.yaml` to retain the same SBOM in a writable OCI repository:
 
@@ -150,7 +156,7 @@ before running Rio. In CI, inject the two variables from CI secrets.
 This publishes a **standalone SBOM** and returns an immutable manifest reference. To attach it to
 an existing image or image index, use that image's repository and add its exact `subject` descriptor
 (`digest`, `mediaType`, `size`); Rio leaves the image unchanged and requires Referrers API support.
-[Attachment configuration and current registry scope](https://github.com/rebaze/rio/issues/83).
+[Attachment configuration and current registry scope](tools/README.md#native-oci-delivery).
 
 ### Keep the delivery evidence
 
@@ -177,7 +183,8 @@ The recipient can inspect `record.json` without your workspace or credentials.
   Source/build details remain labeled as producer assertions.
 - **Deliver verified SBOMs with an inspectable history.** Upload directly to Dependency-Track by
   project name/version or UUID. Retain the intended destination, payload digest, acknowledgment
-  and later activity observations in a delivery journal, including unknown outcomes.
+  and later activity observations in a delivery journal, including unknown outcomes. Publish unchanged
+  SBOM bytes to OCI registries with immutable manifest references and independent read-back evidence.
 - **Cover every selected module.** Include each qualifying module's SBOM automatically, with a
   failure when a selected module has not produced its output.
 - **Optionally repair Eclipse/OSGi p2 coordinates.** Convert eligible package URLs to Maven
@@ -295,6 +302,59 @@ Use the reported journal path with `rio delivery inspect --record PATH` or
 `rio delivery reconcile --record PATH` to query saved receipt activity without resubmitting.
 See [delivery configuration and the runnable demo](tools/README.md#native-verified-delivery)
 for filters, overrides, UUID selectors, deliberate retries, and tested server versions.
+
+## Deliver to an OCI registry
+
+With a build that includes OCI delivery, add a registry target to the same `rio.yaml`:
+
+```yaml
+delivery:
+  targets:
+    release-registry:
+      type: oci
+      registry: registry.example.com
+      repository: acme/application-sbom
+      auth:
+        usernameEnv: OCI_USERNAME
+        passwordEnv: OCI_PASSWORD
+```
+
+Inject the named credentials through your secret manager, normalize, then preview or deliver:
+
+```sh
+rio normalize --gate fail
+rio delivery plan --target release-registry --json
+rio deliver --target release-registry --json
+```
+
+Rio uploads the exact verified CycloneDX bytes with a deterministic OCI manifest. It reports a
+consumer reference such as `registry.example.com/acme/application-sbom@sha256:<manifest-digest>`
+and uses the generated tag `rio-sbom-sha256-<manifest-digest>`. A valid persisted receipt is exit 0;
+normal publication does not claim that a later read-back has already succeeded.
+
+To attach the SBOM to an existing image, use **that image's repository** and add its exact
+`subject` descriptor to the target. This example is illustrative; replace all descriptor values
+with those from your image-producing pipeline:
+
+```yaml
+repository: acme/application
+subject:
+  digest: sha256:1111111111111111111111111111111111111111111111111111111111111111
+  mediaType: application/vnd.oci.image.manifest.v1+json
+  size: 527
+```
+
+Rio verifies that subject before writing and requires the OCI Referrers API for attachment.
+Choose the image index or a specific platform manifest explicitly. The **SBOM blob digest**,
+**Rio wrapper manifest digest**, and **subject image digest** are different identities. Attachment
+does not change the subject, prove executable-to-SBOM correspondence, or trigger security analysis.
+
+Use the reported journal with `rio delivery reconcile --record PATH` for a bounded read-only
+content/discovery check. Reconciliation needs no original SBOM or index files. After a lost response
+it can report `verification: verified` while the historical acknowledgment remains `unknown`.
+`rio delivery inspect` and `rio record` remain offline. Server tag immutability and retention policy
+matter: generated tags avoid human release aliases but are not an atomic protection against racing
+external writers. See [OCI configuration, recovery, demos and tested registry scope](tools/README.md#native-oci-delivery).
 
 ## One evidence record
 

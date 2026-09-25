@@ -3,6 +3,7 @@ package evidence
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/rebaze/rio/internal/delivery"
 	"reflect"
 	"strconv"
 	"strings"
@@ -24,14 +25,7 @@ func canonicalJSON(raw []byte) (json.RawMessage, error) {
 	}
 	return bytes.TrimSuffix(b.Bytes(), []byte("\n")), nil
 }
-func jsonEqual(a, b []byte) bool {
-	aa, e := canonicalJSON(a)
-	if e != nil {
-		return false
-	}
-	bb, e := canonicalJSON(b)
-	return e == nil && bytes.Equal(aa, bb)
-}
+func jsonEqual(a, b []byte) bool { return delivery.JSONEqual(a, b) }
 
 // Marshal measures the complete encoding before the final buffer is allocated.
 // The budget includes base64, repeated readable projections and the final LF.
