@@ -1,0 +1,55 @@
+{
+  "product": "Dependency-Track",
+  "version": "5.1.1",
+  "sourceCommit": "c84de294439035cb2a8ee545fe8771991a595dd7",
+  "transport": "Local HTTPS gateway with untrusted test certificate in front of real loopback Dependency-Track API; backend HTTP",
+  "sanitized": true,
+  "payloadSHA256": "e4ca298aa9f9fab589928c01adf1497f234eb8dd99a2518639422973e70e016c",
+  "scenarios": [
+    {
+      "name": "default-rejects-untrusted-certificate",
+      "exit": 4,
+      "applicationUploads": 0,
+      "tls": {
+        "certificateVerification": "enforced",
+        "observed": false
+      }
+    },
+    {
+      "name": "company-ca-verification",
+      "exit": 0,
+      "acknowledgment": "accepted",
+      "tls": {
+        "certificateVerification": "enforced",
+        "observed": true
+      }
+    },
+    {
+      "name": "explicit-verification-bypass",
+      "exit": 0,
+      "acknowledgment": "accepted",
+      "tls": {
+        "certificateVerification": "disabled",
+        "observed": true
+      }
+    },
+    {
+      "name": "reconciliation-preserves-mode",
+      "exit": 0,
+      "tls": {
+        "certificateVerification": "disabled",
+        "observed": true
+      }
+    },
+    {
+      "name": "policy-drift-refused",
+      "exit": 2,
+      "additionalUploads": 0
+    },
+    {
+      "name": "portable-record-without-source-workspace",
+      "exit": 0,
+      "recordSHA256": "786cb0b0d2aa439e32910ed8a3c9aab902e69b3e45cd15694b9ec12a5cf53fd2"
+    }
+  ]
+}
