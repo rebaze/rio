@@ -155,7 +155,7 @@ before running Rio. In CI, inject the two variables from CI secrets.
 This publishes a **standalone SBOM** and returns an immutable manifest reference. To attach it to
 an existing image or image index, use that image's repository and add its exact `subject` descriptor
 (`digest`, `mediaType`, `size`); Rio leaves the image unchanged and requires Referrers API support.
-[Attachment configuration and current registry scope](tools/README.md#oci-registry-delivery).
+[Attachment configuration and current registry scope](tools/README.md#native-oci-delivery).
 
 ### Keep the delivery evidence
 

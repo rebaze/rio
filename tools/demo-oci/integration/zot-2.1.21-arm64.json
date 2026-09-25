@@ -20,12 +20,12 @@
       "exitCode": 0,
       "manifest": {
         "mediaType": "application/vnd.oci.image.manifest.v1+json",
-        "digest": "sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+        "digest": "sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
         "size": 248
       },
       "subject": {
         "mediaType": "application/vnd.oci.image.index.v1+json",
-        "digest": "sha256:fc6f0f0a42f49972ce1a6ecd9b1e45cb4cb3a7a848ade69e8fbca7157fbd82f6",
+        "digest": "sha256:f6b6566f55237c23195ba9a64818ff9baacd47968f35a1c187e4cd313d476470",
         "size": 344
       },
       "outcome": "stored and descriptor bytes independently hashed"
@@ -36,10 +36,10 @@
       "exitCode": 0,
       "manifest": {
         "mediaType": "application/vnd.oci.image.manifest.v1+json",
-        "digest": "sha256:bc18ee422e1b612c386d9caf0cc74ae69cdb9552d993af4962fa7a22a72c1c3d",
+        "digest": "sha256:d8179cd9f378ad09e01e9fafe72c2842a8d95ba14012729d6d789a34f5d320c2",
         "size": 604
       },
-      "sbomSHA256": "aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "sbomSHA256": "f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "publicationBegan": true,
       "httpStatus": 201,
       "outcome": "accepted"
@@ -51,11 +51,11 @@
       "exitCode": 0,
       "manifest": {
         "mediaType": "application/vnd.oci.image.manifest.v1+json",
-        "digest": "sha256:bc18ee422e1b612c386d9caf0cc74ae69cdb9552d993af4962fa7a22a72c1c3d",
+        "digest": "sha256:d8179cd9f378ad09e01e9fafe72c2842a8d95ba14012729d6d789a34f5d320c2",
         "size": 604
       },
-      "sbomSHA256": "aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
-      "readbackSHA256": "aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "sbomSHA256": "f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
+      "readbackSHA256": "f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "publicationBegan": true,
       "httpStatus": 201,
       "outcome": "verified"
@@ -66,15 +66,15 @@
       "exitCode": 0,
       "manifest": {
         "mediaType": "application/vnd.oci.image.manifest.v1+json",
-        "digest": "sha256:cc6a4572d692bc8a2d532b12c5d15e62e50d2d4f20b50724390d0d575aaf98af",
+        "digest": "sha256:06a038ba8e1d2b5c5eeb7309d16a71d8cfd80ed2fc8d04fcd48a09132626a54d",
         "size": 767
       },
       "subject": {
         "mediaType": "application/vnd.oci.image.manifest.v1+json",
-        "digest": "sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+        "digest": "sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
         "size": 248
       },
-      "sbomSHA256": "aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "sbomSHA256": "f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "publicationBegan": true,
       "httpStatus": 201,
       "outcome": "accepted"
@@ -86,16 +86,16 @@
       "exitCode": 0,
       "manifest": {
         "mediaType": "application/vnd.oci.image.manifest.v1+json",
-        "digest": "sha256:cc6a4572d692bc8a2d532b12c5d15e62e50d2d4f20b50724390d0d575aaf98af",
+        "digest": "sha256:06a038ba8e1d2b5c5eeb7309d16a71d8cfd80ed2fc8d04fcd48a09132626a54d",
         "size": 767
       },
       "subject": {
         "mediaType": "application/vnd.oci.image.manifest.v1+json",
-        "digest": "sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+        "digest": "sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
         "size": 248
       },
-      "sbomSHA256": "aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
-      "readbackSHA256": "aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "sbomSHA256": "f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
+      "readbackSHA256": "f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "publicationBegan": true,
       "httpStatus": 201,
       "outcome": "verified"
@@ -106,15 +106,15 @@
       "exitCode": 0,
       "manifest": {
         "mediaType": "application/vnd.oci.image.manifest.v1+json",
-        "digest": "sha256:1233e89028e0d286c54a41a407e61444453884325a38715ed72a795cff0fb754",
+        "digest": "sha256:7c85bef935345bdbae0249080fbeb920ac7945c0f87d8278adfbef97d98119fa",
         "size": 764
       },
       "subject": {
         "mediaType": "application/vnd.oci.image.index.v1+json",
-        "digest": "sha256:fc6f0f0a42f49972ce1a6ecd9b1e45cb4cb3a7a848ade69e8fbca7157fbd82f6",
+        "digest": "sha256:f6b6566f55237c23195ba9a64818ff9baacd47968f35a1c187e4cd313d476470",
         "size": 344
       },
-      "sbomSHA256": "aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "sbomSHA256": "f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "publicationBegan": true,
       "httpStatus": 201,
       "outcome": "accepted"
@@ -126,16 +126,16 @@
       "exitCode": 0,
       "manifest": {
         "mediaType": "application/vnd.oci.image.manifest.v1+json",
-        "digest": "sha256:1233e89028e0d286c54a41a407e61444453884325a38715ed72a795cff0fb754",
+        "digest": "sha256:7c85bef935345bdbae0249080fbeb920ac7945c0f87d8278adfbef97d98119fa",
         "size": 764
       },
       "subject": {
         "mediaType": "application/vnd.oci.image.index.v1+json",
-        "digest": "sha256:fc6f0f0a42f49972ce1a6ecd9b1e45cb4cb3a7a848ade69e8fbca7157fbd82f6",
+        "digest": "sha256:f6b6566f55237c23195ba9a64818ff9baacd47968f35a1c187e4cd313d476470",
         "size": 344
       },
-      "sbomSHA256": "aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
-      "readbackSHA256": "aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "sbomSHA256": "f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
+      "readbackSHA256": "f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "publicationBegan": true,
       "httpStatus": 201,
       "outcome": "verified"
@@ -147,10 +147,10 @@
       "exitCode": 0,
       "manifest": {
         "mediaType": "application/vnd.oci.image.manifest.v1+json",
-        "digest": "sha256:bc18ee422e1b612c386d9caf0cc74ae69cdb9552d993af4962fa7a22a72c1c3d",
+        "digest": "sha256:d8179cd9f378ad09e01e9fafe72c2842a8d95ba14012729d6d789a34f5d320c2",
         "size": 604
       },
-      "sbomSHA256": "aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "sbomSHA256": "f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "publicationBegan": false,
       "httpStatus": 200,
       "outcome": "accepted"
@@ -162,10 +162,10 @@
       "exitCode": 4,
       "manifest": {
         "mediaType": "application/vnd.oci.image.manifest.v1+json",
-        "digest": "sha256:5b6dae739f03c8238e80316ee49605da66b674135086d3cd2c55bdd73256d49f",
+        "digest": "sha256:027bf1e0587ebafc03533d7d886a4228a468b68fd40cbfd42b4c868977ef1fc0",
         "size": 604
       },
-      "sbomSHA256": "602e4a7693e229e7e79326ed7126cd62b272bd4e7f69b14ff7284b0d8a61f3e9",
+      "sbomSHA256": "41dc251c6c4be219235962d3fede9a14a70562069763d11154855d578157f2d9",
       "outcome": "unknown"
     },
     {
@@ -180,10 +180,10 @@
       "exitCode": 5,
       "manifest": {
         "mediaType": "application/vnd.oci.image.manifest.v1+json",
-        "digest": "sha256:5c26715f9a9cdcb4dc6da23e85362e56f125ac1ec73e92cf4ad352966b4d4d6a",
+        "digest": "sha256:4acf2038e721b41a6cdcf6afab75ddbf22af506ea1ad2022658ea1ce104f6202",
         "size": 604
       },
-      "sbomSHA256": "ba5c9724b627cfd18d33a83f1681c4d735c98ba41d3e18fe2e93fab5d9aa6fe6",
+      "sbomSHA256": "f32215f2576181011eaf17d170c2feae5a88738eb52d852afc1fc2b910f68363",
       "publicationBegan": false,
       "httpStatus": 401,
       "outcome": "rejected"
@@ -195,15 +195,15 @@
       "exitCode": 0,
       "manifest": {
         "mediaType": "application/vnd.oci.image.manifest.v1+json",
-        "digest": "sha256:be094735552c9438852de704d4224783e2adb4626ec2d7d6ac8846692e2600e3",
+        "digest": "sha256:6627ac4e29b2e7ff35e44ab29834ebf0edb8da81c513e58011cc650481bd702f",
         "size": 764
       },
       "subject": {
         "mediaType": "application/vnd.oci.image.index.v1+json",
-        "digest": "sha256:52cd78513617a6ec94a42cd40d77cf4fa3d110614370a4a52a3369f62491c5bd",
+        "digest": "sha256:705754b4a1d989c25569298e89dc490cf71daf7dbe5c8910abffd385e22d0977",
         "size": 344
       },
-      "sbomSHA256": "e1b82341c5973d6660e95e6cc1b1ff164e857f160c80cf537d11b00d73bfb996",
+      "sbomSHA256": "27df2a2539889d2b05c171138043809914ed30f73c22c8bcfe910af4249c55a2",
       "proxyObservedUpstreamHTTPStatus": 201,
       "outcome": "intent-only recovery verified; acknowledgment remains unknown"
     }
@@ -236,7 +236,7 @@
       "method": "PUT",
       "path": "/v2/rio-integration/synthetic/blobs/uploads/\u003csession\u003e",
       "status": 201,
-      "digest": "sha256:00cce5f5b8c4ad6f1782f8f326087c09fd6040b9ec3d99f83d9d2fb20fcd5e5b",
+      "digest": "sha256:9c96aebafc63553ac2e8b33e570f6adf6adc94fcd0f00798f08aa543241e8dec",
       "authentication": "basic"
     },
     {
@@ -249,9 +249,9 @@
     {
       "operation": "fixture-setup",
       "method": "PUT",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-integration-image-2af0431c8a2275748f3e50a9",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-integration-image-7d351d4d230ec8740145928a",
       "status": 201,
-      "digest": "sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+      "digest": "sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
       "manifestLocationPresent": true,
       "manifestLocationSameOrigin": true,
       "manifestLocationExpectedPath": true,
@@ -269,9 +269,9 @@
     {
       "operation": "fixture-setup",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+      "path": "/v2/rio-integration/synthetic/manifests/sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
       "status": 200,
-      "digest": "sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+      "digest": "sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
       "authentication": "basic"
     },
     {
@@ -284,9 +284,9 @@
     {
       "operation": "fixture-setup",
       "method": "PUT",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-integration-index-2af0431c8a2275748f3e50a9-index",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-integration-index-7d351d4d230ec8740145928a-index",
       "status": 201,
-      "digest": "sha256:fc6f0f0a42f49972ce1a6ecd9b1e45cb4cb3a7a848ade69e8fbca7157fbd82f6",
+      "digest": "sha256:f6b6566f55237c23195ba9a64818ff9baacd47968f35a1c187e4cd313d476470",
       "manifestLocationPresent": true,
       "manifestLocationSameOrigin": true,
       "manifestLocationExpectedPath": true,
@@ -304,9 +304,9 @@
     {
       "operation": "fixture-setup",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/sha256:fc6f0f0a42f49972ce1a6ecd9b1e45cb4cb3a7a848ade69e8fbca7157fbd82f6",
+      "path": "/v2/rio-integration/synthetic/manifests/sha256:f6b6566f55237c23195ba9a64818ff9baacd47968f35a1c187e4cd313d476470",
       "status": 200,
-      "digest": "sha256:fc6f0f0a42f49972ce1a6ecd9b1e45cb4cb3a7a848ade69e8fbca7157fbd82f6",
+      "digest": "sha256:f6b6566f55237c23195ba9a64818ff9baacd47968f35a1c187e4cd313d476470",
       "authentication": "basic"
     },
     {
@@ -327,7 +327,7 @@
     {
       "operation": "standalone",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-bc18ee422e1b612c386d9caf0cc74ae69cdb9552d993af4962fa7a22a72c1c3d",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-d8179cd9f378ad09e01e9fafe72c2842a8d95ba14012729d6d789a34f5d320c2",
       "status": 404,
       "authentication": "basic"
     },
@@ -342,7 +342,7 @@
     {
       "operation": "standalone",
       "method": "HEAD",
-      "path": "/v2/rio-integration/synthetic/blobs/sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "path": "/v2/rio-integration/synthetic/blobs/sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "status": 404,
       "authentication": "basic"
     },
@@ -358,15 +358,15 @@
       "method": "PUT",
       "path": "/v2/rio-integration/synthetic/blobs/uploads/\u003csession\u003e",
       "status": 201,
-      "digest": "sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "digest": "sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "authentication": "basic"
     },
     {
       "operation": "standalone",
       "method": "PUT",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-bc18ee422e1b612c386d9caf0cc74ae69cdb9552d993af4962fa7a22a72c1c3d",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-d8179cd9f378ad09e01e9fafe72c2842a8d95ba14012729d6d789a34f5d320c2",
       "status": 201,
-      "digest": "sha256:bc18ee422e1b612c386d9caf0cc74ae69cdb9552d993af4962fa7a22a72c1c3d",
+      "digest": "sha256:d8179cd9f378ad09e01e9fafe72c2842a8d95ba14012729d6d789a34f5d320c2",
       "manifestLocationPresent": true,
       "manifestLocationSameOrigin": true,
       "manifestLocationExpectedPath": true,
@@ -384,9 +384,9 @@
     {
       "operation": "standalone",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/sha256:bc18ee422e1b612c386d9caf0cc74ae69cdb9552d993af4962fa7a22a72c1c3d",
+      "path": "/v2/rio-integration/synthetic/manifests/sha256:d8179cd9f378ad09e01e9fafe72c2842a8d95ba14012729d6d789a34f5d320c2",
       "status": 200,
-      "digest": "sha256:bc18ee422e1b612c386d9caf0cc74ae69cdb9552d993af4962fa7a22a72c1c3d",
+      "digest": "sha256:d8179cd9f378ad09e01e9fafe72c2842a8d95ba14012729d6d789a34f5d320c2",
       "authentication": "basic"
     },
     {
@@ -400,17 +400,17 @@
     {
       "operation": "standalone",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/blobs/sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "path": "/v2/rio-integration/synthetic/blobs/sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "status": 200,
-      "digest": "sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "digest": "sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "authentication": "basic"
     },
     {
       "operation": "standalone",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-bc18ee422e1b612c386d9caf0cc74ae69cdb9552d993af4962fa7a22a72c1c3d",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-d8179cd9f378ad09e01e9fafe72c2842a8d95ba14012729d6d789a34f5d320c2",
       "status": 200,
-      "digest": "sha256:bc18ee422e1b612c386d9caf0cc74ae69cdb9552d993af4962fa7a22a72c1c3d",
+      "digest": "sha256:d8179cd9f378ad09e01e9fafe72c2842a8d95ba14012729d6d789a34f5d320c2",
       "authentication": "basic"
     },
     {
@@ -423,9 +423,9 @@
     {
       "operation": "fixture-setup",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/blobs/sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "path": "/v2/rio-integration/synthetic/blobs/sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "status": 200,
-      "digest": "sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "digest": "sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "authentication": "basic"
     },
     {
@@ -446,22 +446,22 @@
     {
       "operation": "attached-image",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+      "path": "/v2/rio-integration/synthetic/manifests/sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
       "status": 200,
-      "digest": "sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+      "digest": "sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
       "authentication": "basic"
     },
     {
       "operation": "attached-image",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/referrers/sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+      "path": "/v2/rio-integration/synthetic/referrers/sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
       "status": 200,
       "authentication": "basic"
     },
     {
       "operation": "attached-image",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-cc6a4572d692bc8a2d532b12c5d15e62e50d2d4f20b50724390d0d575aaf98af",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-06a038ba8e1d2b5c5eeb7309d16a71d8cfd80ed2fc8d04fcd48a09132626a54d",
       "status": 404,
       "authentication": "basic"
     },
@@ -476,18 +476,18 @@
     {
       "operation": "attached-image",
       "method": "HEAD",
-      "path": "/v2/rio-integration/synthetic/blobs/sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "path": "/v2/rio-integration/synthetic/blobs/sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "status": 200,
-      "digest": "sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "digest": "sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "authentication": "basic"
     },
     {
       "operation": "attached-image",
       "method": "PUT",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-cc6a4572d692bc8a2d532b12c5d15e62e50d2d4f20b50724390d0d575aaf98af",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-06a038ba8e1d2b5c5eeb7309d16a71d8cfd80ed2fc8d04fcd48a09132626a54d",
       "status": 201,
-      "digest": "sha256:cc6a4572d692bc8a2d532b12c5d15e62e50d2d4f20b50724390d0d575aaf98af",
-      "subject": "sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+      "digest": "sha256:06a038ba8e1d2b5c5eeb7309d16a71d8cfd80ed2fc8d04fcd48a09132626a54d",
+      "subject": "sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
       "manifestLocationPresent": true,
       "manifestLocationSameOrigin": true,
       "manifestLocationExpectedPath": true,
@@ -505,9 +505,9 @@
     {
       "operation": "attached-image",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/sha256:cc6a4572d692bc8a2d532b12c5d15e62e50d2d4f20b50724390d0d575aaf98af",
+      "path": "/v2/rio-integration/synthetic/manifests/sha256:06a038ba8e1d2b5c5eeb7309d16a71d8cfd80ed2fc8d04fcd48a09132626a54d",
       "status": 200,
-      "digest": "sha256:cc6a4572d692bc8a2d532b12c5d15e62e50d2d4f20b50724390d0d575aaf98af",
+      "digest": "sha256:06a038ba8e1d2b5c5eeb7309d16a71d8cfd80ed2fc8d04fcd48a09132626a54d",
       "authentication": "basic"
     },
     {
@@ -521,31 +521,31 @@
     {
       "operation": "attached-image",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/blobs/sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "path": "/v2/rio-integration/synthetic/blobs/sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "status": 200,
-      "digest": "sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "digest": "sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "authentication": "basic"
     },
     {
       "operation": "attached-image",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-cc6a4572d692bc8a2d532b12c5d15e62e50d2d4f20b50724390d0d575aaf98af",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-06a038ba8e1d2b5c5eeb7309d16a71d8cfd80ed2fc8d04fcd48a09132626a54d",
       "status": 200,
-      "digest": "sha256:cc6a4572d692bc8a2d532b12c5d15e62e50d2d4f20b50724390d0d575aaf98af",
+      "digest": "sha256:06a038ba8e1d2b5c5eeb7309d16a71d8cfd80ed2fc8d04fcd48a09132626a54d",
       "authentication": "basic"
     },
     {
       "operation": "attached-image",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+      "path": "/v2/rio-integration/synthetic/manifests/sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
       "status": 200,
-      "digest": "sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+      "digest": "sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
       "authentication": "basic"
     },
     {
       "operation": "attached-image",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/referrers/sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+      "path": "/v2/rio-integration/synthetic/referrers/sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
       "status": 200,
       "authentication": "basic"
     },
@@ -559,9 +559,9 @@
     {
       "operation": "fixture-setup",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/blobs/sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "path": "/v2/rio-integration/synthetic/blobs/sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "status": 200,
-      "digest": "sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "digest": "sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "authentication": "basic"
     },
     {
@@ -582,22 +582,22 @@
     {
       "operation": "attached-index",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/sha256:fc6f0f0a42f49972ce1a6ecd9b1e45cb4cb3a7a848ade69e8fbca7157fbd82f6",
+      "path": "/v2/rio-integration/synthetic/manifests/sha256:f6b6566f55237c23195ba9a64818ff9baacd47968f35a1c187e4cd313d476470",
       "status": 200,
-      "digest": "sha256:fc6f0f0a42f49972ce1a6ecd9b1e45cb4cb3a7a848ade69e8fbca7157fbd82f6",
+      "digest": "sha256:f6b6566f55237c23195ba9a64818ff9baacd47968f35a1c187e4cd313d476470",
       "authentication": "basic"
     },
     {
       "operation": "attached-index",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/referrers/sha256:fc6f0f0a42f49972ce1a6ecd9b1e45cb4cb3a7a848ade69e8fbca7157fbd82f6",
+      "path": "/v2/rio-integration/synthetic/referrers/sha256:f6b6566f55237c23195ba9a64818ff9baacd47968f35a1c187e4cd313d476470",
       "status": 200,
       "authentication": "basic"
     },
     {
       "operation": "attached-index",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-1233e89028e0d286c54a41a407e61444453884325a38715ed72a795cff0fb754",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-7c85bef935345bdbae0249080fbeb920ac7945c0f87d8278adfbef97d98119fa",
       "status": 404,
       "authentication": "basic"
     },
@@ -612,18 +612,18 @@
     {
       "operation": "attached-index",
       "method": "HEAD",
-      "path": "/v2/rio-integration/synthetic/blobs/sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "path": "/v2/rio-integration/synthetic/blobs/sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "status": 200,
-      "digest": "sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "digest": "sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "authentication": "basic"
     },
     {
       "operation": "attached-index",
       "method": "PUT",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-1233e89028e0d286c54a41a407e61444453884325a38715ed72a795cff0fb754",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-7c85bef935345bdbae0249080fbeb920ac7945c0f87d8278adfbef97d98119fa",
       "status": 201,
-      "digest": "sha256:1233e89028e0d286c54a41a407e61444453884325a38715ed72a795cff0fb754",
-      "subject": "sha256:fc6f0f0a42f49972ce1a6ecd9b1e45cb4cb3a7a848ade69e8fbca7157fbd82f6",
+      "digest": "sha256:7c85bef935345bdbae0249080fbeb920ac7945c0f87d8278adfbef97d98119fa",
+      "subject": "sha256:f6b6566f55237c23195ba9a64818ff9baacd47968f35a1c187e4cd313d476470",
       "manifestLocationPresent": true,
       "manifestLocationSameOrigin": true,
       "manifestLocationExpectedPath": true,
@@ -641,9 +641,9 @@
     {
       "operation": "attached-index",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/sha256:1233e89028e0d286c54a41a407e61444453884325a38715ed72a795cff0fb754",
+      "path": "/v2/rio-integration/synthetic/manifests/sha256:7c85bef935345bdbae0249080fbeb920ac7945c0f87d8278adfbef97d98119fa",
       "status": 200,
-      "digest": "sha256:1233e89028e0d286c54a41a407e61444453884325a38715ed72a795cff0fb754",
+      "digest": "sha256:7c85bef935345bdbae0249080fbeb920ac7945c0f87d8278adfbef97d98119fa",
       "authentication": "basic"
     },
     {
@@ -657,31 +657,31 @@
     {
       "operation": "attached-index",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/blobs/sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "path": "/v2/rio-integration/synthetic/blobs/sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "status": 200,
-      "digest": "sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "digest": "sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "authentication": "basic"
     },
     {
       "operation": "attached-index",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-1233e89028e0d286c54a41a407e61444453884325a38715ed72a795cff0fb754",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-7c85bef935345bdbae0249080fbeb920ac7945c0f87d8278adfbef97d98119fa",
       "status": 200,
-      "digest": "sha256:1233e89028e0d286c54a41a407e61444453884325a38715ed72a795cff0fb754",
+      "digest": "sha256:7c85bef935345bdbae0249080fbeb920ac7945c0f87d8278adfbef97d98119fa",
       "authentication": "basic"
     },
     {
       "operation": "attached-index",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/sha256:fc6f0f0a42f49972ce1a6ecd9b1e45cb4cb3a7a848ade69e8fbca7157fbd82f6",
+      "path": "/v2/rio-integration/synthetic/manifests/sha256:f6b6566f55237c23195ba9a64818ff9baacd47968f35a1c187e4cd313d476470",
       "status": 200,
-      "digest": "sha256:fc6f0f0a42f49972ce1a6ecd9b1e45cb4cb3a7a848ade69e8fbca7157fbd82f6",
+      "digest": "sha256:f6b6566f55237c23195ba9a64818ff9baacd47968f35a1c187e4cd313d476470",
       "authentication": "basic"
     },
     {
       "operation": "attached-index",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/referrers/sha256:fc6f0f0a42f49972ce1a6ecd9b1e45cb4cb3a7a848ade69e8fbca7157fbd82f6",
+      "path": "/v2/rio-integration/synthetic/referrers/sha256:f6b6566f55237c23195ba9a64818ff9baacd47968f35a1c187e4cd313d476470",
       "status": 200,
       "authentication": "basic"
     },
@@ -695,9 +695,9 @@
     {
       "operation": "fixture-setup",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/blobs/sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "path": "/v2/rio-integration/synthetic/blobs/sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "status": 200,
-      "digest": "sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "digest": "sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "authentication": "basic"
     },
     {
@@ -710,17 +710,17 @@
     {
       "operation": "standalone",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-bc18ee422e1b612c386d9caf0cc74ae69cdb9552d993af4962fa7a22a72c1c3d",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-d8179cd9f378ad09e01e9fafe72c2842a8d95ba14012729d6d789a34f5d320c2",
       "status": 200,
-      "digest": "sha256:bc18ee422e1b612c386d9caf0cc74ae69cdb9552d993af4962fa7a22a72c1c3d",
+      "digest": "sha256:d8179cd9f378ad09e01e9fafe72c2842a8d95ba14012729d6d789a34f5d320c2",
       "authentication": "basic"
     },
     {
       "operation": "standalone",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/sha256:bc18ee422e1b612c386d9caf0cc74ae69cdb9552d993af4962fa7a22a72c1c3d",
+      "path": "/v2/rio-integration/synthetic/manifests/sha256:d8179cd9f378ad09e01e9fafe72c2842a8d95ba14012729d6d789a34f5d320c2",
       "status": 200,
-      "digest": "sha256:bc18ee422e1b612c386d9caf0cc74ae69cdb9552d993af4962fa7a22a72c1c3d",
+      "digest": "sha256:d8179cd9f378ad09e01e9fafe72c2842a8d95ba14012729d6d789a34f5d320c2",
       "authentication": "basic"
     },
     {
@@ -734,17 +734,17 @@
     {
       "operation": "standalone",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/blobs/sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "path": "/v2/rio-integration/synthetic/blobs/sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "status": 200,
-      "digest": "sha256:aeee2c022f4911c37222819dd7e84af9e06ed534186df188814c25a25ab043c6",
+      "digest": "sha256:f28576238ee7d55d49cb713116b4bf30060c337c0374ce8f155cd5561959dbaf",
       "authentication": "basic"
     },
     {
       "operation": "standalone",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-bc18ee422e1b612c386d9caf0cc74ae69cdb9552d993af4962fa7a22a72c1c3d",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-d8179cd9f378ad09e01e9fafe72c2842a8d95ba14012729d6d789a34f5d320c2",
       "status": 200,
-      "digest": "sha256:bc18ee422e1b612c386d9caf0cc74ae69cdb9552d993af4962fa7a22a72c1c3d",
+      "digest": "sha256:d8179cd9f378ad09e01e9fafe72c2842a8d95ba14012729d6d789a34f5d320c2",
       "authentication": "basic"
     },
     {
@@ -765,9 +765,9 @@
     {
       "operation": "tag-conflict",
       "method": "PUT",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-5b6dae739f03c8238e80316ee49605da66b674135086d3cd2c55bdd73256d49f",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-027bf1e0587ebafc03533d7d886a4228a468b68fd40cbfd42b4c868977ef1fc0",
       "status": 201,
-      "digest": "sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+      "digest": "sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
       "manifestLocationPresent": true,
       "manifestLocationSameOrigin": true,
       "manifestLocationExpectedPath": true,
@@ -785,9 +785,9 @@
     {
       "operation": "tag-conflict",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+      "path": "/v2/rio-integration/synthetic/manifests/sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
       "status": 200,
-      "digest": "sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+      "digest": "sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
       "authentication": "basic"
     },
     {
@@ -800,9 +800,9 @@
     {
       "operation": "tag-conflict",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-5b6dae739f03c8238e80316ee49605da66b674135086d3cd2c55bdd73256d49f",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-027bf1e0587ebafc03533d7d886a4228a468b68fd40cbfd42b4c868977ef1fc0",
       "status": 200,
-      "digest": "sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+      "digest": "sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
       "authentication": "basic"
     },
     {
@@ -815,9 +815,9 @@
     {
       "operation": "fixture-setup",
       "method": "PUT",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-integration-policy-2af0431c8a2275748f3e50a9",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-integration-policy-7d351d4d230ec8740145928a",
       "status": 201,
-      "digest": "sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+      "digest": "sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
       "manifestLocationPresent": true,
       "manifestLocationSameOrigin": true,
       "manifestLocationExpectedPath": true,
@@ -835,17 +835,17 @@
     {
       "operation": "fixture-setup",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+      "path": "/v2/rio-integration/synthetic/manifests/sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
       "status": 200,
-      "digest": "sha256:0931cbb43b7c0e0ff003a97683538fcd111514ef6a14d8ea5503deeca59df3c3",
+      "digest": "sha256:3ceb4b62ab1c27aa9aec6dfc13b7b6f275437e0f4fe4bdd3f053ca1d4f78fa34",
       "authentication": "basic"
     },
     {
       "operation": "fixture-setup",
       "method": "PUT",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-integration-policy-2af0431c8a2275748f3e50a9",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-integration-policy-7d351d4d230ec8740145928a",
       "status": 201,
-      "digest": "sha256:577e4ad011ac2a8cfab9647bcdc1d7f3cb3b8c2aae9aa175da3908b0e48d6fa4",
+      "digest": "sha256:9a93354ace277be0fc7515bcffb7b5a9c75a6e48481731ab8a9e2f57d6dd0b1f",
       "manifestLocationPresent": true,
       "manifestLocationSameOrigin": true,
       "manifestLocationExpectedPath": true,
@@ -863,9 +863,9 @@
     {
       "operation": "fixture-setup",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-integration-policy-2af0431c8a2275748f3e50a9",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-integration-policy-7d351d4d230ec8740145928a",
       "status": 200,
-      "digest": "sha256:577e4ad011ac2a8cfab9647bcdc1d7f3cb3b8c2aae9aa175da3908b0e48d6fa4",
+      "digest": "sha256:9a93354ace277be0fc7515bcffb7b5a9c75a6e48481731ab8a9e2f57d6dd0b1f",
       "authentication": "basic"
     },
     {
@@ -894,9 +894,9 @@
     {
       "operation": "fixture-setup",
       "method": "PUT",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-integration-index-2af0431c8a2275748f3e50a9-crash",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-integration-index-7d351d4d230ec8740145928a-crash",
       "status": 201,
-      "digest": "sha256:52cd78513617a6ec94a42cd40d77cf4fa3d110614370a4a52a3369f62491c5bd",
+      "digest": "sha256:705754b4a1d989c25569298e89dc490cf71daf7dbe5c8910abffd385e22d0977",
       "manifestLocationPresent": true,
       "manifestLocationSameOrigin": true,
       "manifestLocationExpectedPath": true,
@@ -914,9 +914,9 @@
     {
       "operation": "fixture-setup",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/sha256:52cd78513617a6ec94a42cd40d77cf4fa3d110614370a4a52a3369f62491c5bd",
+      "path": "/v2/rio-integration/synthetic/manifests/sha256:705754b4a1d989c25569298e89dc490cf71daf7dbe5c8910abffd385e22d0977",
       "status": 200,
-      "digest": "sha256:52cd78513617a6ec94a42cd40d77cf4fa3d110614370a4a52a3369f62491c5bd",
+      "digest": "sha256:705754b4a1d989c25569298e89dc490cf71daf7dbe5c8910abffd385e22d0977",
       "authentication": "basic"
     },
     {
@@ -937,22 +937,22 @@
     {
       "operation": "crash-proxy-upstream",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/sha256:52cd78513617a6ec94a42cd40d77cf4fa3d110614370a4a52a3369f62491c5bd",
+      "path": "/v2/rio-integration/synthetic/manifests/sha256:705754b4a1d989c25569298e89dc490cf71daf7dbe5c8910abffd385e22d0977",
       "status": 200,
-      "digest": "sha256:52cd78513617a6ec94a42cd40d77cf4fa3d110614370a4a52a3369f62491c5bd",
+      "digest": "sha256:705754b4a1d989c25569298e89dc490cf71daf7dbe5c8910abffd385e22d0977",
       "authentication": "basic"
     },
     {
       "operation": "crash-proxy-upstream",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/referrers/sha256:52cd78513617a6ec94a42cd40d77cf4fa3d110614370a4a52a3369f62491c5bd",
+      "path": "/v2/rio-integration/synthetic/referrers/sha256:705754b4a1d989c25569298e89dc490cf71daf7dbe5c8910abffd385e22d0977",
       "status": 200,
       "authentication": "basic"
     },
     {
       "operation": "crash-proxy-upstream",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-be094735552c9438852de704d4224783e2adb4626ec2d7d6ac8846692e2600e3",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-6627ac4e29b2e7ff35e44ab29834ebf0edb8da81c513e58011cc650481bd702f",
       "status": 404,
       "authentication": "basic"
     },
@@ -967,7 +967,7 @@
     {
       "operation": "crash-proxy-upstream",
       "method": "HEAD",
-      "path": "/v2/rio-integration/synthetic/blobs/sha256:e1b82341c5973d6660e95e6cc1b1ff164e857f160c80cf537d11b00d73bfb996",
+      "path": "/v2/rio-integration/synthetic/blobs/sha256:27df2a2539889d2b05c171138043809914ed30f73c22c8bcfe910af4249c55a2",
       "status": 404,
       "authentication": "basic"
     },
@@ -983,16 +983,16 @@
       "method": "PUT",
       "path": "/v2/rio-integration/synthetic/blobs/uploads/\u003csession\u003e",
       "status": 201,
-      "digest": "sha256:e1b82341c5973d6660e95e6cc1b1ff164e857f160c80cf537d11b00d73bfb996",
+      "digest": "sha256:27df2a2539889d2b05c171138043809914ed30f73c22c8bcfe910af4249c55a2",
       "authentication": "basic"
     },
     {
       "operation": "crash-proxy-upstream",
       "method": "PUT",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-be094735552c9438852de704d4224783e2adb4626ec2d7d6ac8846692e2600e3",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-6627ac4e29b2e7ff35e44ab29834ebf0edb8da81c513e58011cc650481bd702f",
       "status": 201,
-      "digest": "sha256:be094735552c9438852de704d4224783e2adb4626ec2d7d6ac8846692e2600e3",
-      "subject": "sha256:52cd78513617a6ec94a42cd40d77cf4fa3d110614370a4a52a3369f62491c5bd",
+      "digest": "sha256:6627ac4e29b2e7ff35e44ab29834ebf0edb8da81c513e58011cc650481bd702f",
+      "subject": "sha256:705754b4a1d989c25569298e89dc490cf71daf7dbe5c8910abffd385e22d0977",
       "manifestLocationPresent": true,
       "manifestLocationSameOrigin": true,
       "manifestLocationExpectedPath": true,
@@ -1033,17 +1033,17 @@
     {
       "operation": "crash-proxy-upstream",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/sha256:be094735552c9438852de704d4224783e2adb4626ec2d7d6ac8846692e2600e3",
+      "path": "/v2/rio-integration/synthetic/manifests/sha256:6627ac4e29b2e7ff35e44ab29834ebf0edb8da81c513e58011cc650481bd702f",
       "status": 200,
-      "digest": "sha256:be094735552c9438852de704d4224783e2adb4626ec2d7d6ac8846692e2600e3",
+      "digest": "sha256:6627ac4e29b2e7ff35e44ab29834ebf0edb8da81c513e58011cc650481bd702f",
       "authentication": "basic"
     },
     {
       "operation": "crash-recovery",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/sha256:be094735552c9438852de704d4224783e2adb4626ec2d7d6ac8846692e2600e3",
+      "path": "/v2/rio-integration/synthetic/manifests/sha256:6627ac4e29b2e7ff35e44ab29834ebf0edb8da81c513e58011cc650481bd702f",
       "status": 200,
-      "digest": "sha256:be094735552c9438852de704d4224783e2adb4626ec2d7d6ac8846692e2600e3",
+      "digest": "sha256:6627ac4e29b2e7ff35e44ab29834ebf0edb8da81c513e58011cc650481bd702f",
       "authentication": "basic"
     },
     {
@@ -1065,62 +1065,62 @@
     {
       "operation": "crash-proxy-upstream",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/blobs/sha256:e1b82341c5973d6660e95e6cc1b1ff164e857f160c80cf537d11b00d73bfb996",
+      "path": "/v2/rio-integration/synthetic/blobs/sha256:27df2a2539889d2b05c171138043809914ed30f73c22c8bcfe910af4249c55a2",
       "status": 200,
-      "digest": "sha256:e1b82341c5973d6660e95e6cc1b1ff164e857f160c80cf537d11b00d73bfb996",
+      "digest": "sha256:27df2a2539889d2b05c171138043809914ed30f73c22c8bcfe910af4249c55a2",
       "authentication": "basic"
     },
     {
       "operation": "crash-recovery",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/blobs/sha256:e1b82341c5973d6660e95e6cc1b1ff164e857f160c80cf537d11b00d73bfb996",
+      "path": "/v2/rio-integration/synthetic/blobs/sha256:27df2a2539889d2b05c171138043809914ed30f73c22c8bcfe910af4249c55a2",
       "status": 200,
-      "digest": "sha256:e1b82341c5973d6660e95e6cc1b1ff164e857f160c80cf537d11b00d73bfb996",
+      "digest": "sha256:27df2a2539889d2b05c171138043809914ed30f73c22c8bcfe910af4249c55a2",
       "authentication": "basic"
     },
     {
       "operation": "crash-proxy-upstream",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-be094735552c9438852de704d4224783e2adb4626ec2d7d6ac8846692e2600e3",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-6627ac4e29b2e7ff35e44ab29834ebf0edb8da81c513e58011cc650481bd702f",
       "status": 200,
-      "digest": "sha256:be094735552c9438852de704d4224783e2adb4626ec2d7d6ac8846692e2600e3",
+      "digest": "sha256:6627ac4e29b2e7ff35e44ab29834ebf0edb8da81c513e58011cc650481bd702f",
       "authentication": "basic"
     },
     {
       "operation": "crash-recovery",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-be094735552c9438852de704d4224783e2adb4626ec2d7d6ac8846692e2600e3",
+      "path": "/v2/rio-integration/synthetic/manifests/rio-sbom-sha256-6627ac4e29b2e7ff35e44ab29834ebf0edb8da81c513e58011cc650481bd702f",
       "status": 200,
-      "digest": "sha256:be094735552c9438852de704d4224783e2adb4626ec2d7d6ac8846692e2600e3",
+      "digest": "sha256:6627ac4e29b2e7ff35e44ab29834ebf0edb8da81c513e58011cc650481bd702f",
       "authentication": "basic"
     },
     {
       "operation": "crash-proxy-upstream",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/sha256:52cd78513617a6ec94a42cd40d77cf4fa3d110614370a4a52a3369f62491c5bd",
+      "path": "/v2/rio-integration/synthetic/manifests/sha256:705754b4a1d989c25569298e89dc490cf71daf7dbe5c8910abffd385e22d0977",
       "status": 200,
-      "digest": "sha256:52cd78513617a6ec94a42cd40d77cf4fa3d110614370a4a52a3369f62491c5bd",
+      "digest": "sha256:705754b4a1d989c25569298e89dc490cf71daf7dbe5c8910abffd385e22d0977",
       "authentication": "basic"
     },
     {
       "operation": "crash-recovery",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/sha256:52cd78513617a6ec94a42cd40d77cf4fa3d110614370a4a52a3369f62491c5bd",
+      "path": "/v2/rio-integration/synthetic/manifests/sha256:705754b4a1d989c25569298e89dc490cf71daf7dbe5c8910abffd385e22d0977",
       "status": 200,
-      "digest": "sha256:52cd78513617a6ec94a42cd40d77cf4fa3d110614370a4a52a3369f62491c5bd",
+      "digest": "sha256:705754b4a1d989c25569298e89dc490cf71daf7dbe5c8910abffd385e22d0977",
       "authentication": "basic"
     },
     {
       "operation": "crash-proxy-upstream",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/referrers/sha256:52cd78513617a6ec94a42cd40d77cf4fa3d110614370a4a52a3369f62491c5bd",
+      "path": "/v2/rio-integration/synthetic/referrers/sha256:705754b4a1d989c25569298e89dc490cf71daf7dbe5c8910abffd385e22d0977",
       "status": 200,
       "authentication": "basic"
     },
     {
       "operation": "crash-recovery",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/referrers/sha256:52cd78513617a6ec94a42cd40d77cf4fa3d110614370a4a52a3369f62491c5bd",
+      "path": "/v2/rio-integration/synthetic/referrers/sha256:705754b4a1d989c25569298e89dc490cf71daf7dbe5c8910abffd385e22d0977",
       "status": 200,
       "authentication": "basic"
     },
@@ -1134,13 +1134,13 @@
     {
       "operation": "fixture-setup",
       "method": "GET",
-      "path": "/v2/rio-integration/synthetic/manifests/sha256:be094735552c9438852de704d4224783e2adb4626ec2d7d6ac8846692e2600e3",
+      "path": "/v2/rio-integration/synthetic/manifests/sha256:6627ac4e29b2e7ff35e44ab29834ebf0edb8da81c513e58011cc650481bd702f",
       "status": 200,
-      "digest": "sha256:be094735552c9438852de704d4224783e2adb4626ec2d7d6ac8846692e2600e3",
+      "digest": "sha256:6627ac4e29b2e7ff35e44ab29834ebf0edb8da81c513e58011cc650481bd702f",
       "authentication": "basic"
     }
   ],
-  "recordSHA256": "e27925fca837c9a9b7762c91f8f09ff74418138dae3a62b9ab188d135f5a131c",
-  "recordBytes": 145463,
+  "recordSHA256": "e4a0bd6ead6adf00e9467b3c665f3227df4836f35a092c78aeb90b5393387886",
+  "recordBytes": 145466,
   "expectedReferrersCapability": "required"
 }

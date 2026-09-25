@@ -98,7 +98,7 @@ by this harness.
 | Nexus 3.94.0-12 Community, pinned image | Explicit loopback HTTP, Basic-to-Bearer negotiation, native OCI hosted path routing | Passed | Image and index subjects passed | ALLOW_ONCE tag rejection; valid read-only account can read and cannot write; attached crash recovery |
 | Artifactory | No disposable endpoint/version/scoped credentials supplied | Not run | Not run | Required acceptance remains open |
 
-Version-specific evidence from actual race-enabled runs on source commit `ea96e43`:
+Version-specific evidence from actual race-enabled runs on source commit `c84de29`:
 
 - [Distribution 3.1.2](distribution-3.1.2.json): 10 scenarios, 79 sanitized request observations;
   standalone storage plus explicit no-write attachment refusal and actual standalone crash recovery.
