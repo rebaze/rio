@@ -1,7 +1,7 @@
 {
   "product": "Dependency-Track",
   "version": "5.1.1",
-  "sourceCommit": "c84de294439035cb2a8ee545fe8771991a595dd7",
+  "sourceCommit": "89d577cbe129328fd921cbbce0bf69ede5579079",
   "transport": "Local HTTPS gateway with untrusted test certificate in front of real loopback Dependency-Track API; backend HTTP",
   "sanitized": true,
   "payloadSHA256": "e4ca298aa9f9fab589928c01adf1497f234eb8dd99a2518639422973e70e016c",
@@ -49,7 +49,7 @@
     {
       "name": "portable-record-without-source-workspace",
       "exit": 0,
-      "recordSHA256": "786cb0b0d2aa439e32910ed8a3c9aab902e69b3e45cd15694b9ec12a5cf53fd2"
+      "recordSHA256": "e76de1d2c20623ef83b980dd53feca60902a5ccadf218613dd0aaf5330deb3d3"
     }
   ]
 }

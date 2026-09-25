@@ -53,7 +53,7 @@ Dependency-Track's own TLS termination.
   full integration harness, using the gateway and a supplied CA certificate. Upload, project,
   permission and activity checks passed.
 - [TLS policy evidence](dependency-track-5.1.1-tls-policy.json) was recorded by an installed-binary
-  check of source `c84de294439035cb2a8ee545fe8771991a595dd7`. Default trust refused before any
+  check of source `89d577cbe129328fd921cbbce0bf69ede5579079`. Default trust refused before any
   application upload. A supplied CA succeeded with verification enforced. Explicit
   `insecureSkipVerify: true` succeeded with verification disabled and a successful TLS handshake
   recorded. Reconciliation preserved that mode; changing it refused before another upload.
