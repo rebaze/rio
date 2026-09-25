@@ -374,12 +374,14 @@ Keep the API key in your CI secret store or a private environment file, as shown
 
 ```sh
 rio normalize --gate fail
-rio delivery plan --json
-rio deliver --json
+rio delivery plan --target security --json
+rio deliver --target security --json
 ```
 
-Plain `rio deliver` handles the whole selected batch. For a non-default index location, pass
-`--index PATH`; choose a different intake/delivery manifest with `--manifest PATH`.
+`--target security` preserves the old single-endpoint scope while delivering every eligible
+indexed artifact to that target. Plain `rio deliver` sends to all configured eligible targets.
+For a non-default index location, pass `--index PATH`; choose a different intake/delivery
+manifest with `--manifest PATH`.
 
 | Previous setting or behavior | Native replacement |
 |---|---|
