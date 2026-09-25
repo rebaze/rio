@@ -24,7 +24,7 @@ version: 1                        # must be 1; anything else is exit 2
 
 artifacts:
   - id: rcp-client                # ^[a-z0-9][a-z0-9._-]*$, unique; used as the output
-                                  # filename and as the DependencyTrack project name
+                                  # filename and the artifact selector for delivery
     sbom: "com.example.product.client/target/**/bom.json"
                                   # glob relative to this file's directory;
                                   # must match exactly one file, or exit 2

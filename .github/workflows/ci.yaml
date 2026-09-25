@@ -158,14 +158,13 @@ jobs:
           fi
           shellcheck --version
           shellcheck -s sh tools/demo-repair/run.sh tools/demo-agent-integration/*.sh tools/demo-agent-integration/projects/*/build.sh tools/demo-artifact-sets/run.sh install.sh tools/demo-enrichment/run.sh tools/demo-context/run.sh tools/demo-context/check-replacement.sh
-          shellcheck tools/rio-dtrack-upload.sh install_test.sh tools/rio-dtrack-upload_test.sh
+          shellcheck install_test.sh
 
-      - name: Test the shell scripts offline
+      - name: Test the installer offline
         if: steps.changes.outputs.shell == 'true'
         run: |
           set -euo pipefail
           ./install_test.sh
-          ./tools/rio-dtrack-upload_test.sh
 
       # build-p2-table.py advertises "Python 3.9+ and nothing else", and that
       # is a promise about the interpreter a client already has rather than a

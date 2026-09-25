@@ -53,7 +53,7 @@ func DefaultRequire() []string { return []string{RequireName, RequireVersion, Re
 const DefaultSpecVersionFloor = "1.6"
 
 // idPattern is the artifact id rule (§2). Ids become output filenames and
-// DependencyTrack project names, so they must be filesystem and URL safe.
+// artifact selectors; receiver project names are resolved separately.
 var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 
 // Manifest is a loaded, validated rio.yaml.
@@ -323,7 +323,7 @@ func (l loader) artifacts(f *fileSection, m *Manifest) error {
 		case a.ID == "":
 			return l.errf(field+".id", "is required")
 		case !idPattern.MatchString(a.ID):
-			// Ids become filenames and DependencyTrack project names.
+			// Ids become output filenames and artifact selectors.
 			return l.errf(field+".id", "%q does not match %s", a.ID, idPattern)
 		}
 		if first, dup := seen[a.ID]; dup {
