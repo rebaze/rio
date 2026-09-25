@@ -3,9 +3,11 @@ package record
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"github.com/rebaze/rio/internal/delivery"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -142,5 +144,52 @@ func TestNullIntentFieldsWriteNoJournal(t *testing.T) {
 	}
 	if _, e := os.Stat(p); !os.IsNotExist(e) {
 		t.Fatal("invalid intent left journal")
+	}
+}
+
+func TestCheckIntentAppendReplayCompleteByteBoundary(t *testing.T) {
+	setup := func(w *Writer) {
+		w.clock = func() time.Time { return time.Date(2000, 1, 1, 0, 0, 0, 123456789, time.UTC) }
+		w.random = bytes.NewReader(make([]byte, 16))
+	}
+	seed := intent()
+	dir := filepath.Join(t.TempDir(), "seed")
+	w, e := create(dir, seed, setup)
+	if e != nil {
+		t.Fatal(e)
+	}
+	w.Close()
+	raw, e := os.ReadFile(filepath.Join(dir, eventName(0)))
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, extra := range []int{0, 1} {
+		t.Run(fmt.Sprint(extra), func(t *testing.T) {
+			i := intent()
+			i.Binding = strings.Repeat("x", int(EventLimit)-len(raw)+len(seed.Binding)+extra)
+			path := filepath.Join(t.TempDir(), "boundary")
+			preflightErr := CheckIntent(i)
+			w, e := create(path, i, setup)
+			if extra == 1 {
+				if preflightErr == nil || e == nil {
+					t.Fatal("overflow disagreed with complete envelope limit")
+				}
+				if _, e = os.Stat(path); !os.IsNotExist(e) {
+					t.Fatal("overflow created journal")
+				}
+				return
+			}
+			if preflightErr != nil || e != nil {
+				t.Fatal(preflightErr, e)
+			}
+			w.Close()
+			committed, e := os.ReadFile(filepath.Join(path, eventName(0)))
+			if e != nil || int64(len(committed)) != EventLimit {
+				t.Fatal(len(committed), e)
+			}
+			if _, e = DecodeEvents([][]byte{committed}); e != nil {
+				t.Fatal("exact complete envelope failed replay", e)
+			}
+		})
 	}
 }

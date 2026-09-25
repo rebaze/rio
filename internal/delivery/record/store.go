@@ -105,31 +105,35 @@ func create(path string, i Intent, setup func(*Writer)) (result *Writer, err err
 func CheckIntent(i Intent) error { return checkIntent(i) }
 
 func checkIntent(i Intent) error {
-	// Bound the exact worst-length event envelope before persistent directory creation.
 	data, err := json.Marshal(i)
 	if err != nil {
 		return invalid()
 	}
-	var checked Intent
-	if err = preflight(data, &checked); err != nil {
+	preview := Event{1, 0, strings.Repeat("0", 32), "2000-01-01T00:00:00.123456789Z", "intent", data}
+	encoded, err := encodeEvent(preview)
+	if err != nil {
 		return err
 	}
-	if validateIntent(i) != nil {
-		return invalid()
-	}
-	if delivery.DecodeJSON(data, &checked, true) != nil {
-		return invalid()
-	}
-	preview := Event{1, 0, strings.Repeat("0", 32), "2000-01-01T00:00:00.123456789Z", "intent", data}
-	encoded, err := json.MarshalIndent(preview, "", "  ")
-	if err != nil {
-		return invalid()
-	}
-	if int64(len(encoded)+1) > EventLimit {
-		return delivery.Fail("size_limit", "maximum event bytes")
-	}
-	return nil
+	// The same complete-envelope reader and state transition used after commit
+	// must pass before any reservation or earlier batch request can begin.
+	snapshot := emptySnapshot()
+	return replayRaw(&snapshot, encoded)
 }
+func encodeEvent(event Event) ([]byte, error) {
+	encoded, err := json.MarshalIndent(event, "", "  ")
+	if err != nil {
+		return nil, invalid()
+	}
+	encoded = append(encoded, '\n')
+	if int64(len(encoded)) > EventLimit {
+		return nil, delivery.Fail("size_limit", "maximum event bytes")
+	}
+	if _, err = decodeEvent(encoded); err != nil {
+		return nil, err
+	}
+	return encoded, nil
+}
+
 func (r *Reservation) Create(i Intent) (result *Writer, err error) {
 	if r.writer == nil {
 		return nil, delivery.Fail("record_closed", "reservation")
@@ -235,13 +239,9 @@ func (w *Writer) Append(kind string, data json.RawMessage) error {
 	if e = addEvent(&s, event); e != nil {
 		return e
 	}
-	b, e := json.MarshalIndent(event, "", "  ")
+	b, e := encodeEvent(event)
 	if e != nil {
-		return invalid()
-	}
-	b = append(b, '\n')
-	if int64(len(b)) > EventLimit {
-		return delivery.Fail("size_limit", "maximum event bytes")
+		return e
 	}
 	f, e := os.CreateTemp(w.path, ".event-*.tmp")
 	if e != nil {
