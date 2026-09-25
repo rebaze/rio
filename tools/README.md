@@ -12,7 +12,9 @@ inputs and remain separate from its runtime.
 |---|---|---|
 | [Test binary workflow](#temporary-linux-test-binaries) | builds a selected revision as a temporary Linux download | when reproducing a problem or testing a fix |
 | [`build-p2-table.py`](#build-p2-tablepy) | builds the bundle-symbolic-name → Maven coordinate table rio repairs purls with | occasionally, on a workstation |
-| [`rio-dtrack-upload.sh`](#rio-dtrack-uploadsh) | batch uploads with optional parent-project assignment | existing batch/parent workflows |
+| [`demo-delivery/`](demo-delivery/) | demonstrates native Dependency-Track delivery and batch evidence | offline, with an installed rio release |
+| [`demo-dtrack-tls/`](demo-dtrack-tls/) | demonstrates verified TLS and explicit certificate bypass with recorded policy | offline, with an installed rio release |
+| [`demo-oci/`](demo-oci/) | demonstrates native standalone and attached OCI delivery | offline, with an installed rio release |
 | [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | offline, with an installed rio release |
 | [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, refusals and owned-claim replacement | offline, with an installed rio release |
 | [`demo-artifact-sets/`](#artifact-sets-demo) | discovers module SBOMs, adds/removes membership and refuses missing or overlapping inputs | offline, with an installed rio release |
@@ -335,54 +337,82 @@ CI runs it on Python 3.9, the version the tool advertises, whenever a `.py` file
 
 ---
 
-## rio-dtrack-upload.sh
+<a id="rio-dtrack-uploadsh"></a>
 
-Uploads the SBOMs from a `rio normalize` run to DependencyTrack, reading `index.json` to find them.
+## Migrating to native Dependency-Track delivery
+
+The legacy `tools/rio-dtrack-upload.sh` uploader and its dedicated tests have been retired from
+this source tree. Use native delivery, available in Rio v0.5.0 and later. It verifies the indexed
+output bytes before sending them and retains a journal for each attempt. Existing links to the
+old uploader documentation lead here.
+
+Add a target to your existing `rio.yaml`. For example, if the old script uploaded artifact
+`application` with prefix `acme/`, preserve that receiver project explicitly:
+
+```yaml
+version: 1
+artifacts:
+  - id: application
+    sbom: target/bom.json
+delivery:
+  targets:
+    security:
+      type: dependency-track
+      url: https://dtrack.example.com
+      apiKeyEnv: DTRACK_API_KEY
+      overrides:
+        application:
+          project: {name: acme/application, version: "1.2.3"}
+          # autoCreate: true  # enable only if this project should be created
+```
+
+Keep explicit project versions aligned with the releases you intend to update. Without an
+explicit selector, native delivery uses the SBOM subject's name/version, which may differ from
+the old prefix-plus-artifact-ID convention. Preview the resolved destinations before uploading.
+Keep the API key in your CI secret store or a private environment file, as shown in the
+[complete first-delivery example](../README.md#send-to-dependency-track); never put its value in YAML.
 
 ```sh
-mvn -B verify
 rio normalize --gate fail
-DTRACK_URL=https://dtrack.example.com DTRACK_API_KEY=... \
-  ./tools/rio-dtrack-upload.sh target/rio/index.json
+rio delivery plan --target security --json
+rio deliver --target security --json
 ```
 
-For direct verified uploads, use [native delivery](#native-verified-delivery). This separate
-script remains available as an example for existing batch/parent workflows. It needs
-`DTRACK_URL` and `DTRACK_API_KEY` and stops immediately without either. The API key needs the
-`BOM_UPLOAD`, `PROJECT_CREATION_UPLOAD` and `VIEW_PORTFOLIO` permissions. The comment block at the
-top of the script lists every variable it reads.
+`--target security` preserves the old single-endpoint scope while delivering every eligible
+indexed artifact to that target. Plain `rio deliver` sends to all configured eligible targets.
+For a non-default index location, pass `--index PATH`; choose a different intake/delivery
+manifest with `--manifest PATH`.
 
-### Nesting artifacts under one project
+| Previous setting or behavior | Native replacement |
+|---|---|
+| `DTRACK_URL` | Set the target's `url` in `rio.yaml`; the old environment variable is not read automatically |
+| `DTRACK_API_KEY` | Keep the injected secret and name it with `apiKeyEnv` |
+| `DTRACK_PROJECT_PREFIX` + artifact ID | Set each artifact's explicit `project.name` **and** `project.version`, or use its existing project UUID |
+| Automatic child-project creation | Opt in with `autoCreate: true` for name/version selectors; creation defaults to false |
+| `DTRACK_PARENT_UUID`, `DTRACK_PARENT_NAME`, `DTRACK_PARENT_VERSION` | Manage the hierarchy in Dependency-Track and select each existing **child** project by UUID; native delivery does not create or change parent relationships |
+| `DTRACK_POLL`, `DTRACK_POLL_TIMEOUT` | Upload returns a receipt; if polling is desired, run `rio delivery reconcile --record JOURNAL_PATH --wait 120s` for each journal printed by delivery |
+| `DTRACK_UPLOAD_FAILED=1` | Explicit `rio deliver --allow-failed-gate`; malformed evidence, unknown gate outcomes and digest mismatches still refuse |
 
-So that a product and its parts hang together in the portfolio, name the parent:
+For an existing child project, replace its name/version selector with
+`project: {uuid: f90934f5-cb88-47ce-81cb-db06fc67d4b4}` (synthetic UUID). Omit `autoCreate` entirely
+for UUID selectors, including at the target level. Supplying a parent's UUID would upload into
+that parent; it does not select or create a child. No parent behavior is silently emulated.
 
-```sh
-DTRACK_URL=https://dtrack.example.com DTRACK_API_KEY=... \
-DTRACK_PARENT_NAME="RCP Product" DTRACK_PARENT_VERSION=2026.1 \
-  ./tools/rio-dtrack-upload.sh target/rio/index.json
-```
+Native delivery preflights the full batch and stops at the first upload nonacceptance or
+persistence failure. Earlier attempts remain recorded and later items are unattempted. The old
+script continued after failures; update pipeline exit-code handling and inspect the journals
+before selecting unattempted pairs or explicitly retrying an uncertain attempt. Re-running an
+unchanged delivery does not automatically resend it.
 
-`DTRACK_PARENT_UUID` addresses the parent directly and is unambiguous. Set one or the other, not
-both, since DependencyTrack ignores the name when a uuid is present.
+Polling is also stricter: the old script used `/api/v1/bom/token` with a fallback, whereas native
+reconciliation uses `/api/v1/event/token` and reports an unavailable observation or wait deadline
+with exit 4. It does not treat these outcomes as a successful wait. Check this endpoint when
+migrating older servers; retained real-server coverage is for Dependency-Track 5.1.1.
+An accepted upload or `processing:false` response is not proof of successful ingestion.
 
-Two things about parents are DependencyTrack's behaviour rather than the script's, and the script
-reports both rather than letting them pass as silence:
-
-- **The parent must already exist.** DependencyTrack looks it up and answers 404 rather than
-  creating it.
-- **The parent is applied only when the child is created.** Re-uploading a project that already
-  exists leaves its place in the hierarchy alone, whatever the parent settings say. The script
-  checks first and warns when that is about to happen.
-
-### Tests
-
-`rio-dtrack-upload_test.sh` covers the script offline — no DependencyTrack instance, no network:
-
-```sh
-./tools/rio-dtrack-upload_test.sh
-```
-
-CI runs it, along with `shellcheck`, whenever a `.sh` file changes.
+See [native delivery](#native-verified-delivery) for TLS configuration, permissions, exit codes
+and deliberate retries. Run the [installed-binary demo](demo-delivery/README.md) to exercise
+batching and evidence without a server or credentials.
 
 ---
 
@@ -885,11 +915,11 @@ SBOM 64 MiB, total selected snapshots 256 MiB, selected pairs 1,024, receiver JS
 each journal event 1 MiB, journal 10,000 events. Each request has a 30-second deadline;
 `--wait` polls every 3 seconds for at most 10 minutes, persisting each observation.
 
-The existing `rio-dtrack-upload.sh` remains available for batch/parent workflows. Native delivery
-has no parent hierarchy or merge behavior and does not claim script parity. The shell
-uploader's weaker handoff checks remain tracked separately in #43; native validation does not
-silently complete that work. Integration support is limited to versions with retained real-server
-evidence; synthetic demo responses alone do not establish a tested server version.
+Native delivery is the supported SBOM upload path. For pipelines that used the retired shell
+uploader, follow the [migration guide](#migrating-to-native-dependency-track-delivery), especially
+project naming, parent hierarchy and failure handling. Integration support is limited to versions
+with retained real-server evidence; synthetic demo responses alone do not establish a tested
+server version.
 
 Run the [synthetic installed-binary demo](demo-delivery/README.md) with
 `python3 tools/demo-delivery/run.py /absolute/path/to/rio`. It uses only loopback stubs,

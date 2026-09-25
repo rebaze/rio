@@ -83,7 +83,8 @@ journal path. Use that path with `rio record --delivery-record PATH --output rec
 portable evidence. Offline preview and inspection,
 reconciliation, permissions and delivery exit codes are documented in
 [the delivery guide](../tools/README.md#native-verified-delivery).
-The manual script remains available for [existing batch/parent workflows](../tools/README.md#rio-dtrack-uploadsh).
+Pipelines using the retired shell uploader should follow the
+[native delivery migration guide](../tools/README.md#migrating-to-native-dependency-track-delivery).
 
 Normalization prints one line per artifact on stdout, then a summary. Machine detail belongs in `index.json`, not here.
 Errors and warnings go to stderr. A run over the committed fixtures `testdata/tycho-rcp.cdx.json`
