@@ -158,7 +158,7 @@ func ParseConfig(n yaml.Node, directory, sha256 string) (Config, error) {
 				if !targetID.MatchString(id) {
 					return c, Fail("invalid_config", "override artifact id")
 				}
-				if _, e := YAMLMap(n, "project", "autoCreate"); e != nil {
+				if _, e := YAMLMap(n, "project", "autoCreate", "subject"); e != nil {
 					return c, e
 				}
 				t.Overrides[id] = n
