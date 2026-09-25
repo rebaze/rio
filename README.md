@@ -229,6 +229,9 @@ You can also [download a release binary](https://github.com/rebaze/rio/releases)
 See [installation options](docs/cli.md#install) to pin a version or choose the install directory.
 Documentation follows `main`; check feature prerequisites when using an older release.
 
+Testing a fix on Linux? [Build and download a temporary test binary](tools/README.md#temporary-linux-test-binaries)
+from GitHub Actions, including a runnable example, without creating a release.
+
 ## Quick start
 
 With **Rio v0.4.0 or newer** installed, try this synthetic CycloneDX 1.5 input. It needs no project

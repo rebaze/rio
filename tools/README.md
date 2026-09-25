@@ -10,6 +10,7 @@ inputs and remain separate from its runtime.
 
 | tool | what it does | when you run it |
 |---|---|---|
+| [Test binary workflow](#temporary-linux-test-binaries) | builds a selected revision as a temporary Linux download | when reproducing a problem or testing a fix |
 | [`build-p2-table.py`](#build-p2-tablepy) | builds the bundle-symbolic-name → Maven coordinate table rio repairs purls with | occasionally, on a workstation |
 | [`rio-dtrack-upload.sh`](#rio-dtrack-uploadsh) | batch uploads with optional parent-project assignment | existing batch/parent workflows |
 | [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | offline, with an installed rio release |
@@ -22,6 +23,67 @@ inputs and remain separate from its runtime.
 | [`feature-video/`](#feature-video) | records, narrates and encodes the context feature walkthrough | when the feature or its demo changes |
 
 ---
+
+## Temporary Linux test binaries
+
+Use [Actions → Test binary](https://github.com/rebaze/rio/actions/workflows/test-binary.yaml)
+to share a diagnostic build without publishing a GitHub Release or updating Homebrew.
+Repository write access is required to start a run.
+
+1. Click **Run workflow**, keeping **Use workflow from: main**.
+2. Set **Source branch, tag or commit to build** to your fix branch or exact commit
+   (default `main`). Choose Linux `amd64` or `arm64` (default `amd64`).
+3. Open the completed run and follow **Download artifact** in its summary, or select the
+   `rio-test-linux-…` artifact at the bottom of the run page.
+
+The source must be in this repository and support the current `cmd/rio` build layout and repair
+example. The workflow resolves the chosen revision once and records its full commit SHA.
+Each architecture builds and runs its smoke test on a native Linux runner. It performs a static
+build, checks the reported version/commit, and runs the synthetic normalization/repair example.
+This fast workflow does not wait for the full CI suite or perform the official release checks.
+
+The same flow with the GitHub CLI:
+
+```sh
+gh workflow run test-binary.yaml --repo rebaze/rio --ref main \
+  -f ref=YOUR_FIX_BRANCH_OR_COMMIT -f architecture=amd64
+gh run list --repo rebaze/rio --workflow test-binary.yaml --limit 5
+gh run watch RUN_ID --repo rebaze/rio --exit-status
+gh run download RUN_ID --repo rebaze/rio --name ARTIFACT_NAME --dir rio-test
+```
+
+Replace `YOUR_FIX_BRANCH_OR_COMMIT` and `RUN_ID` with the desired source and the run ID shown
+by `gh run list`, and `ARTIFACT_NAME` with the artifact name shown on that run. The run summary
+provides the complete download and verification commands with these values filled in. Specifying
+`--name` extracts directly into `rio-test`, rather than an artifact-name subdirectory.
+Share the run URL with the tester. GitHub requires sign-in and repository read
+access to download artifacts, including those from public repositories. Downloads expire after
+14 days; a new run produces a new artifact and build identity.
+
+After downloading (and unzipping the artifact if using the browser), run on the matching Linux
+architecture:
+
+```sh
+cd rio-test
+sha256sum -c SHA256SUMS
+tar -xzf rio-test-linux-amd64.tar.gz  # use arm64 for that architecture
+./rio --version
+sh example/run.sh "$PWD/rio"
+```
+
+The archive preserves executable permissions and contains `rio`, `version.txt`, `build-info.json`
+and `example/` with synthetic fixtures. The example runs offline, needs no Go toolchain, preserves
+its input, and prints the temporary directory containing its output and repair evidence.
+
+`rio --version` reports `test-<short-commit>.<run-id>.<attempt>`, the full source commit and build
+time. `build-info.json` also records the requested source, workflow commit, architecture, Go
+version, run URL, binary SHA-256 and validation scope. An outer copy is available without
+extracting the archive. `SHA256SUMS` covers both the archive and that metadata file.
+
+These are unsigned, smoke-tested diagnostic builds. Checksums detect changed download bytes;
+they do not provide the signature and attestation guarantees of official releases. No tag or
+release is created. In particular, do not push a `v…-rc` tag for this purpose: the existing release
+workflow runs on every `v*` tag. Use the regular release process after the fix passes full CI.
 
 ## build-p2-table.py
 
