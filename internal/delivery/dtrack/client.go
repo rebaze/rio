@@ -59,9 +59,14 @@ func (c *client) request(ctx context.Context, method, path, ct string, body io.R
 	}
 	var observed atomic.Bool
 	req = req.WithContext(httptrace.WithClientTrace(req.Context(), &httptrace.ClientTrace{
-		TLSHandshakeDone: func(_ tls.ConnectionState, err error) {
-			if err == nil {
-				observed.Store(true)
+		// GotConn is emitted after CONNECT and the origin TLS handshake. A
+		// TLSHandshakeDone callback alone may describe only an HTTPS proxy.
+		// Retain this fact even when the subsequent HTTP response is lost.
+		GotConn: func(info httptrace.GotConnInfo) {
+			if req.URL.Scheme == "https" {
+				if conn, ok := info.Conn.(*tls.Conn); ok && conn.ConnectionState().HandshakeComplete {
+					observed.Store(true)
+				}
 			}
 		},
 	}))
