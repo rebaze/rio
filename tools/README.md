@@ -896,8 +896,10 @@ setting. Standard Go proxy environment variables are honored; proxy credentials 
 Basic/PAT and Bearer challenges are supported. Deliver negotiates repository `pull,push` scope;
 reconcile uses `pull`. Token-service origins default to the registry origin; add other **HTTPS
 origins** explicitly. Cross-origin HTTP, downgraded realms and expanded repository scopes refuse
-before forwarding credentials. Credentials/CA references may rotate for an existing journal;
-trusted origins and effective transport policy must remain the same. There are no generic write
+before forwarding credentials. Credential environment references and CA references may rotate for an
+existing journal within the same configured authentication form (anonymous, Basic/PAT or Bearer).
+Changing the authentication form, trusted origins or effective transport policy requires a new
+attempt; retry and reconciliation refuse such drift before any request. There are no generic write
 retries. The finite authentication exception can replay a body only after an explicit 401 rejection,
 using a new reader over the same snapshot. Connection reuse and HTTP/2 are disabled to exclude their
 implicit retry paths. All redirects, including read offloading, are unsupported in this initial scope.

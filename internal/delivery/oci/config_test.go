@@ -181,3 +181,13 @@ func TestDescribeExactSubjectSizeLimit(t *testing.T) {
 		t.Fatal("exact subject limit refused", e)
 	}
 }
+
+func TestSamePolicyAllowsCredentialReferencesWithinAuthMode(t *testing.T) {
+	for _, pair := range [][2]string{{"{usernameEnv: OLD_USER, passwordEnv: OLD_PASSWORD}", "{usernameEnv: NEW_USER, passwordEnv: NEW_PASSWORD}"}, {"{bearerTokenEnv: OLD_TOKEN}", "{bearerTokenEnv: NEW_TOKEN}"}, {"{anonymous: true}", "{anonymous: true}"}} {
+		a := clientDescription(t, "https://registry.example", pair[0], "caFile: /historical/ca.pem\n")
+		b := clientDescription(t, "https://registry.example", pair[1], "caFile: /rotated/ca.pem\n")
+		if !SamePolicy(a, b, false) || !SamePolicy(a, b, true) {
+			t.Fatal("same-mode credential and CA reference rotation refused")
+		}
+	}
+}

@@ -348,5 +348,8 @@ func SamePolicy(a, b delivery.Description, _ bool) bool {
 	if e != nil {
 		return false
 	}
-	return delivery.JSONEqual(a.Identity, b.Identity) && ao.AllowHTTP == bo.AllowHTTP && slices.Equal(ao.TokenServiceOrigins, bo.TokenServiceOrigins) && delivery.JSONEqual(mustJSON(ao.Publication), mustJSON(bo.Publication))
+	// Credential references may rotate within the same explicit authentication
+	// form. Changing anonymity or Basic/Bearer configuration changes target policy.
+	sameAuth := ao.Auth.Anonymous == bo.Auth.Anonymous && (ao.Auth.BearerTokenEnv != "") == (bo.Auth.BearerTokenEnv != "")
+	return sameAuth && delivery.JSONEqual(a.Identity, b.Identity) && ao.AllowHTTP == bo.AllowHTTP && slices.Equal(ao.TokenServiceOrigins, bo.TokenServiceOrigins) && delivery.JSONEqual(mustJSON(ao.Publication), mustJSON(bo.Publication))
 }
