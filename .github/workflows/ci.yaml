@@ -63,7 +63,7 @@ jobs:
           # Fixtures, golden files and the embedded CycloneDX schemas are
           # inputs to the test suite, so a change to any of them has to run it.
           # Missing that is how a stale golden file reaches main.
-          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery|record|oci)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$)' <<<"$CHANGED" >/dev/null; then go=true; fi
+          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery|record|oci|dtrack-tls)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$)' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.github/workflows/.*\.ya?ml$' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.goreleaser\.yaml$' <<<"$CHANGED" >/dev/null; then goreleaser=true; fi
           if grep -E '\.sh$' <<<"$CHANGED" >/dev/null; then shell=true; fi
