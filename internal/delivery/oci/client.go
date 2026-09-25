@@ -127,7 +127,7 @@ func (p Provider) Build(d delivery.Description, lookup func(string) (string, boo
 	if e != nil {
 		return nil, invalid("repository")
 	}
-	c.repo.Client = c.auth
+	c.repo.Client = registryClient{c}
 	c.repo.PlainHTTP = o.AllowHTTP
 	c.repo.MaxMetadataBytes = DocumentLimit
 	// Force required API mode, including standalone pushes, so the SDK cannot
@@ -168,7 +168,7 @@ func (c *client) request(ctx context.Context, method, path string, body func() (
 		req.Header.Set("Content-Type", mediaType)
 	}
 	req.Header.Set("Accept", ManifestMediaType+", "+IndexMediaType+", "+DockerManifestMediaType+", "+DockerIndexMediaType)
-	resp, e := c.auth.Do(req)
+	resp, e := c.do(req)
 	if e != nil {
 		return nil, safeError(e)
 	}
