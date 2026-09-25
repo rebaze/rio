@@ -229,6 +229,7 @@ jobs:
         run: |
           go build -trimpath -o rio-demo.exe ./cmd/rio
           python tools/demo-delivery/run.py "$PWD/rio-demo.exe"
+          python tools/demo-dtrack-tls/run.py "$PWD/rio-demo.exe"
           python tools/demo-record/run.py "$PWD/rio-demo.exe"
           python tools/demo-oci/run.py "$PWD/rio-demo.exe"
 
