@@ -19,9 +19,87 @@ resubmission. Normalization stays offline; delivery uses the network explicitly.
 binary, on your workstation or in CI.
 
 Delivery destinations include analysis platforms and artifact registries. **Dependency-Track is
-implemented today; [OCI registry delivery is planned](https://github.com/rebaze/rio/issues/83).**
+implemented on `main`; [OCI registry delivery is in review](https://github.com/rebaze/rio/issues/83).**
 
-[Quick start](#quick-start) · [Verified delivery](#deliver-to-dependency-track) · [One evidence record](#one-evidence-record) · [Configuration](#configure-your-project) · [For agents](#for-agents) · [Reference](#reference)
+[First delivery](#deliver-your-first-sbom) · [Try without a server](#quick-start) · [Verified delivery](#deliver-to-dependency-track) · [One evidence record](#one-evidence-record) · [Configuration](#configure-your-project) · [For agents](#for-agents) · [Reference](#reference)
+
+## Deliver your first SBOM
+
+Already generating `target/bom.json`? Choose one destination below, save its configuration as
+**`rio.yaml`**, and deliver the normalized SBOM in two commands. Intake and delivery share this one file.
+No server yet? Start with the [released, account-free normalization example](#quick-start).
+
+**Availability:** these delivery examples are unreleased. Dependency-Track delivery and `rio record`
+are merged on `main`; OCI delivery is implemented in [#83](https://github.com/rebaze/rio/issues/83)
+and awaiting review/integration. The latest release, v0.4.0, supports the normalization quick start
+but does not contain these delivery or record commands. Use a build containing the chosen feature.
+
+With either configuration below:
+
+```sh
+rio normalize --gate fail && rio deliver
+```
+
+### Send to Dependency-Track
+
+```yaml
+version: 1
+artifacts:
+  - id: app
+    sbom: target/bom.json
+delivery:
+  targets:
+    security:
+      type: dependency-track
+      url: https://dtrack.example.com
+      autoCreate: true
+```
+
+Replace the URL with your server and inject `DTRACK_API_KEY` through your CI or secret manager.
+The project name/version come from the SBOM's subject. This example explicitly enables project
+creation; omit `autoCreate` when you provision projects yourself. [Permissions and options](tools/README.md#native-verified-delivery).
+
+### Store in an OCI registry — preview
+
+Use this alternative `rio.yaml` to retain the same SBOM in a writable OCI repository:
+
+```yaml
+version: 1
+artifacts:
+  - id: app
+    sbom: target/bom.json
+delivery:
+  targets:
+    registry:
+      type: oci
+      registry: registry.example.com
+      repository: acme/app-sbom
+      auth:
+        usernameEnv: OCI_USERNAME
+        passwordEnv: OCI_PASSWORD
+```
+
+Set the registry host and repository, then inject `OCI_USERNAME` and `OCI_PASSWORD`.
+This publishes a **standalone SBOM** and returns an immutable manifest reference. To attach it to
+an existing image or image index, use that image's repository and add its exact `subject` descriptor
+(`digest`, `mediaType`, `size`); Rio leaves the image unchanged and requires Referrers API support.
+[Attachment configuration and current registry scope](https://github.com/rebaze/rio/issues/83).
+
+### Keep the delivery evidence
+
+You get normalized bytes, their digest, the receiver's acknowledgment, and an automatic journal path.
+To preview destinations before sending, run `rio delivery plan`. To use both destinations, put both
+target entries under `delivery.targets`; plain `rio deliver` sends every indexed artifact to each target.
+
+Replace `JOURNAL_PATH` with the path printed by `rio deliver` to produce one portable evidence file:
+
+```sh
+rio record --delivery-record JOURNAL_PATH --output record.json
+rio record inspect --file record.json
+```
+
+The recipient can inspect `record.json` without your workspace or credentials.
+[What the record establishes](docs/output.md#consolidated-recordjson-v1).
 
 ## When to use Rio
 
@@ -52,7 +130,7 @@ scanning remain separate steps.
 | `index.json` | Normalization inputs, output digests, transforms and gate results |
 | `<artifact>.intoto.json`, with `rio normalize --attest` | An **unsigned in-toto Statement** describing the normalization |
 | `record.json` (explicit `rio record`) | Complete index and selected committed delivery events, exact source bytes, readable facts and coverage |
-| The directory passed to `rio deliver --record` | Separate journal events for delivery intent, receipt when available, and later reconciliation observations |
+| `target/rio/deliveries/<pair-key>/`, or an explicit `--record` directory | Separate journal events for delivery intent, receipt when available, and later reconciliation observations |
 
 Delivery history is not added to `index.json` or the normalization statements. These records
 support traceability; they do not authenticate the producer or prove successful ingestion.
@@ -153,10 +231,11 @@ for filters, overrides, UUID selectors, deliberate retries, and tested server ve
 
 ## One evidence record
 
-Collect one record of current evidence from an index and explicitly selected delivery attempts:
+With a build containing `rio record` (not v0.4.0), collect current evidence from an index and explicitly
+selected delivery attempts. Replace `JOURNAL_PATH` with the path printed by `rio deliver`:
 
 ```sh
-rio record --delivery-record target/security-attempt --output record.json
+rio record --delivery-record JOURNAL_PATH --output record.json
 rio record inspect --file record.json
 ```
 

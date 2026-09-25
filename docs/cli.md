@@ -68,20 +68,19 @@ rio plan [flags]
 rio version
 ```
 
-For a Maven build already configured to produce SBOMs, add a target under `delivery.targets`
-in `rio.yaml` and inject its API key through the environment, then run:
+For a Maven build already configured to produce SBOMs, choose a
+[minimal Dependency-Track or OCI configuration](../README.md#deliver-your-first-sbom) in `rio.yaml`
+and inject that destination's credentials through the environment. The examples state which
+features are released or require a preview build. Then run:
 
 ```sh
-mvn -B verify
-rio normalize --gate fail
-rio deliver --json
-# Optional explicit single-pair journal:
-rio deliver --artifact application --target security --record delivery-record --json
+mvn -B verify && rio normalize --gate fail && rio deliver --json
 ```
 
-The [direct Dependency-Track example](../README.md#deliver-to-dependency-track) shows intake and
-delivery targets together in `rio.yaml`. Native delivery verifies the recorded output before upload; accepted receipts do
-not prove ingestion. Each attempt uses a new journal directory. Offline preview and inspection,
+Intake and delivery targets stay together in `rio.yaml`. Native delivery verifies the recorded
+output before upload; accepted receipts do not prove ingestion. Each attempt gets an automatic
+journal path. Use that path with `rio record --delivery-record PATH --output record.json` to keep
+portable evidence. Offline preview and inspection,
 reconciliation, permissions and delivery exit codes are documented in
 [the delivery guide](../tools/README.md#native-verified-delivery).
 The manual script remains available for [existing batch/parent workflows](../tools/README.md#rio-dtrack-uploadsh).
