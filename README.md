@@ -42,6 +42,27 @@ rio normalize --gate fail && rio deliver
 
 ### Send to Dependency-Track
 
+Here is a complete local layout for macOS/Linux. Commit `rio.yaml` and include `target/` in your
+`.gitignore`; keep the API key outside the project:
+
+```text
+~/.config/rio/dtrack.env          # private local credential file
+
+my-app/                         # run Rio from this directory
+├── rio.yaml                    # configuration below
+├── .gitignore                  # includes target/
+├── certs/dtrack-ca.pem          # optional public company CA certificate
+└── target/
+    ├── bom.json                # CycloneDX SBOM produced by your build
+    └── rio/                    # Rio creates this output directory
+        ├── app.cdx.json        # normalized SBOM
+        ├── index.json         # normalization evidence
+        ├── deliveries/<hash>/ # automatic delivery journal
+        └── record.json        # created by rio record below
+```
+
+Save this as `my-app/rio.yaml`:
+
 ```yaml
 version: 1
 artifacts:
@@ -49,15 +70,51 @@ artifacts:
     sbom: target/bom.json
 delivery:
   targets:
-    security:
+    security:                   # a target name you choose
       type: dependency-track
       url: https://dtrack.example.com
+      apiKeyEnv: DTRACK_API_KEY  # environment variable name, never the key itself
       autoCreate: true
 ```
 
-Replace the URL with your server and inject `DTRACK_API_KEY` through your CI or secret manager.
-The project name/version come from the SBOM's subject. This example explicitly enables project
-creation; omit `autoCreate` when you provision projects yourself. [Permissions and options](tools/README.md#native-verified-delivery).
+**`security` is a local target label.** You could name it `company-dtrack` instead. It appears in
+`rio delivery plan`, in the `--target security` filter, and as `destinationName` in journal evidence.
+The journal directory uses a generated hash. The API key determines access rights; the
+Dependency-Track project name/version come from the SBOM's subject. Separately, `app` is Rio's
+artifact ID and names the output `app.cdx.json`.
+
+Replace the URL with your server. Create a private directory for local credentials:
+
+```sh
+mkdir -p "$HOME/.config/rio"
+chmod 700 "$HOME/.config/rio"
+```
+
+Using your editor, save `~/.config/rio/dtrack.env` with this content:
+
+```sh
+export DTRACK_API_KEY='replace-with-your-dependency-track-api-key'
+```
+
+Restrict that private file to your account, then load it and run from `my-app`:
+
+```sh
+chmod 600 "$HOME/.config/rio/dtrack.env"
+. "$HOME/.config/rio/dtrack.env"
+rio normalize --gate fail && rio deliver
+```
+
+Your shell loads the credential into Rio's environment; Rio does not automatically read this file.
+For CI, store the value in a CI secret named `DTRACK_API_KEY` and inject it as an environment variable.
+Rio retains the variable name in evidence, never the API-key value.
+
+For an internal CA, obtain its public certificate from your administrator, save it as
+`certs/dtrack-ca.pem`, and add `caFile: certs/dtrack-ca.pem` under `security`. The path is relative to
+`rio.yaml`; certificate and hostname verification remain enabled. An explicit verification-bypass
+option is being added in [#83](https://github.com/rebaze/rio/issues/83) and is not yet on `main`.
+
+This example explicitly enables project creation; omit `autoCreate` when you provision projects
+yourself. [Permissions and options](tools/README.md#native-verified-delivery).
 
 ### Store in an OCI registry — preview
 
@@ -70,7 +127,7 @@ artifacts:
     sbom: target/bom.json
 delivery:
   targets:
-    registry:
+    release-registry:           # another target name you choose
       type: oci
       registry: registry.example.com
       repository: acme/app-sbom
@@ -79,7 +136,17 @@ delivery:
         passwordEnv: OCI_PASSWORD
 ```
 
-Set the registry host and repository, then inject `OCI_USERNAME` and `OCI_PASSWORD`.
+Set the registry host and repository. `release-registry` is the label used by
+`--target release-registry`; the inner `registry` field is the server address.
+For local use, put these assignments in a separate private `~/.config/rio/registry.env`:
+
+```sh
+export OCI_USERNAME='replace-with-your-registry-user'
+export OCI_PASSWORD='replace-with-your-registry-password-or-token'
+```
+
+Apply the same private-file permissions, then load it with `. "$HOME/.config/rio/registry.env"`
+before running Rio. In CI, inject the two variables from CI secrets.
 This publishes a **standalone SBOM** and returns an immutable manifest reference. To attach it to
 an existing image or image index, use that image's repository and add its exact `subject` descriptor
 (`digest`, `mediaType`, `size`); Rio leaves the image unchanged and requires Referrers API support.
@@ -94,8 +161,8 @@ target entries under `delivery.targets`; plain `rio deliver` sends every indexed
 Replace `JOURNAL_PATH` with the path printed by `rio deliver` to produce one portable evidence file:
 
 ```sh
-rio record --delivery-record JOURNAL_PATH --output record.json
-rio record inspect --file record.json
+rio record --delivery-record JOURNAL_PATH --output target/rio/record.json
+rio record inspect --file target/rio/record.json
 ```
 
 The recipient can inspect `record.json` without your workspace or credentials.
