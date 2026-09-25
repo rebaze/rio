@@ -81,12 +81,13 @@ must be checked against the running container and retained alongside the observa
 contains synthetic descriptors, locally computed hashes, safe statuses and Rio interpretations;
 it excludes passwords, tokens, auth/session query strings and raw error bodies.
 
-Planned targets are Distribution 3.1.2, zot 2.1.21, Nexus Community native OCI 3.94.0+, and a separately
-provided Artifactory OCI local repository with Referrers 7.90.1+. Other versions, remote/proxy/virtual
-routing, read offloading, fallback referrer tags, Xray/Lifecycle ingestion and retention guarantees
-are not implied. An unavailable vendor instance remains an explicit open acceptance item; a skipped
-opt-in test is not compatibility evidence. No Artifactory instance or license acceptance is created
-by this harness.
+The current tested targets are Distribution 3.1.2, zot 2.1.21 and Nexus Community native OCI 3.94.0-12.
+Artifactory interoperability is deferred to the next release iteration in
+[#88](https://github.com/rebaze/rio/issues/88); it is untested and outside this release’s support scope.
+That follow-up requires a separately supplied Artifactory OCI local repository with Referrers 7.90.1+.
+Other versions, remote/proxy/virtual routing, read offloading, fallback referrer tags, Xray/Lifecycle
+ingestion and retention guarantees are not implied. A skipped opt-in test is not compatibility
+evidence. No Artifactory instance or license acceptance is created by this harness.
 
 
 ## Observed configurations
@@ -96,7 +97,7 @@ by this harness.
 | Distribution 3.1.2, pinned multiarch image | Loopback TLS, custom CA, bcrypt Basic | Passed | API absent; both forms correctly refused without writes | Mutable synthetic tags; denied authentication; real intent-only crash recovery |
 | zot 2.1.21, pinned arm64 image | Loopback TLS, custom CA, bcrypt Basic | Passed | Image and index subjects passed | Mutable synthetic tags; denied authentication; attached crash recovery |
 | Nexus 3.94.0-12 Community, pinned image | Explicit loopback HTTP, Basic-to-Bearer negotiation, native OCI hosted path routing | Passed | Image and index subjects passed | ALLOW_ONCE tag rejection; valid read-only account can read and cannot write; attached crash recovery |
-| Artifactory | No disposable endpoint/version/scoped credentials supplied | Not run | Not run | Required acceptance remains open |
+| Artifactory | No disposable endpoint/version/scoped credentials supplied | Not run | Not run | Deferred to the next release iteration: [#88](https://github.com/rebaze/rio/issues/88) |
 
 Version-specific evidence from actual race-enabled runs on source commit `c84de29`:
 

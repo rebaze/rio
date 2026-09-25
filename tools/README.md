@@ -966,9 +966,9 @@ its absent Referrers API makes attachment explicitly unsupported in Rio’s requ
 zot 2.1.21 (arm64, TLS/Basic) and Nexus 3.94.0-12 Community (native OCI hosted path routing, explicit
 loopback HTTP, Basic/Bearer auth and ALLOW_ONCE tags) passed image/index attachment, Referrers and
 actual process-crash recovery as well. These are narrowly tested configurations, not all newer
-versions or deployment modes. Artifactory has not been run because no disposable instance/scoped
-credentials were supplied; its required acceptance remains open. See the [observed support matrix
-and evidence](demo-oci/integration/README.md#observed-configurations).
+versions or deployment modes. Artifactory has not been tested. Its interoperability work is deferred
+to the next release iteration in [#88](https://github.com/rebaze/rio/issues/88), outside this release’s
+tested support scope. See the [observed support matrix and evidence](demo-oci/integration/README.md#observed-configurations).
 
 Nexus’s manifest receipt uses a same-origin mounted URI with its configured repository key before
 `/v2/`. Rio validates that the ordered namespace parts still match and that the digest/tag is exact;
