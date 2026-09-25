@@ -25,12 +25,13 @@ type Identity struct {
 	Project Project `json:"project"`
 }
 type Options struct {
-	URL        string  `json:"url"`
-	APIKeyEnv  string  `json:"apiKeyEnv"`
-	CAFile     string  `json:"caFile,omitempty"`
-	AllowHTTP  bool    `json:"allowHTTP"`
-	Project    Project `json:"project"`
-	AutoCreate *bool   `json:"autoCreate,omitempty"`
+	URL                string  `json:"url"`
+	APIKeyEnv          string  `json:"apiKeyEnv"`
+	CAFile             string  `json:"caFile,omitempty"`
+	AllowHTTP          bool    `json:"allowHTTP"`
+	InsecureSkipVerify bool    `json:"insecureSkipVerify,omitempty"`
+	Project            Project `json:"project"`
+	AutoCreate         *bool   `json:"autoCreate,omitempty"`
 }
 
 var uuidRE = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -91,7 +92,7 @@ func (p Provider) Describe(destination, binding yaml.Node, subject delivery.Subj
 // Only current-manifest Describe supplies a host-specific CA resolver.
 func describe(destination, binding yaml.Node, subject delivery.Subject, resolveCA func(string) string) (delivery.Description, error) {
 	var desc delivery.Description
-	dm, e := delivery.YAMLMap(destination, "url", "apiKeyEnv", "caFile", "allowHTTP", "project", "autoCreate")
+	dm, e := delivery.YAMLMap(destination, "url", "apiKeyEnv", "caFile", "allowHTTP", "insecureSkipVerify", "project", "autoCreate")
 	if e != nil {
 		return desc, e
 	}
@@ -144,6 +145,15 @@ func describe(destination, binding yaml.Node, subject delivery.Subject, resolveC
 		if resolveCA != nil {
 			o.CAFile = resolveCA(o.CAFile)
 		}
+	}
+	if n, ok := dm["insecureSkipVerify"]; ok {
+		o.InsecureSkipVerify, e = delivery.YAMLBool(n, "insecureSkipVerify")
+		if e != nil {
+			return desc, e
+		}
+	}
+	if o.InsecureSkipVerify && (!strings.HasPrefix(o.URL, "https://") || o.CAFile != "") {
+		return desc, delivery.Fail("invalid_config", "insecureSkipVerify requires HTTPS and cannot be combined with caFile")
 	}
 	pm, e := delivery.YAMLMap(bm["project"], "name", "version", "uuid", "fromSubject")
 	if e != nil {
@@ -228,6 +238,9 @@ func ValidateDescription(d delivery.Description) (Options, Identity, error) {
 	dm := map[string]any{"url": o.URL, "apiKeyEnv": o.APIKeyEnv, "allowHTTP": o.AllowHTTP}
 	if o.CAFile != "" {
 		dm["caFile"] = o.CAFile
+	}
+	if o.InsecureSkipVerify {
+		dm["insecureSkipVerify"] = true
 	}
 	project := map[string]any{}
 	if o.Project.UUID != "" {

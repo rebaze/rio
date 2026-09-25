@@ -207,6 +207,16 @@ attempts join the same exact index. Last activity, latest verification and last 
 are separate, selected by event sequence rather than wall-clock timestamps. `processing:false`
 does not establish ingestion, vulnerability analysis or content retention.
 
+Dependency-Track's optional saved `options.insecureSkipVerify: true` records explicit HTTPS
+certificate-chain/hostname verification bypass. False is omitted, preserving older option bytes.
+New HTTPS acknowledgment, activity and unavailable observations carry allowlisted
+`details.tls: {"certificateVerification":"enforced"|"disabled","observed":true|false}`.
+`observed` means a successful TLS handshake was observed, including a later lost HTTP response;
+it does not assert certificate validity. No peer certificates, private keys or raw transport errors
+are retained. Older histories without TLS details remain valid and have no recorded TLS facts.
+Inspection binds details to the saved HTTPS policy and rejects contradictions. Retry and reconcile
+policy comparisons include the explicit flag; TLS mode does not change destination identity.
+
 Retries retain their original references. When the prior attempt is selected, its recorded digest
 must match a valid committed prefix, so later reconciliation of that prior journal remains valid.
 Source, effective target and declared policies must agree; credential/CA reference rotation is

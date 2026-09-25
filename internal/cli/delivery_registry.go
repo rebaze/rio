@@ -14,6 +14,7 @@ import (
 type adapterEntry struct {
 	HumanIdentityLabel         string
 	HumanDescription           func(delivery.Description) string
+	HumanTransportPolicy       func(delivery.Description) string
 	HumanObservation           func(delivery.Observation) string
 	Provider                   delivery.Provider
 	ValidateIntent             func(record.Intent) error
@@ -46,17 +47,25 @@ var deliveryAdapters = func(dir string) map[string]adapterEntry {
 		RecordedSubject:            func(delivery.Description) (delivery.Subject, error) { return delivery.Subject{}, nil },
 		ValidateObserverReferences: oci.ValidateObserverReferences,
 	}, "dependency-track": {
-		HumanIdentityLabel: "project",
+		HumanIdentityLabel:   "project",
+		HumanTransportPolicy: dtrackTransportPolicy,
+		HumanObservation: func(o delivery.Observation) string {
+			facts, e := dtrack.ReadTLS(o)
+			if e != nil || facts == nil {
+				return ""
+			}
+			return fmt.Sprintf("certificateVerification=%s TLSObserved=%t", facts.CertificateVerification, facts.Observed)
+		},
 		HumanDescription: func(d delivery.Description) string {
 			o, id, e := dtrack.ValidateDescription(d)
 			if e != nil {
 				return ""
 			}
 			if id.Project.UUID != "" {
-				return " autoCreate=not-applicable"
+				return " autoCreate=not-applicable" + dtrackTransportPolicy(d)
 			}
 			if o.AutoCreate != nil {
-				return fmt.Sprintf(" autoCreate=%t", *o.AutoCreate)
+				return fmt.Sprintf(" autoCreate=%t", *o.AutoCreate) + dtrackTransportPolicy(d)
 			}
 			return ""
 		},
@@ -121,6 +130,9 @@ func validateDTrackSnapshot(s record.Snapshot) error {
 			}
 		}
 	}
+	if e := dtrack.ValidateTransport(s.Intent.Destination, s.Observations); e != nil {
+		return e
+	}
 	return dtrack.ValidateEvidence(s.References, s.Observations)
 }
 func sameDTrackPolicy(a, b delivery.Description, reconcile bool) bool {
@@ -143,8 +155,16 @@ func sameDTrackPolicy(a, b delivery.Description, reconcile bool) bool {
 	if ao.AutoCreate != nil && *ao.AutoCreate != *bo.AutoCreate {
 		return false
 	}
-	if ao.AllowHTTP != bo.AllowHTTP {
+	if ao.AllowHTTP != bo.AllowHTTP || ao.InsecureSkipVerify != bo.InsecureSkipVerify {
 		return false
 	}
 	return true
+}
+
+func dtrackTransportPolicy(d delivery.Description) string {
+	o, _, e := dtrack.ValidateDescription(d)
+	if e != nil || !o.InsecureSkipVerify {
+		return ""
+	}
+	return " insecureSkipVerify=true (certificate verification disabled)"
 }

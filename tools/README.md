@@ -712,6 +712,18 @@ delivery:
 
 Inject the API key using your CI secret facility. No credentials belong in YAML or command
 arguments. HTTPS verifies hostnames with system roots plus an optional CA; redirects are refused.
+For an internal CA, prefer `caFile: certs/dtrack-ca.pem`. If you explicitly accept skipping both
+certificate-chain and hostname verification, set the target's `insecureSkipVerify: true`.
+It defaults to false, requires HTTPS, cannot be combined with `caFile`, and cannot be overridden
+per artifact. It does not ignore TLS protocol failures or enable redirects, fallback or replay.
+The flag is saved before the request and shown in plan, delivery, journal and record output.
+New HTTPS observations retain `details.tls.certificateVerification` (`enforced` or `disabled`)
+and `details.tls.observed` (whether a successful TLS handshake was observed). Disabled verification
+makes no claim that a certificate was invalid. Old absent TLS evidence remains not-recorded.
+Retries and reconciliation refuse a change of verification mode; use a deliberately new attempt
+with a new `--record` path to choose a different policy. Credential/CA rotation under verified TLS
+remains supported. Changing this flag never changes the default destination journal path.
+Run the [synthetic HTTPS demo](demo-dtrack-tls/README.md) against an installed binary to compare modes.
 Use the server base before `/api/v1`, optionally including a deployment prefix. Standard Go proxy
 environment variables apply. Preview reads no secrets or CA files.
 

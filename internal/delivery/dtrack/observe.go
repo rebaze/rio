@@ -20,13 +20,16 @@ func EventToken(refs []delivery.Reference) (string, error) {
 	}
 	return token, nil
 }
-func (c *client) Observe(ctx context.Context, refs []delivery.Reference) (delivery.Observation, error) {
-	o := observation("unavailable", "unavailable", "local", "missing_reference", 0)
+func (c *client) Observe(ctx context.Context, refs []delivery.Reference) (o delivery.Observation, err error) {
+	o = observation("unavailable", "unavailable", "local", "missing_reference", 0)
+	var tlsObserved bool
+	defer func() { c.addTLS(&o, tlsObserved) }()
 	token, e := EventToken(refs)
 	if e != nil {
 		return o, e
 	}
-	resp, e := c.request(ctx, "GET", "/api/v1/event/token/"+token, "", nil)
+	resp, observed, e := c.request(ctx, "GET", "/api/v1/event/token/"+token, "", nil)
+	tlsObserved = observed
 	if e != nil {
 		o.Code = "transport_unavailable"
 		return o, e

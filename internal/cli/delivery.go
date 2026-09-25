@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"io"
 	"os"
+	"strings"
 )
 
 type deliveryOptions struct {
@@ -68,6 +69,13 @@ func deliveryFinish(r runner.Result, e error, o deliveryOptions, global *globalO
 		if r.Destination != nil {
 			fmt.Fprintf(stderr, "destination=%s type=%s target=%s capabilities=%v credentialRefs=%v\n", r.Destination.DestinationName, r.Destination.Type, r.Destination.Identity, r.Destination.Capabilities, r.Destination.CredentialRefs)
 		}
+		if r.Destination != nil {
+			if entry, e := adapter(r.Destination.Type); e == nil && entry.HumanTransportPolicy != nil {
+				if policy := entry.HumanTransportPolicy(*r.Destination); policy != "" {
+					fmt.Fprintln(stderr, strings.TrimSpace(policy))
+				}
+			}
+		}
 		if r.Acknowledgment != "" {
 			fmt.Fprintf(stderr, "acknowledgment: %s\n", r.Acknowledgment)
 		}
@@ -88,7 +96,9 @@ func deliveryFinish(r runner.Result, e error, o deliveryOptions, global *globalO
 			if entry, err := adapter(r.Destination.Type); err == nil && entry.HumanObservation != nil {
 				for i := len(r.Observations) - 1; i >= 0; i-- {
 					if r.Observations[i].Kind == "content" || i == len(r.Observations)-1 {
-						fmt.Fprintln(stderr, entry.HumanObservation(r.Observations[i]))
+						if facts := entry.HumanObservation(r.Observations[i]); facts != "" {
+							fmt.Fprintln(stderr, facts)
+						}
 						break
 					}
 				}
@@ -174,6 +184,13 @@ func batchFinish(r runner.BatchResult, e error, o deliveryOptions, g *globalOpti
 			}
 			if item.Result != nil {
 				fmt.Fprintf(stderr, "acknowledgment: %s\n", item.Result.Acknowledgment)
+				if item.Destination != nil {
+					if entry, e := adapter(item.Destination.Type); e == nil && entry.HumanObservation != nil && len(item.Result.Observations) > 0 {
+						if facts := entry.HumanObservation(item.Result.Observations[len(item.Result.Observations)-1]); facts != "" {
+							fmt.Fprintln(stderr, facts)
+						}
+					}
+				}
 				if item.Result.Verification != "" {
 					fmt.Fprintf(stderr, "verification: %s\n", item.Result.Verification)
 				}
