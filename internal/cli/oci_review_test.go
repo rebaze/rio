@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -100,6 +101,42 @@ func TestReviewMixedBatchFormerStructuralBoundary(t *testing.T) {
 				if e = validateSnapshot(snap); e != nil {
 					t.Fatal(e)
 				}
+			}
+		})
+	}
+}
+
+func TestReviewSummaryDetailsRefuseBeforeMaterialization(t *testing.T) {
+	original, e := os.ReadFile("testdata/oci-mixed-record.json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, field := range []string{"latestVerification", "latestActivity", "lastObservation"} {
+		t.Run(field, func(t *testing.T) {
+			var doc map[string]any
+			json.Unmarshal(original, &doc)
+			var summary map[string]any
+			for _, item := range doc["deliveries"].([]any) {
+				entry := item.(map[string]any)
+				if entry["intent"].(map[string]any)["destination"].(map[string]any)["type"] == "oci" {
+					summary = entry["summary"].(map[string]any)
+					break
+				}
+			}
+			observation := summary["latestVerification"].(map[string]any)
+			summary[field] = observation
+			observation["observation"].(map[string]any)["details"] = map[string]any{"oci": map[string]any{"unknown": json.RawMessage("[" + strings.Repeat("{},", 100000) + "{}]")}}
+			raw, _ := json.Marshal(doc)
+			runtime.GC()
+			var before, after runtime.MemStats
+			runtime.ReadMemStats(&before)
+			_, e = evidence.Parse(raw, validateSnapshot, recordPolicy)
+			runtime.ReadMemStats(&after)
+			if e == nil {
+				t.Fatal("forged summary accepted")
+			}
+			if after.TotalAlloc-before.TotalAlloc > 8<<20 {
+				t.Fatalf("summary details materialized before adapter refusal: %d", after.TotalAlloc-before.TotalAlloc)
 			}
 		})
 	}

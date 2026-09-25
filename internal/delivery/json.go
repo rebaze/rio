@@ -308,13 +308,86 @@ func (r *jsonReader) value(t reflect.Type, v reflect.Value, strict bool, depth i
 	return nil
 }
 
-// JSONEqual preserves number tokens and compares validated JSON values.
+// JSONEqual compares validated values without constructing generic array/object
+// trees. Object order and string escaping are immaterial; numeric tokens remain
+// lossless, matching canonical JSON comparison without float64 conversion.
 func JSONEqual(a, b json.RawMessage) bool {
-	var av, bv any
-	if DecodeJSON(a, &av, false) != nil || DecodeJSON(b, &bv, false) != nil {
+	if ValidateJSON(a) != nil || ValidateJSON(b) != nil {
 		return false
 	}
-	return reflect.DeepEqual(av, bv)
+	return equalJSONValue(bytes.TrimSpace(a), bytes.TrimSpace(b))
+}
+
+type jsonSpan struct{ start, end int }
+
+func objectSpans(raw []byte) map[string]jsonSpan {
+	r := jsonReader{raw: raw, pos: 1}
+	r.space()
+	fields := map[string]jsonSpan{}
+	for raw[r.pos] != '}' {
+		key := r.key()
+		r.space()
+		start := r.pos
+		_ = r.skip(0)
+		fields[key] = jsonSpan{start, r.pos}
+		r.space()
+		if raw[r.pos] == ',' {
+			r.pos++
+			r.space()
+		} else {
+			break
+		}
+	}
+	return fields
+}
+func equalJSONValue(a, b []byte) bool {
+	if a[0] != b[0] {
+		return false
+	}
+	switch a[0] {
+	case '{':
+		af, bf := objectSpans(a), objectSpans(b)
+		if len(af) != len(bf) {
+			return false
+		}
+		for key, span := range af {
+			other, ok := bf[key]
+			if !ok || !equalJSONValue(a[span.start:span.end], b[other.start:other.end]) {
+				return false
+			}
+		}
+		return true
+	case '[':
+		ar, br := jsonReader{raw: a, pos: 1}, jsonReader{raw: b, pos: 1}
+		for {
+			ar.space()
+			br.space()
+			if a[ar.pos] == ']' || b[br.pos] == ']' {
+				return a[ar.pos] == ']' && b[br.pos] == ']'
+			}
+			as, bs := ar.pos, br.pos
+			_ = ar.skip(0)
+			_ = br.skip(0)
+			if !equalJSONValue(a[as:ar.pos], b[bs:br.pos]) {
+				return false
+			}
+			ar.space()
+			br.space()
+			if a[ar.pos] == ',' {
+				ar.pos++
+			}
+			if b[br.pos] == ',' {
+				br.pos++
+			}
+		}
+	case '"':
+		var av, bv string
+		_ = json.Unmarshal(a, &av)
+		_ = json.Unmarshal(b, &bv)
+		return av == bv
+	default:
+		return bytes.Equal(a, b)
+	}
 }
 
 // ValidateJSON checks syntax, duplicate keys and nesting without materializing
