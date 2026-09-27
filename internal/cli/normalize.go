@@ -63,16 +63,18 @@ type artifact struct {
 	inputSpec string
 	doc       *sbom.Document
 
-	outputSpec      string
-	schemaValidated bool
-	components      int
-	stats           []index.TransformResult
-	gate            gate.Result
-	integrity       []sbom.IntegrityFinding
-	enrichment      *sbom.EnrichmentRecord
-	contextResolved *buildcontext.Resolved
-	context         *sbom.ContextRecord
-	output          []byte
+	outputSpec       string
+	schemaValidated  bool
+	components       int
+	stats            []index.TransformResult
+	gate             gate.Result
+	integrity        []sbom.IntegrityFinding
+	enrichment       *sbom.EnrichmentRecord
+	contextResolved  *buildcontext.Resolved
+	context          *sbom.ContextRecord
+	normalization    *index.Normalization
+	evidenceSnapshot map[string]any
+	output           []byte
 }
 
 func runNormalize(opts *globalOptions, gateMode string, attest bool, stdout, stderr io.Writer) error {
@@ -202,12 +204,18 @@ func prepare(man *manifest.Manifest, input resolvedArtifact) (*artifact, error) 
 func process(man *manifest.Manifest, a *artifact) error {
 	doc := a.doc
 	a.components = doc.ComponentCount()
+	if err := a.captureChanges("", nil, nil); err != nil {
+		return internalErrorf("capturing normalization: %w", err)
+	}
 
 	upliftApplied, upliftFrom, err := doc.Uplift(man.Output.SpecVersionFloor)
 	if err != nil {
 		return usageErrorf("%s: %v", man.Path, err)
 	}
 	a.outputSpec = doc.SpecVersion()
+	if err := a.captureChanges("spec-uplift", nil, nil); err != nil {
+		return internalErrorf("capturing uplift: %w", err)
+	}
 
 	// Step 3: transforms, in the order the manifest gave them.
 	for _, t := range a.transforms {
@@ -228,6 +236,14 @@ func process(man *manifest.Manifest, a *artifact) error {
 		}
 
 		a.stats = append(a.stats, recordTransform(doc, t.ID(), result))
+		repairs := map[string]*transform.Resolution{}
+		for _, c := range result.Changes {
+			repairs[fmt.Sprintf("/components/%d/%s", c.ComponentIndex, c.Field)] = c.Resolution
+		}
+		if err := a.captureChanges(t.ID(), nil, repairs); err != nil {
+			return internalErrorf("capturing repair: %w", err)
+		}
+		a.captureOutcomes(t.ID(), result)
 	}
 
 	// Subject override before the gate, since the gate reads what ends up in
@@ -238,6 +254,10 @@ func process(man *manifest.Manifest, a *artifact) error {
 			fmt.Sprintf("from=%s@%s | to=%s@%s", oldName, oldVersion, s.Name, s.Version))
 	}
 
+	if err := a.captureChanges("subject-override", &transform.Resolution{Kind: "manifest", Selector: "artifacts/" + a.spec.ID + "/subject", SHA256: man.SHA256}, nil); err != nil {
+		return internalErrorf("capturing subject: %w", err)
+	}
+
 	// Enrichment is a separate metadata phase: it never changes dependency membership.
 	if a.spec.Enrichment != nil {
 		record, err := doc.Enrich(a.spec.Enrichment, filepath.Base(man.Path), man.SHA256)
@@ -245,6 +265,9 @@ func process(man *manifest.Manifest, a *artifact) error {
 			return usageErrorf("%s: artifact %q: %v", man.Path, a.spec.ID, err)
 		}
 		a.enrichment = record
+		if err := a.captureChanges("enrichment", &transform.Resolution{Kind: "manifest", Selector: "effective enrichment for " + a.spec.ID, SHA256: man.SHA256}, nil); err != nil {
+			return internalErrorf("capturing enrichment: %w", err)
+		}
 	}
 	if a.contextResolved != nil {
 		record, err := doc.ApplyContext(a.contextResolved)
@@ -252,6 +275,9 @@ func process(man *manifest.Manifest, a *artifact) error {
 			return usageErrorf("%s: artifact %q: context %s: %v", man.Path, a.spec.ID, a.contextResolved.Selector, err)
 		}
 		a.context = record
+		if err := a.captureChanges("context", &transform.Resolution{Kind: "context-file", Selector: record.Selector, SHA256: record.File.SHA256}, nil); err != nil {
+			return internalErrorf("capturing context: %w", err)
+		}
 	}
 
 	// Run metadata (§4.3a).
@@ -266,6 +292,9 @@ func process(man *manifest.Manifest, a *artifact) error {
 	}
 
 	doc.Finalize()
+	if err := a.captureChanges("rio-bookkeeping", nil, nil); err != nil {
+		return internalErrorf("capturing bookkeeping: %w", err)
+	}
 
 	a.integrity = doc.IntegrityFindings()
 
@@ -315,7 +344,7 @@ func recordTransform(doc *sbom.Document, id string, result transform.Result) ind
 			fmt.Sprintf("rule=%s | from=%s | to=%s", id, c.From, c.To))
 
 		if comp := doc.Component(c.ComponentIndex); comp != nil {
-			comp.AppendIdentityEvidence(c.Field, 0.9, fmt.Sprintf("rio %s: %s", id, c.From))
+			comp.AppendIdentityAssertion(c.Field, c.To)
 		}
 		stat.Applied++
 	}
@@ -385,6 +414,7 @@ func writeAll(man *manifest.Manifest, artifacts []*artifact, outDir string, atte
 
 		idx.Artifacts = append(idx.Artifacts, index.Artifact{
 			ID:                a.spec.ID,
+			Normalization:     a.normalization,
 			Selection:         a.selection,
 			Input:             index.FileRef{Path: a.inputRel, SHA256: a.inputSHA},
 			Output:            index.FileRef{Path: name, SHA256: sum},

@@ -91,25 +91,50 @@ purl is left byte-identical, because stripping the qualifier off
 `pkg:maven/p2.eclipse.plugin/com.google.guava@30.1.0.v1` would make it indistinguishable from a
 well-formed Maven coordinate, and a lenient consumer would act on a groupId that does not exist.
 
-The same repair is also recorded on the component itself, as an `evidence.identity` entry:
+New repairs also add a confidence-free `evidence.identity` conclusion on CycloneDX 1.6:
 
 ```json
 "evidence": {
   "identity": [
-    { "field": "purl",
-      "confidence": 0.9,
-      "methods": [
-        { "technique": "other", "confidence": 0.9,
-          "value": "rio repair-purl/p2: pkg:p2/com.google.gson@2.8.9.v20220111-1409" }
-      ] }
+    { "field": "purl", "concludedValue": "pkg:maven/com.google.code.gson/gson@2.8.9" }
   ]
 }
 ```
 
-The `value` names the rule and the original purl, so a consumer holding only the normalized document
-can still see what the identity used to be. If a component already carries `evidence.identity`, rio
-appends to it and never overwrites an existing entry. The current implementation assigns `0.9`
-to every repair; this is a fixed value, not a measured probability or independent verification.
+The metadata repair property retains the original purl and rule. Input identity evidence is
+preserved, including any confidence the producer supplied. Rio no longer assigns its former
+fixed `0.9`: a mapping category is an assertion, not a measured probability. The embedded
+schemas require numeric confidence in method entries, so new assertions omit methods.
+CycloneDX 1.5 supports a single identity object: Rio adds `{ "field": "purl" }` only when
+none exists, and preserves an existing object. Detailed source evidence remains in the index.
+
+### Normalization change evidence
+
+New indexes keep index schema version 1 and add `artifacts[].normalization`, an independently
+versioned extension (`version: 1`). Old indexes without it have **changes not recorded**, not
+zero changes. Unknown extension versions must be labeled unsupported, not treated as complete.
+
+`changes` lists stable JSON Pointer targets, `add`/`replace`/`remove` operations, rules, before
+and after values, and available resolution sources. The enclosing artifact's input/output digests
+bind the relationship. Changes cover uplift, purl rewrites, preserved p2 qualifiers, legacy subject
+replacement, enrichment and supplied context. Component membership and repair counters retain
+their existing meanings: one purl rewrite can change both coordinates and version but counts once.
+Transform scope is top-level components; nested components are not implied repaired.
+
+A repair's `resolution.kind` distinguishes `input-qualifier`, `component-property`,
+`built-in-entry`, `external-table-entry`, and qualifier-only `input-version`. Its selector identifies
+the chosen keys or table entry. Mapping `sha256` hashes the exact bytes loaded for that transform,
+even if the file later changes. Optional `metadata.confidence` and `metadata.evidence` preserve
+upstream categorical assertions such as `manifest-proven`; they are not translated into numbers.
+Missing upstream metadata stays absent. Manifest and context changes bind their source digests.
+
+`bookkeeping` separately records Rio's added tools, repair assertions and run properties.
+`unmapped` retains per-component pointers and reasons. `skipped` aggregates reasons with an explicit
+scope and count. Collection copies these retained facts without rereading or reprocessing SBOMs.
+The JSON is a consistency record, not proof of authenticity or a complete input archive.
+
+Run the [installed-binary ledger demonstration](../tools/demo-normalization-evidence/README.md)
+for a synthetic override, qualifier-only miss, unchanged input and offline portable record.
 
 Where an Eclipse build qualifier was dropped from a version, the component carries it as a
 `rebaze:normalize:p2-qualifier` property, for example `v20230708-0916`. This preserves the version

@@ -22,3 +22,8 @@ The retained directory printed at the end contains snapshots, the recipient file
 examples and a command/exit walkthrough. All receiver responses are synthetic. No API secret value
 is retained. The demo does not establish ingestion, authenticated producer identity or signatures;
 SBOM bytes and normalization assets are not retained in these records.
+
+Records retain additive normalization evidence when the producing Rio includes it. The
+[normalization evidence demo](../demo-normalization-evidence/README.md) shows exact repair
+sources and change pointers. Older indexes explicitly lack these details; collecting them with
+a newer binary cannot reconstruct missing history.

@@ -285,7 +285,7 @@ func (r *repairer) applyTo(c *sbom.Component, res *transform.Result) {
 	}
 
 	// Operation B, the coordinate mapping (§6.2).
-	coords, found := r.resolve(c, &parsed)
+	coords, provenance, found := r.resolve(c, &parsed)
 	if !found {
 		// No hit. The purl keeps its p2 type, its name and all its qualifiers;
 		// only the version fix from A survives. A groupId is never inferred
@@ -295,6 +295,7 @@ func (r *repairer) applyTo(c *sbom.Component, res *transform.Result) {
 		r.unmapped(res, c.Index, original, unmappedReason)
 	} else if reason, ok := coords.valid(); !ok {
 		r.unmapped(res, c.Index, original, reason)
+		provenance = nil
 	} else {
 		// The p2 qualifiers describe the p2 repository, not the Maven
 		// artifact, so they are dropped along with any subpath.
@@ -306,12 +307,16 @@ func (r *repairer) applyTo(c *sbom.Component, res *transform.Result) {
 	if repaired == original {
 		return
 	}
+	if provenance == nil {
+		provenance = &transform.Resolution{Kind: "input-version", Selector: "purl.version"}
+	}
 	c.SetPURL(repaired)
 	res.Changes = append(res.Changes, transform.Change{
 		ComponentIndex: c.Index,
 		Field:          "purl",
 		From:           original,
 		To:             repaired,
+		Resolution:     provenance,
 	})
 }
 
@@ -367,7 +372,7 @@ func (r *repairer) applyToSyntheticMaven(c *sbom.Component, res *transform.Resul
 	// §6.2's full resolution order, step 1 included: a generator that already
 	// put maven-groupId on the purl should be believed over the table, exactly
 	// as it is on the p2 path.
-	coords, found := r.resolve(c, &parsed)
+	coords, provenance, found := r.resolve(c, &parsed)
 	if !found {
 		r.unmapped(res, c.Index, original, unmappedReason)
 		return
@@ -396,6 +401,7 @@ func (r *repairer) applyToSyntheticMaven(c *sbom.Component, res *transform.Resul
 		Field:          "purl",
 		From:           original,
 		To:             repaired,
+		Resolution:     provenance,
 	})
 }
 
@@ -419,7 +425,7 @@ func (r *repairer) applyToBundleWithoutPURL(c *sbom.Component, res *transform.Re
 		return
 	}
 
-	coords, found := r.resolveByName(c, name)
+	coords, provenance, found := r.resolveByName(c, name)
 	if !found {
 		r.unmapped(res, c.Index, "", unmappedReason)
 		return
@@ -443,6 +449,7 @@ func (r *repairer) applyToBundleWithoutPURL(c *sbom.Component, res *transform.Re
 		Field:          "purl",
 		From:           "",
 		To:             repaired,
+		Resolution:     provenance,
 	})
 }
 
@@ -528,10 +535,10 @@ func (r *repairer) inScope(c *sbom.Component, parsed packageurl.PackageURL) (rea
 }
 
 // resolve runs §6.2's resolution order, first hit wins.
-func (r *repairer) resolve(c *sbom.Component, parsed *packageurl.PackageURL) (Coordinates, bool) {
+func (r *repairer) resolve(c *sbom.Component, parsed *packageurl.PackageURL) (Coordinates, *transform.Resolution, bool) {
 	// 1. Qualifiers already on the purl. Free, exact, no table needed.
 	if g, a := qualifier(parsed, qualifierGroupID), qualifier(parsed, qualifierArtifactID); g != "" && a != "" {
-		return Coordinates{GroupID: g, ArtifactID: a}, true
+		return Coordinates{GroupID: g, ArtifactID: a}, &transform.Resolution{Kind: "input-qualifier", Selector: qualifierGroupID + "," + qualifierArtifactID}, true
 	}
 
 	// Steps 2 and 3 are keyed by the bundle symbolic name, which is the purl's
@@ -543,24 +550,24 @@ func (r *repairer) resolve(c *sbom.Component, parsed *packageurl.PackageURL) (Co
 
 // resolveByName runs steps 2 and 3 of §6.2's resolution order. Step 1 needs
 // purl qualifiers and is therefore unavailable to a component with no purl.
-func (r *repairer) resolveByName(c *sbom.Component, name string) (Coordinates, bool) {
+func (r *repairer) resolveByName(c *sbom.Component, name string) (Coordinates, *transform.Resolution, bool) {
 	// 2. The component's own properties, for generators that carry Maven
 	//    coordinates there.
 	props := c.Properties()
 	for _, pair := range propertyKeyPairs {
 		g, a := property(props, pair[0]), property(props, pair[1])
 		if g != "" && a != "" {
-			return Coordinates{GroupID: g, ArtifactID: a}, true
+			return Coordinates{GroupID: g, ArtifactID: a}, &transform.Resolution{Kind: "component-property", Selector: pair[0] + "," + pair[1]}, true
 		}
 	}
 
 	// 3. The mapping table.
 	if coords, found := r.table[name]; found {
-		return coords, true
+		return coords.Coordinates, coords.resolution, true
 	}
 
 	// 4. No hit.
-	return Coordinates{}, false
+	return Coordinates{}, nil, false
 }
 
 // qualifier reads one purl qualifier. Keys are compared case-insensitively

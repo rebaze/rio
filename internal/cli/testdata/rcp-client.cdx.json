@@ -92,15 +92,8 @@
       "evidence": {
         "identity": [
           {
-            "confidence": 0.9,
-            "field": "purl",
-            "methods": [
-              {
-                "confidence": 0.9,
-                "technique": "other",
-                "value": "rio repair-purl/p2: pkg:p2/org.eclipse.core.databinding@1.13.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F"
-              }
-            ]
+            "concludedValue": "pkg:maven/org.eclipse.platform/org.eclipse.core.databinding@1.13.100",
+            "field": "purl"
           }
         ]
       },
@@ -156,15 +149,8 @@
       "evidence": {
         "identity": [
           {
-            "confidence": 0.9,
-            "field": "purl",
-            "methods": [
-              {
-                "confidence": 0.9,
-                "technique": "other",
-                "value": "rio repair-purl/p2: pkg:p2/org.eclipse.core.databinding.beans@1.10.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F"
-              }
-            ]
+            "concludedValue": "pkg:maven/org.eclipse.platform/org.eclipse.core.databinding.beans@1.10.100",
+            "field": "purl"
           }
         ]
       },
@@ -220,15 +206,8 @@
       "evidence": {
         "identity": [
           {
-            "confidence": 0.9,
-            "field": "purl",
-            "methods": [
-              {
-                "confidence": 0.9,
-                "technique": "other",
-                "value": "rio repair-purl/p2: pkg:p2/org.eclipse.core.databinding.observable@1.13.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F"
-              }
-            ]
+            "concludedValue": "pkg:maven/org.eclipse.platform/org.eclipse.core.databinding.observable@1.13.100",
+            "field": "purl"
           }
         ]
       },
@@ -284,15 +263,8 @@
       "evidence": {
         "identity": [
           {
-            "confidence": 0.9,
-            "field": "purl",
-            "methods": [
-              {
-                "confidence": 0.9,
-                "technique": "other",
-                "value": "rio repair-purl/p2: pkg:p2/org.eclipse.core.databinding.property@1.10.100.v20230708-0916?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F"
-              }
-            ]
+            "concludedValue": "pkg:maven/org.eclipse.platform/org.eclipse.core.databinding.property@1.10.100",
+            "field": "purl"
           }
         ]
       },
@@ -348,15 +320,8 @@
       "evidence": {
         "identity": [
           {
-            "confidence": 0.9,
-            "field": "purl",
-            "methods": [
-              {
-                "confidence": 0.9,
-                "technique": "other",
-                "value": "rio repair-purl/p2: pkg:p2/org.eclipse.equinox.common@3.18.200.v20231106-1826?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F"
-              }
-            ]
+            "concludedValue": "pkg:maven/org.eclipse.platform/org.eclipse.equinox.common@3.18.200",
+            "field": "purl"
           }
         ]
       },
@@ -412,15 +377,8 @@
       "evidence": {
         "identity": [
           {
-            "confidence": 0.9,
-            "field": "purl",
-            "methods": [
-              {
-                "confidence": 0.9,
-                "technique": "other",
-                "value": "rio repair-purl/p2: pkg:p2/org.eclipse.osgi@3.18.600.v20231110-1900?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F"
-              }
-            ]
+            "concludedValue": "pkg:maven/org.eclipse.platform/org.eclipse.osgi@3.18.600",
+            "field": "purl"
           }
         ]
       },
@@ -476,15 +434,8 @@
       "evidence": {
         "identity": [
           {
-            "confidence": 0.9,
-            "field": "purl",
-            "methods": [
-              {
-                "confidence": 0.9,
-                "technique": "other",
-                "value": "rio repair-purl/p2: pkg:p2/org.eclipse.equinox.launcher@1.6.600.v20231106-1826?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F"
-              }
-            ]
+            "concludedValue": "pkg:maven/org.eclipse.platform/org.eclipse.equinox.launcher@1.6.600",
+            "field": "purl"
           }
         ]
       },
@@ -540,15 +491,8 @@
       "evidence": {
         "identity": [
           {
-            "confidence": 0.9,
-            "field": "purl",
-            "methods": [
-              {
-                "confidence": 0.9,
-                "technique": "other",
-                "value": "rio repair-purl/p2: pkg:p2/org.eclipse.equinox.launcher.gtk.linux.x86_64@1.2.800.v20231003-1442?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F"
-              }
-            ]
+            "concludedValue": "pkg:p2/org.eclipse.equinox.launcher.gtk.linux.x86_64@1.2.800?classifier=osgi.bundle&location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+            "field": "purl"
           }
         ]
       },

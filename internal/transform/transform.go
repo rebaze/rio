@@ -34,6 +34,17 @@ type Change struct {
 	Field          string
 	From           string
 	To             string
+	Resolution     *Resolution `json:"resolution,omitempty"`
+}
+
+// Resolution retains the selected source, not a probability inferred from it.
+// SHA256 binds the actual loaded mapping bytes; Metadata contains only supported
+// upstream categorical assertions. Input sources are bound by the artifact input.
+type Resolution struct {
+	Kind     string            `json:"kind"`
+	Selector string            `json:"selector"`
+	SHA256   string            `json:"sha256,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 // NoteKind distinguishes the two non-change outcomes.

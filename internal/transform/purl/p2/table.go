@@ -1,11 +1,14 @@
 package p2
 
 import (
+	"crypto/sha256"
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"github.com/rebaze/rio/internal/transform"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // builtinTable is the table shipped in the binary. It is the asset: entries are
@@ -30,13 +33,20 @@ type Coordinates struct {
 //
 //	{"schemaVersion":1,"entries":{"<bsn>":{"groupId":...,"artifactId":...}}}
 type tableFile struct {
-	SchemaVersion int                    `json:"schemaVersion"`
-	Entries       map[string]Coordinates `json:"entries"`
+	SchemaVersion int                   `json:"schemaVersion"`
+	Entries       map[string]tableEntry `json:"entries"`
 }
 
 // table maps a bundle symbolic name to Maven coordinates. Lookups only; it is
 // never iterated, so no map order ever reaches the output (§7).
-type table map[string]Coordinates
+type tableEntry struct {
+	Coordinates
+	Confidence string `json:"confidence,omitempty"`
+	Evidence   string `json:"evidence,omitempty"`
+	resolution *transform.Resolution
+}
+
+type table map[string]tableEntry
 
 // loadTable parses one table document. source names the file in every error,
 // because a broken table is a configuration error the operator has to find (§10).
@@ -59,6 +69,18 @@ func loadTable(data []byte, source string) (table, error) {
 		if coords.ArtifactID == "" {
 			return nil, fmt.Errorf("mapping table %s: entry %q has an empty artifactId", source, bsn)
 		}
+		kind := "external-table-entry"
+		if source == "built in" {
+			kind = "built-in-entry"
+		}
+		metadata := map[string]string{}
+		if coords.Confidence != "" {
+			metadata["confidence"] = coords.Confidence
+		}
+		if coords.Evidence != "" {
+			metadata["evidence"] = coords.Evidence
+		}
+		coords.resolution = &transform.Resolution{Kind: kind, Selector: "/entries/" + strings.ReplaceAll(strings.ReplaceAll(bsn, "~", "~0"), "/", "~1"), SHA256: fmt.Sprintf("%x", sha256.Sum256(data)), Metadata: metadata}
 		out[bsn] = coords
 	}
 	return out, nil
@@ -80,7 +102,11 @@ func BuiltinEntries() (map[string]Coordinates, error) {
 		// covered by the tests.
 		return nil, err
 	}
-	return tbl, nil
+	out := map[string]Coordinates{}
+	for name, entry := range tbl {
+		out[name] = entry.Coordinates
+	}
+	return out, nil
 }
 
 // loadTables returns the built-in table with the file at path merged over it:

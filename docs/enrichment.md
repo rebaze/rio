@@ -122,3 +122,8 @@ and the normalization predicate remain v1, with their existing meanings. Manifes
 `enrichment` retain their previous behavior and output shape. This feature does not collect source
 or CI/build facts, hash the built artifact, generate evidence references or normalize dependency
 licenses.
+
+Normalization indexes also retain enrichment's before/after changes in the independently versioned
+[normalization ledger](output.md#normalization-change-evidence), alongside repair, uplift and
+context changes. Existing enrichment producer assertions and their selectors remain available;
+the ledger does not turn them into independently verified facts.

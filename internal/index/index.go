@@ -109,6 +109,7 @@ type Selection struct {
 // (§4.2).
 type Artifact struct {
 	ID              string            `json:"id"`
+	Normalization   *Normalization    `json:"normalization,omitempty"`
 	Selection       *Selection        `json:"selection,omitempty"`
 	Input           FileRef           `json:"input"`
 	Output          FileRef           `json:"output"`
@@ -268,6 +269,9 @@ func (idx *Index) Validate() error {
 			return fmt.Errorf("artifacts[%d]: duplicate id %q, already used by artifacts[%d]", i, a.ID, first)
 		}
 		seen[a.ID] = i
+		if err := a.Normalization.Validate(); err != nil {
+			return fmt.Errorf("artifact %q: %w", a.ID, err)
+		}
 		if !a.Gate.Valid() {
 			return fmt.Errorf("artifacts[%d] %q: gate is %q, want %q or %q", i, a.ID, string(a.Gate), GateOK, GateFail)
 		}
