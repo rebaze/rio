@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	_ "embed"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 	"github.com/rebaze/rio/internal/transform"
 	"os"
@@ -41,8 +42,8 @@ type tableFile struct {
 // never iterated, so no map order ever reaches the output (§7).
 type tableEntry struct {
 	Coordinates
-	Confidence string `json:"confidence,omitempty"`
-	Evidence   string `json:"evidence,omitempty"`
+	Confidence json.RawMessage `json:"confidence,omitempty"`
+	Evidence   json.RawMessage `json:"evidence,omitempty"`
 	resolution *transform.Resolution
 }
 
@@ -51,6 +52,9 @@ type table map[string]tableEntry
 // loadTable parses one table document. source names the file in every error,
 // because a broken table is a configuration error the operator has to find (§10).
 func loadTable(data []byte, source string) (table, error) {
+	if !jsontext.Value(data).IsValid() {
+		return nil, fmt.Errorf("mapping table %s: valid UTF-8 JSON with unique object names required", source)
+	}
 	var parsed tableFile
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		return nil, fmt.Errorf("mapping table %s: %w", source, err)
@@ -60,6 +64,7 @@ func loadTable(data []byte, source string) (table, error) {
 			source, parsed.SchemaVersion, tableSchemaVersion)
 	}
 	out := make(table, len(parsed.Entries))
+	tableSHA := fmt.Sprintf("%x", sha256.Sum256(data))
 	for bsn, coords := range parsed.Entries {
 		// Half an entry is worse than no entry: it would produce a purl with an
 		// empty segment that looks resolvable and is not.
@@ -73,14 +78,14 @@ func loadTable(data []byte, source string) (table, error) {
 		if source == "built in" {
 			kind = "built-in-entry"
 		}
-		metadata := map[string]string{}
-		if coords.Confidence != "" {
+		metadata := map[string]json.RawMessage{}
+		if len(coords.Confidence) > 0 {
 			metadata["confidence"] = coords.Confidence
 		}
-		if coords.Evidence != "" {
+		if len(coords.Evidence) > 0 {
 			metadata["evidence"] = coords.Evidence
 		}
-		coords.resolution = &transform.Resolution{Kind: kind, Selector: "/entries/" + strings.ReplaceAll(strings.ReplaceAll(bsn, "~", "~0"), "/", "~1"), SHA256: fmt.Sprintf("%x", sha256.Sum256(data)), Metadata: metadata}
+		coords.resolution = &transform.Resolution{Kind: kind, Selector: "/entries/" + strings.ReplaceAll(strings.ReplaceAll(bsn, "~", "~0"), "/", "~1"), SHA256: tableSHA, Metadata: metadata}
 		out[bsn] = coords
 	}
 	return out, nil

@@ -6,6 +6,7 @@
 package transform
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -41,10 +42,10 @@ type Change struct {
 // SHA256 binds the actual loaded mapping bytes; Metadata contains only supported
 // upstream categorical assertions. Input sources are bound by the artifact input.
 type Resolution struct {
-	Kind     string            `json:"kind"`
-	Selector string            `json:"selector"`
-	SHA256   string            `json:"sha256,omitempty"`
-	Metadata map[string]string `json:"metadata,omitempty"`
+	Kind     string                     `json:"kind"`
+	Selector string                     `json:"selector"`
+	SHA256   string                     `json:"sha256,omitempty"`
+	Metadata map[string]json.RawMessage `json:"metadata,omitempty"`
 }
 
 // NoteKind distinguishes the two non-change outcomes.

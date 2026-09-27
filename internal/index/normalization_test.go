@@ -35,3 +35,23 @@ func TestNormalizationVersionAndValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizationRejectsComponentPointersOutsideInventory(t *testing.T) {
+	for _, target := range []string{"/components/1/purl", "/components/-1/purl", "/components/01/purl", "/components"} {
+		t.Run(target, func(t *testing.T) {
+			idx := New("test", FileRef{Path: "rio.yaml", SHA256: strings.Repeat("a", 64)})
+			idx.Artifacts = []Artifact{{ID: "app", Components: 1, Gate: GateOK, Normalization: &Normalization{Version: 1, Changes: []Change{{Target: target, Operation: "replace", Rule: "repair-purl/p2", Before: "a", After: "b"}}, Bookkeeping: []Change{}, Unmapped: []Unmapped{}, Skipped: []Skipped{}}}}
+			if err := idx.Validate(); err == nil {
+				t.Fatal("malformed known ledger pointer accepted")
+			}
+		})
+	}
+}
+
+func TestNormalizationRejectsUnknownResolutionKind(t *testing.T) {
+	raw := `{"version":1,"changes":[{"target":"/components/0/purl","operation":"replace","rule":"repair-purl/p2","before":"a","after":"b","resolution":{"kind":"made-up-source","selector":"x"}}],"bookkeeping":[],"unmapped":[],"skipped":[]}`
+	var n Normalization
+	if err := json.Unmarshal([]byte(raw), &n); err == nil {
+		t.Fatal("unknown source kind interpreted as version 1 evidence")
+	}
+}

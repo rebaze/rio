@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/rebaze/rio/internal/transform"
+	"github.com/rebaze/rio/internal/transform/purl/p2"
 )
 
 // Resolution precedence must be visible, and the digest must bind the bytes
@@ -75,5 +76,39 @@ func TestBuiltinAndQualifierOnlyProvenance(t *testing.T) {
 		if tc.kind == "built-in-entry" && (p["sha256"] == nil || p["metadata"] != nil) {
 			t.Fatalf("built-in digest or absent metadata incorrect: %v", p)
 		}
+	}
+}
+
+func TestMappingMetadataPreservesUpstreamJSONWithoutNarrowingTableFormat(t *testing.T) {
+	dir := t.TempDir()
+	data := []byte(`{"schemaVersion":1,"entries":{"com.google.gson":{"groupId":"com.google.code.gson","artifactId":"gson","confidence":0.8,"evidence":{"kind":"upstream assertion","reference":"synthetic"}}}}`)
+	if err := os.WriteFile(filepath.Join(dir, "table.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	tr, err := p2.New(transform.Config{"table": "table.json"}, dir)
+	if err != nil {
+		t.Fatal("previously additive mapping metadata now rejects a table", err)
+	}
+	res, err := tr.Apply(load(t, source(bundle("com.google.gson", "2.8.9", "", ""))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(res.Changes[0])
+	var c map[string]any
+	json.Unmarshal(b, &c)
+	m := c["resolution"].(map[string]any)["metadata"].(map[string]any)
+	if m["confidence"] != 0.8 || m["evidence"].(map[string]any)["reference"] != "synthetic" {
+		t.Fatal("upstream assertions changed", m)
+	}
+}
+
+func TestMappingMetadataRefusesAmbiguousObjectKeys(t *testing.T) {
+	dir := t.TempDir()
+	data := []byte(`{"schemaVersion":1,"entries":{"com.google.gson":{"groupId":"com.google.code.gson","artifactId":"gson","evidence":{"assertion":"one","assertion":"two"}}}}`)
+	if err := os.WriteFile(filepath.Join(dir, "table.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p2.New(transform.Config{"table": "table.json"}, dir); err == nil {
+		t.Fatal("ambiguous metadata would produce an index its reader refuses")
 	}
 }

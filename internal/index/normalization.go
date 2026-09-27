@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/rebaze/rio/internal/transform"
@@ -109,6 +110,11 @@ func (n *Normalization) Validate() error {
 				return bad()
 			}
 			if p := c.Resolution; p != nil {
+				switch p.Kind {
+				case "input-qualifier", "component-property", "input-version", "built-in-entry", "external-table-entry", "manifest", "context-file":
+				default:
+					return bad()
+				}
 				if p.Kind == "" || p.Selector == "" || p.SHA256 != "" && !digestPattern.MatchString(p.SHA256) {
 					return bad()
 				}
@@ -135,6 +141,41 @@ func (n *Normalization) Validate() error {
 			return bad()
 		}
 		seen[key] = true
+	}
+	return nil
+}
+
+// validateComponentTargets binds known ledger pointers to the recorded top-level
+// inventory. An extension cannot claim component membership changes or point past
+// that inventory while still describing this normalization contract.
+func (n *Normalization) validateComponentTargets(components int) error {
+	if n == nil || n.Version != 1 {
+		return nil
+	}
+	check := func(target string) error {
+		parts := strings.Split(target, "/")
+		if len(parts) > 1 && parts[1] == "components" {
+			if len(parts) < 3 {
+				return fmt.Errorf("normalization cannot replace component membership")
+			}
+			i, err := strconv.Atoi(parts[2])
+			if err != nil || i < 0 || i >= components || strconv.Itoa(i) != parts[2] {
+				return fmt.Errorf("normalization pointer outside component inventory")
+			}
+		}
+		return nil
+	}
+	for _, list := range [][]Change{n.Changes, n.Bookkeeping} {
+		for _, c := range list {
+			if err := check(c.Target); err != nil {
+				return err
+			}
+		}
+	}
+	for _, u := range n.Unmapped {
+		if err := check(u.Target); err != nil {
+			return err
+		}
 	}
 	return nil
 }

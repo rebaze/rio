@@ -277,6 +277,9 @@ func (idx *Index) Validate() error {
 		if err := a.Checks.Validate(a); err != nil {
 			return fmt.Errorf("artifact %q: %w", a.ID, err)
 		}
+		if err := a.Normalization.validateComponentTargets(a.Components); err != nil {
+			return fmt.Errorf("artifact %q: %w", a.ID, err)
+		}
 		if err := a.Normalization.Validate(); err != nil {
 			return fmt.Errorf("artifact %q: %w", a.ID, err)
 		}
