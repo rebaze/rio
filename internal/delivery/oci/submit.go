@@ -87,12 +87,21 @@ func manifestReceiptPath(path string, o Options) bool {
 func ociDescriptor(d Descriptor) ocispec.Descriptor {
 	return ocispec.Descriptor{MediaType: d.MediaType, Digest: digest.Digest(d.Digest), Size: d.Size}
 }
-func (c *client) Submit(parent context.Context, payloads []delivery.Payload) (delivery.Submission, error) {
+func (c *client) Submit(parent context.Context, payloads []delivery.Payload) (sub delivery.Submission, err error) {
 	if len(payloads) != 1 || payloads[0].Ref() != c.options.Publication.Payload {
 		return delivery.Submission{Disposition: "unknown", References: []delivery.Reference{}, Observations: []delivery.Observation{}}, invalid("prepared snapshot mismatch")
 	}
 	ctx, cancel := c.traversal(parent, true)
 	defer cancel()
+	defer func() {
+		state := ctx.Value(traversalKey{}).(*traversalState)
+		state.mu.Lock()
+		sub.Submitted = append([]delivery.PayloadRef(nil), state.submitted...)
+		state.mu.Unlock()
+		for i := range sub.Observations {
+			c.addTLS(ctx, &sub.Observations[i])
+		}
+	}()
 	began := false
 	resp, e := c.request(ctx, "GET", "/v2/", nil, 0, "")
 	if e != nil || resp.StatusCode != 200 {

@@ -127,6 +127,14 @@ func validateDTrackSnapshot(s record.Snapshot) error {
 			if e := delivery.DecodeJSON(event.Data, &sub, true); e != nil {
 				return e
 			}
+			if len(sub.Submitted) > 1 {
+				return delivery.Fail("invalid_record", "submitted body count")
+			}
+			for _, p := range sub.Submitted {
+				if len(s.Intent.Payloads) != 1 || p != s.Intent.Payloads[0] {
+					return delivery.Fail("invalid_record", "submitted bytes contradict intent")
+				}
+			}
 			if e := dtrack.ValidateSubmission(sub); e != nil {
 				return e
 			}

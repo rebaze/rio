@@ -10,6 +10,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strings"
 	"sync"
@@ -30,6 +31,8 @@ type client struct {
 }
 type traversalKey struct{}
 type traversalState struct {
+	tlsObserved     bool
+	submitted       []delivery.PayloadRef
 	mu              sync.Mutex
 	write           bool
 	realms          map[string]bool
@@ -242,6 +245,43 @@ func (t *safeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 	}
 	ctx, cancel := context.WithTimeout(req.Context(), 30*time.Second)
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		GotConn: func(info httptrace.GotConnInfo) {
+			if !token && !t.options.AllowHTTP {
+				if conn, ok := info.Conn.(*tls.Conn); ok && conn.ConnectionState().HandshakeComplete {
+					state.mu.Lock()
+					state.tlsObserved = true
+					state.mu.Unlock()
+				}
+			}
+		},
+		WroteRequest: func(info httptrace.WroteRequestInfo) {
+			if info.Err != nil || token || req.Method != "PUT" || t.options.Publication == nil {
+				return
+			}
+			for _, ref := range publicationBodies(t.options) {
+				matched := false
+				if ref.Role == "oci-manifest" {
+					matched = req.URL.Path == "/v2/"+t.options.Repository+"/manifests/"+t.options.Publication.Tag
+				} else {
+					matched = strings.HasPrefix(req.URL.Path, "/v2/"+t.options.Repository+"/blobs/uploads/") && req.URL.Query().Get("digest") == "sha256:"+ref.SHA256
+				}
+				if matched && req.ContentLength == ref.Size {
+					state.mu.Lock()
+					exists := false
+					for _, prior := range state.submitted {
+						if prior == ref {
+							exists = true
+						}
+					}
+					if !exists {
+						state.submitted = append(state.submitted, ref)
+					}
+					state.mu.Unlock()
+				}
+			}
+		},
+	})
 	clone := req.Clone(ctx)
 	state.mu.Lock()
 	state.status = 0

@@ -16,6 +16,8 @@ import (
 
 const responseLimit int64 = 64 << 10
 
+type bodyWriteKey struct{}
+
 type client struct {
 	http     *http.Client
 	options  Options
@@ -62,6 +64,13 @@ func (c *client) request(ctx context.Context, method, path, ct string, body io.R
 		// GotConn is emitted after CONNECT and the origin TLS handshake. A
 		// TLSHandshakeDone callback alone may describe only an HTTPS proxy.
 		// Retain this fact even when the subsequent HTTP response is lost.
+		WroteRequest: func(info httptrace.WroteRequestInfo) {
+			if info.Err == nil && method == "POST" {
+				if written, ok := ctx.Value(bodyWriteKey{}).(*atomic.Bool); ok {
+					written.Store(true)
+				}
+			}
+		},
 		GotConn: func(info httptrace.GotConnInfo) {
 			if req.URL.Scheme == "https" {
 				if conn, ok := info.Conn.(*tls.Conn); ok && conn.ConnectionState().HandshakeComplete {

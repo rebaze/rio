@@ -27,16 +27,20 @@ func (r *invocation) describeDeliveries(plan delivery.BatchPlan) error {
 		r.doc.Targets[j.Target] = target
 		v.Project = project
 		v.Transport = transport
+		bodies := []delivery.PayloadRef{}
 		for _, p := range j.Verified.Payloads() {
-			ref := p.Ref()
-			b := receipt.Bytes{SHA256: ref.SHA256, Size: ref.Size, MediaType: ref.MediaType, Role: ref.Role, Transformation: ref.Transformation}
-			for _, a := range r.doc.Artifacts {
-				if a.ID == j.ArtifactID && a.Output != nil && a.Output.SHA256 == ref.SHA256 && a.Output.Size == ref.Size {
-					b = receipt.Bytes{ArtifactOutput: j.ArtifactID}
-				}
-			}
-			v.Intended = append(v.Intended, b)
+			bodies = append(bodies, p.Ref())
 		}
+		if j.Description.Type == "oci" {
+			bodies, e = oci.PublicationBodies(j.Description)
+			if e != nil {
+				return e
+			}
+		}
+		for _, ref := range bodies {
+			v.Intended = append(v.Intended, compactBody(r.doc, j.ArtifactID, ref))
+		}
+
 		r.doc.Deliveries = append(r.doc.Deliveries, v)
 	}
 	return nil
@@ -146,8 +150,9 @@ func (r *invocation) hooks() runner.BatchHooks {
 			v.AttemptedAt = one.AttemptedAt
 			if !one.RequestMayHaveOccurred {
 				v.State = "error"
-			} else {
-				v.Submitted = append([]receipt.Bytes(nil), v.Intended...)
+			}
+			for _, ref := range one.Submitted {
+				v.Submitted = append(v.Submitted, compactBody(r.doc, v.ArtifactID, ref))
 			}
 			if one.Error != nil {
 				v.ErrorCode = one.Error.Code
@@ -158,6 +163,16 @@ func (r *invocation) hooks() runner.BatchHooks {
 					response.References = append(response.References, receipt.Reference{Kind: ref.Kind, Value: ref.Value})
 				}
 				v.Responses = append(v.Responses, response)
+				if one.Destination != nil && one.Destination.Type == "oci" {
+					facts, e := oci.ReadTLS(o)
+					if e != nil {
+						return e
+					}
+					if facts != nil {
+						observed := facts.Observed
+						v.Transport.TLSObserved = &observed
+					}
+				}
 				if one.Destination != nil && one.Destination.Type == "dependency-track" {
 					facts, e := dtrack.ReadTLS(o)
 					if e != nil {
@@ -172,4 +187,16 @@ func (r *invocation) hooks() runner.BatchHooks {
 			return r.store.Checkpoint(r.doc)
 		},
 	}
+}
+
+func compactBody(d receipt.Document, id string, ref delivery.PayloadRef) receipt.Bytes {
+	b := receipt.Bytes{SHA256: ref.SHA256, Size: ref.Size, MediaType: ref.MediaType, Role: ref.Role, Transformation: ref.Transformation}
+	if ref.Role == "sbom" && ref.Transformation == "identity" {
+		for _, a := range d.Artifacts {
+			if a.ID == id && a.Output != nil && a.Output.SHA256 == ref.SHA256 && a.Output.Size == ref.Size {
+				return receipt.Bytes{ArtifactOutput: id, MediaType: ref.MediaType, Role: ref.Role}
+			}
+		}
+	}
+	return b
 }

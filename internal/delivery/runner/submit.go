@@ -21,6 +21,7 @@ type Prepared struct {
 	Reservation        *record.Reservation
 }
 type Result struct {
+	Submitted              []delivery.PayloadRef  `json:"submitted,omitempty"`
 	AttemptedAt            string                 `json:"attemptedAt,omitempty"`
 	ObservedAt             string                 `json:"observedAt,omitempty"`
 	ExpectedReferences     []delivery.Reference   `json:"expectedReferences,omitempty"`
@@ -70,6 +71,14 @@ func FromSnapshot(operation, path string, s record.Snapshot) Result {
 	r.Outcome = s.Disposition
 	r.Acknowledgment = s.Disposition
 	r.Observations = s.Observations
+	for _, event := range s.Events {
+		if event.Kind == "submission" {
+			var sub delivery.Submission
+			if delivery.DecodeJSON(event.Data, &sub, true) == nil {
+				r.Submitted = append([]delivery.PayloadRef(nil), sub.Submitted...)
+			}
+		}
+	}
 	r.Persisted = true
 	for _, o := range s.Observations {
 		if o.Kind == "content" {
@@ -148,6 +157,7 @@ func submitWithJournal(ctx context.Context, p Prepared, path string, create func
 	r.Outcome = sub.Disposition
 	r.Acknowledgment = sub.Disposition
 	r.Observations = sub.Observations
+	r.Submitted = append([]delivery.PayloadRef(nil), sub.Submitted...)
 	for _, o := range sub.Observations {
 		if o.Kind == "content" {
 			r.Verification = o.Value

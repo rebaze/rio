@@ -48,8 +48,9 @@ th { background: #eef2ef; } .muted, footer { color: #50636b; } .notice { border-
 <dt>Transport</dt><dd>{{.Transport.Scheme}} · TLS {{tls .Transport.TLSObserved}} · Certificate verification {{.Transport.CertificateVerification}}</dd>
 {{if .AttemptID}}<dt>Attempt</dt><dd><code>{{.AttemptID}}</code>{{if .AttemptedAt}} · {{.AttemptedAt}}{{end}}</dd>{{end}}
 <dt>Request may have occurred</dt><dd>{{.RequestMayHaveOccurred}}</dd>
-{{range .Intended}}<dt>Intended bytes</dt><dd>{{if .ArtifactOutput}}Output of <code>{{.ArtifactOutput}}</code>{{else}}<code>{{.SHA256}}</code> · {{.Size}} bytes · {{.MediaType}}{{end}}</dd>{{end}}
-{{range .Submitted}}<dt>Submitted bytes</dt><dd>{{if .ArtifactOutput}}Output of <code>{{.ArtifactOutput}}</code>{{else}}<code>{{.SHA256}}</code> · {{.Size}} bytes · {{.MediaType}}{{end}}</dd>{{end}}
+{{range .Intended}}<dt>Intended bytes</dt><dd>{{if .ArtifactOutput}}Output of <code>{{.ArtifactOutput}}</code> · {{.Role}} · {{.MediaType}}{{else}}<code>{{.SHA256}}</code> · {{.Size}} bytes · {{.MediaType}}{{end}}</dd>{{end}}
+{{if and .RequestMayHaveOccurred (not .Submitted)}}<dt>Submitted bytes</dt><dd>No complete body write recorded. Intended bytes are not proof of a completed upload.</dd>{{end}}
+{{range .Submitted}}<dt>Submitted bytes</dt><dd>{{if .ArtifactOutput}}Output of <code>{{.ArtifactOutput}}</code> · {{.Role}} · {{.MediaType}}{{else}}<code>{{.SHA256}}</code> · {{.Size}} bytes · {{.MediaType}}{{end}}</dd>{{end}}
 {{range .Responses}}<dt>{{.Kind}}</dt><dd><strong>{{.Value}}</strong>{{if .HTTPStatus}} · HTTP {{.HTTPStatus}}{{end}} · {{.Code}}{{if .ObservedAt}} · {{.ObservedAt}}{{end}}</dd>
 {{range .References}}<dt>{{.Kind}}</dt><dd><code>{{.Value}}</code></dd>{{end}}{{end}}</dl>
 {{if .ErrorCode}}<p class="notice">{{.ErrorCode}}</p>{{end}}</section>{{else}}<p>Delivery stage: {{index .Run.Stages "delivery"}}.</p>{{end}}

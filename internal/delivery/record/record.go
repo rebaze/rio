@@ -172,6 +172,11 @@ func addEvent(s *Snapshot, e Event) error {
 		if sub.Disposition != "accepted" && sub.Disposition != "rejected" && sub.Disposition != "unknown" {
 			return invalid()
 		}
+		for _, p := range sub.Submitted {
+			if p.Role == "" || p.MediaType == "" || p.Transformation == "" || p.Size < 0 || !delivery.ValidDigest(p.SHA256) || p.SourceSHA256 != s.Intent.Source.OutputSHA256 {
+				return invalid()
+			}
+		}
 		for _, o := range sub.Observations {
 			if validateObservation(o) != nil {
 				return invalid()

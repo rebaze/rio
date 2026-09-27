@@ -69,6 +69,9 @@ type Observation struct {
 	Details    json.RawMessage `json:"details,omitempty"`
 }
 type Submission struct {
+	// Submitted identifies bodies whose complete write was observed. Absence is
+	// not proof that no bytes reached the receiver. It never means retention.
+	Submitted    []PayloadRef  `json:"submitted,omitempty"`
 	Disposition  string        `json:"disposition"`
 	References   []Reference   `json:"references"`
 	Observations []Observation `json:"observations"`

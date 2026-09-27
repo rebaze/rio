@@ -111,7 +111,7 @@ func Validate(d Document) error {
 	checkBytes := func(b Bytes, refs bool) error {
 		if b.ArtifactOutput != "" {
 			a, ok := artifacts[b.ArtifactOutput]
-			if !refs || !ok || a.Output == nil || b.SHA256 != "" || b.Size != 0 || b.Path != "" || b.MediaType != "" || b.Transformation != "" || b.Role != "" {
+			if !refs || !ok || a.Output == nil || b.SHA256 != "" || b.Size != 0 || b.Path != "" || b.Transformation != "" && b.Transformation != "identity" {
 				return invalid("artifactOutput reference")
 			}
 		} else if !delivery.ValidDigest(b.SHA256) || b.Size < 0 {

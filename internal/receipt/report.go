@@ -94,6 +94,12 @@ func Text(raw []byte, w io.Writer) error {
 			project = "from " + v.ProjectSource + " (resolved at execution)"
 		}
 		fmt.Fprintf(&b, "  project=%s transport=%s TLS=%s verification=%s\n", project, v.Transport.Scheme, observed(v.Transport.TLSObserved), v.Transport.CertificateVerification)
+		for _, body := range v.Submitted {
+			fmt.Fprintf(&b, "  submitted role=%s mediaType=%s artifactOutput=%s sha256=%s bytes=%d\n", body.Role, body.MediaType, body.ArtifactOutput, body.SHA256, body.Size)
+		}
+		if v.RequestMayHaveOccurred && len(v.Submitted) == 0 {
+			fmt.Fprintln(&b, "  no complete body write recorded")
+		}
 		for _, r := range v.Responses {
 			fmt.Fprintf(&b, "  %s=%s HTTP=%d code=%s\n", r.Kind, r.Value, r.HTTPStatus, r.Code)
 			for _, ref := range r.References {

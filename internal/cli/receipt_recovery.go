@@ -6,6 +6,7 @@ import (
 
 	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/delivery/dtrack"
+	"github.com/rebaze/rio/internal/delivery/oci"
 	"github.com/rebaze/rio/internal/delivery/record"
 	"github.com/rebaze/rio/internal/receipt"
 )
@@ -83,7 +84,14 @@ func recoverInvocation(dir string) (receipt.Document, error) {
 		if !reflect.DeepEqual(target, d.Targets[v.Target]) || !reflect.DeepEqual(project, v.Project) || transport.Scheme != v.Transport.Scheme || transport.CertificateVerification != v.Transport.CertificateVerification {
 			return d, delivery.Fail("invalid_recovery", "journal destination")
 		}
-		if !sameRecoveredPayloads(d, *v, s.Intent.Payloads) {
+		intended := s.Intent.Payloads
+		if s.Intent.Destination.Type == "oci" {
+			intended, e = oci.PublicationBodies(s.Intent.Destination)
+			if e != nil {
+				return d, e
+			}
+		}
+		if !sameRecoveredPayloads(d, *v, intended) {
 			return d, delivery.Fail("invalid_recovery", "journal payload binding")
 		}
 		if len(v.Responses) > 0 {
@@ -111,11 +119,8 @@ func recoverInvocation(dir string) (receipt.Document, error) {
 					return d, e
 				}
 			}
-			for _, o := range sub.Observations {
-				if o.HTTPStatus > 0 {
-					v.Submitted = append([]receipt.Bytes(nil), v.Intended...)
-					break
-				}
+			for _, ref := range sub.Submitted {
+				v.Submitted = append(v.Submitted, compactBody(d, v.ArtifactID, ref))
 			}
 		}
 	}
@@ -162,6 +167,16 @@ func appendRecoveredObservation(v *receipt.Delivery, kind string, o delivery.Obs
 		response.References = append(response.References, receipt.Reference{Kind: ref.Kind, Value: ref.Value})
 	}
 	v.Responses = append(v.Responses, response)
+	if kind == "oci" {
+		facts, e := oci.ReadTLS(o)
+		if e != nil {
+			return e
+		}
+		if facts != nil {
+			observed := facts.Observed
+			v.Transport.TLSObserved = &observed
+		}
+	}
 	if kind == "dependency-track" {
 		facts, e := dtrack.ReadTLS(o)
 		if e != nil {

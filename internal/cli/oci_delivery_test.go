@@ -176,7 +176,7 @@ func testPortableOCIReceipt(t *testing.T, path, ip, journal, retry string) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if len(d.Deliveries) != 1 || d.Deliveries[0].Prior == nil {
+	if len(d.Deliveries) != 1 || d.Deliveries[0].Prior == nil || len(d.Deliveries[0].Submitted) != 0 {
 		t.Fatal("missing current retry linkage")
 	}
 	content := false
@@ -249,6 +249,24 @@ func TestOCICompleteJSONExitContracts(t *testing.T) {
 			}
 			if strings.Contains(stdout.String()+stderr.String(), "never-copy-this-synthetic-body") {
 				t.Fatal("body leaked")
+			}
+			var envelope struct {
+				Receipt receipt.Publication `json:"receipt"`
+			}
+			if e := json.Unmarshal(stdout.Bytes(), &envelope); e != nil {
+				t.Fatal(e)
+			}
+			publicRaw, e := os.ReadFile(envelope.Receipt.Path)
+			if e != nil {
+				t.Fatal(e)
+			}
+			compact, e := receipt.Parse(publicRaw)
+			if e != nil {
+				t.Fatal(e)
+			}
+			sent := compact.Deliveries[0].Submitted
+			if len(sent) != 1 || sent[0].Role != "oci-manifest" || sent[0].MediaType != oci.ManifestMediaType || sent[0].SHA256 == compact.Artifacts[0].Output.SHA256 {
+				t.Fatalf("OCI wrapper equated with SBOM or unsent blobs claimed: %#v", sent)
 			}
 			var result runner.BatchResult
 			dec := json.NewDecoder(&stdout)
