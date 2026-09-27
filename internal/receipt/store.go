@@ -192,7 +192,7 @@ func publishNew(path string, raw []byte) (result Publication, err error) {
 	if err = syncDirectory(filepath.Dir(path)); err != nil {
 		return result, err
 	}
-	saved, e := delivery.ReadBounded(path, MaxBytes)
+	saved, e := delivery.ReadBounded(path, int64(len(raw)))
 	if e != nil {
 		return result, e
 	}
