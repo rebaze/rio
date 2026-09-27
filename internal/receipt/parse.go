@@ -245,7 +245,7 @@ func Validate(d Document) error {
 				return invalid("reference count")
 			}
 			for _, ref := range r.References {
-				if !oneOf(ref.Kind, "dependency-track:event-token", "oci:manifest-digest", "oci:manifest", "oci:subject-digest", "oci:referrer", "oci:tag", "oci:repository") || ref.Value == "" {
+				if !oneOf(ref.Kind, "dependency-track:event-token", "oci:manifest", "oci:blob", "oci:subject", "oci:tag") || ref.Value == "" {
 					return invalid("receiver reference")
 				}
 			}

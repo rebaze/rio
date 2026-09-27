@@ -38,7 +38,7 @@ func runDeliverBatch(cmd *cobra.Command, g *globalOptions, o deliveryOptions) (r
 }
 func executeDeliverBatch(cmd *cobra.Command, g *globalOptions, o deliveryOptions, capture *batchCapture) (result runner.BatchResult, err error) {
 	r := runner.NewBatch("deliver", delivery.BatchPlan{})
-	if e := rejectDeliveryInherited(cmd); e != nil {
+	if e := rejectDeliveryInherited(cmd); e != nil && cmd.Name() != "rio" {
 		return r, e
 	}
 	c, plan, e := batchPreflight(g.manifest, o)
@@ -138,7 +138,17 @@ func executeDeliverBatch(cmd *cobra.Command, g *globalOptions, o deliveryOptions
 	if capture != nil {
 		capture.SourcesReady = true
 	}
-	result, err = runner.SubmitBatch(cmd.Context(), r, prepared, reservations)
+	var hooks []runner.BatchHooks
+	if o.receipt != nil {
+		if e := o.receipt.prepareDeliveries(plan, prepared); e != nil {
+			for _, res := range reservations {
+				_ = res.Close()
+			}
+			return runner.BatchFailure(r, e, 3)
+		}
+		hooks = append(hooks, o.receipt.hooks())
+	}
+	result, err = runner.SubmitBatch(cmd.Context(), r, prepared, reservations, hooks...)
 	if capture != nil {
 		if e := capture.complete(result); e != nil {
 			capture.note(e)

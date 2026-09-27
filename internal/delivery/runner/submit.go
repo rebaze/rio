@@ -7,6 +7,7 @@ import (
 	"errors"
 	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/delivery/record"
+	"time"
 )
 
 type Prepared struct {
@@ -20,6 +21,8 @@ type Prepared struct {
 	Reservation        *record.Reservation
 }
 type Result struct {
+	AttemptedAt            string                 `json:"attemptedAt,omitempty"`
+	ObservedAt             string                 `json:"observedAt,omitempty"`
 	ExpectedReferences     []delivery.Reference   `json:"expectedReferences,omitempty"`
 	SchemaVersion          int                    `json:"schemaVersion"`
 	Operation              string                 `json:"operation"`
@@ -129,8 +132,10 @@ func submitWithJournal(ctx context.Context, p Prepared, path string, create func
 			return Failure(r, delivery.Fail("persistence_failed", "committed intent failed adapter validation"), 3)
 		}
 	}
+	r.AttemptedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	r.RequestMayHaveOccurred = true
 	sub, submitErr := p.Target.Submit(ctx, p.Verified.Payloads())
+	r.ObservedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	if sub.Disposition != "accepted" && sub.Disposition != "rejected" {
 		sub.Disposition = "unknown"
 	}

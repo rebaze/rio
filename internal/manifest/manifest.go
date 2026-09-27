@@ -117,6 +117,7 @@ type Output struct {
 
 // Gate is the gate section.
 type Gate struct {
+	Mode    string
 	Require []string
 }
 
@@ -266,6 +267,7 @@ type outputSection struct {
 }
 
 type gateSection struct {
+	Mode    string    `yaml:"mode"`
 	Require *[]string `yaml:"require"`
 }
 
@@ -398,6 +400,13 @@ func (l loader) output(f *fileSection, m *Manifest) error {
 }
 
 func (l loader) gate(f *fileSection, m *Manifest) error {
+	m.Gate.Mode = "fail"
+	if f.Gate != nil && f.Gate.Mode != "" {
+		if f.Gate.Mode != "fail" && f.Gate.Mode != "warn" {
+			return l.errf("gate.mode", "must be fail or warn")
+		}
+		m.Gate.Mode = f.Gate.Mode
+	}
 	if f.Gate == nil || f.Gate.Require == nil {
 		m.Gate.Require = DefaultRequire()
 		return nil

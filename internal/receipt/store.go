@@ -203,3 +203,13 @@ func publishNew(path string, raw []byte) (result Publication, err error) {
 	result.Size = len(saved)
 	return result, nil
 }
+
+// WriteRecovery binds assigned attempts to their local journals before requests.
+// This internal mapping is never copied into the public receipt.
+func (s *Store) WriteRecovery(raw []byte) error {
+	if s.closed || len(raw) > MaxBytes {
+		return invalid("recovery owner or size")
+	}
+	_, err := publishNew(filepath.Join(s.Dir, ".internal", "attempts.json"), raw)
+	return err
+}

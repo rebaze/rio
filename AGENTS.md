@@ -5,9 +5,10 @@ Guidance for coding agents working in this repository. This file is the single s
 
 ## Project Overview
 
-`rio` is a Go CLI distributed as a single static binary. It reads a manifest, resolves each declared
-artifact's SBOM, levels the CycloneDX spec version, repairs p2 coordinates to Maven coordinates,
-checks a quality gate, and writes the results plus an `index.json`.
+`rio` is a Go CLI distributed as a single static binary. One root invocation runs the pipeline in
+`rio.yaml`: consume SBOMs, enrich metadata, check quality, deliver to configured targets, and write
+one compact run receipt. Normalization includes spec leveling and optional p2 coordinate repairs.
+Each invocation owns an isolated run directory; delivery journals remain internal recovery state.
 
 `rio plan` describes that same run without performing it, and `--json` makes it a contract. It is how
 a tool learns the manifest's wiring without parsing YAML: `tools/build-p2-table.py` reads it to find
@@ -33,10 +34,10 @@ tools/                          Supporting tools that are not rio; see tools/REA
 ```
 
 Anything that supports rio without being part of it goes in `tools/`, together with its own
-documentation in `tools/README.md`. Normalization, existing plan, delivery plan, delivery inspection, record collection and record inspection remain offline.
+documentation in `tools/README.md`. Normalization, plan, delivery plan, delivery inspection, record inspection and reporting remain offline.
 Intake and delivery configuration share one rio.yaml; deliver plans from verified index members.
-Only explicit native deliver and delivery reconcile operations construct network clients and resolve
-credentials. Supporting network work such as building the p2 mapping table remains a tool. The main `README.md` points at `tools/README.md` and does not document the tools
+Root pipeline execution, explicit native deliver and delivery reconcile operations may construct
+network clients and resolve credentials. Read-only operations never create execution receipts. Supporting network work such as building the p2 mapping table remains a tool. The main `README.md` points at `tools/README.md` and does not document the tools
 itself, so that rio's own documentation stays about rio.
 
 ## Build & Run

@@ -88,6 +88,7 @@ func newRootCommand(opts *globalOptions, stdout, stderr io.Writer) *cobra.Comman
 	flags.StringVar(&opts.out, "out", "target/rio", "output directory")
 	flags.BoolVar(&opts.quiet, "quiet", false, "suppress per artifact progress on stdout")
 
+	configurePipeline(root, opts, stdout, stderr)
 	root.AddCommand(newNormalizeCommand(opts, stdout, stderr))
 	root.AddCommand(newPlanCommand(opts, stdout))
 	root.AddCommand(newVersionCommand(stdout))

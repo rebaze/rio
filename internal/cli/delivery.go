@@ -14,6 +14,7 @@ import (
 )
 
 type deliveryOptions struct {
+	receipt                     *invocation
 	index, record, retry        string
 	legacyConfig, legacyBinding string
 	artifacts, targets          []string

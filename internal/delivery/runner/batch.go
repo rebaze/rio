@@ -69,8 +69,15 @@ func BatchFailure(r BatchResult, e error, code int) (BatchResult, error) {
 	return r, safe
 }
 
+// BatchHooks let the invocation owner checkpoint before each attempt and retain
+// committed results without interpreting console output or replaying requests.
+type BatchHooks struct {
+	Before func(int) error
+	After  func(int, Result) error
+}
+
 // SubmitBatch owns all reservations and releases the unattempted suffix before return.
-func SubmitBatch(ctx context.Context, r BatchResult, prepared []Prepared, reservations []*record.Reservation) (result BatchResult, err error) {
+func SubmitBatch(ctx context.Context, r BatchResult, prepared []Prepared, reservations []*record.Reservation, hooks ...BatchHooks) (result BatchResult, err error) {
 	result = r
 	defer func() {
 		for _, res := range reservations {
@@ -93,6 +100,13 @@ func SubmitBatch(ctx context.Context, r BatchResult, prepared []Prepared, reserv
 	}
 	accepted := 0
 	for i, p := range prepared {
+		for _, h := range hooks {
+			if h.Before != nil {
+				if e := h.Before(i); e != nil {
+					return BatchFailure(result, e, 3)
+				}
+			}
+		}
 		p.Reservation = reservations[i]
 		one, e := Submit(ctx, p, result.Items[i].Record)
 		item := &result.Items[i]
@@ -100,6 +114,13 @@ func SubmitBatch(ctx context.Context, r BatchResult, prepared []Prepared, reserv
 		item.State = one.Outcome
 		item.Error = one.Error
 		result.RequestMayHaveOccurred = result.RequestMayHaveOccurred || one.RequestMayHaveOccurred
+		for _, h := range hooks {
+			if h.After != nil {
+				if checkpointErr := h.After(i, one); checkpointErr != nil {
+					return BatchFailure(result, checkpointErr, 3)
+				}
+			}
+		}
 		if e != nil {
 			if !one.RequestMayHaveOccurred {
 				item.State = "error"

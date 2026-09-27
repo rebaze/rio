@@ -59,6 +59,7 @@ type artifact struct {
 
 	inputPath string // absolute
 	inputRel  string // relative to the manifest directory, for index.json
+	inputSize int64
 	inputSHA  string
 	inputSpec string
 	doc       *sbom.Document
@@ -98,38 +99,10 @@ func runNormalize(opts *globalOptions, gateMode string, attest bool, stdout, std
 	artifacts := make([]*artifact, 0, len(resolved))
 	contextFiles := map[string]*buildcontext.File{}
 	for _, input := range resolved {
-		spec := input.Spec
-		a, err := prepare(man, input)
+		a, err := normalizeArtifact(man, input, gateMode, contextFiles)
 		if err != nil {
 			return err
 		}
-		if spec.Context != nil {
-			path := spec.Context.File
-			if !filepath.IsAbs(path) {
-				path = filepath.Join(man.Dir, path)
-			}
-			path, err = filepath.Abs(path)
-			if err != nil {
-				return usageErrorf("%s: artifact %q: context.file: %v", man.Path, spec.ID, err)
-			}
-			path = filepath.Clean(path)
-			file := contextFiles[path]
-			if file == nil {
-				file, err = buildcontext.Read(man.Dir, path)
-				if err != nil {
-					return usageErrorf("%s: artifact %q: %v", man.Path, spec.ID, err)
-				}
-				contextFiles[path] = file
-			}
-			a.contextResolved, err = file.Resolve(spec.ID, a.inputSHA, *spec.Context)
-			if err != nil {
-				return usageErrorf("%s: artifact %q: %v", man.Path, spec.ID, err)
-			}
-		}
-		if err := process(man, a); err != nil {
-			return err
-		}
-		a.checks = effectiveChecks(man, a, gateMode)
 		artifacts = append(artifacts, a)
 	}
 
@@ -142,6 +115,42 @@ func runNormalize(opts *globalOptions, gateMode string, attest bool, stdout, std
 	}
 
 	return report(artifacts, gateMode, opts.quiet, stdout, stderr)
+}
+
+// normalizeArtifact is shared by root orchestration and standalone normalization.
+func normalizeArtifact(man *manifest.Manifest, input resolvedArtifact, mode string, contextFiles map[string]*buildcontext.File) (*artifact, error) {
+	a, err := prepare(man, input)
+	if err != nil {
+		return a, err
+	}
+	if cfg := input.Spec.Context; cfg != nil {
+		path := cfg.File
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(man.Dir, path)
+		}
+		path, err = filepath.Abs(path)
+		if err != nil {
+			return a, usageErrorf("context path: %v", err)
+		}
+		path = filepath.Clean(path)
+		file := contextFiles[path]
+		if file == nil {
+			file, err = buildcontext.Read(man.Dir, path)
+			if err != nil {
+				return a, usageErrorf("artifact %q: %v", input.Spec.ID, err)
+			}
+			contextFiles[path] = file
+		}
+		a.contextResolved, err = file.Resolve(input.Spec.ID, a.inputSHA, *cfg)
+		if err != nil {
+			return a, usageErrorf("artifact %q: %v", input.Spec.ID, err)
+		}
+	}
+	if err = process(man, a); err != nil {
+		return a, err
+	}
+	a.checks = effectiveChecks(man, a, mode)
+	return a, nil
 }
 
 // prepare reads, hashes and decodes a concrete input from shared preflight.
@@ -173,6 +182,7 @@ func prepare(man *manifest.Manifest, input resolvedArtifact) (*artifact, error) 
 		return nil, usageErrorf("artifact %q: reading %s: %v", spec.ID, path, err)
 	}
 	a.inputSHA = index.SHA256Bytes(data)
+	a.inputSize = int64(len(data))
 
 	doc, err := sbom.Load(data)
 	if err != nil {
