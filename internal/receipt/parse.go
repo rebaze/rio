@@ -100,7 +100,7 @@ func Validate(d Document) error {
 		return invalid("stages")
 	}
 	for k, v := range d.Run.Stages {
-		if !oneOf(k, "intake", "normalize", "checks", "delivery") || !oneOf(v, "completed", "passed", "failed", "partial", "not-attempted", "not-configured", "skipped", "incomplete", "pre-existing") {
+		if !oneOf(k, "intake", "normalize", "checks", "delivery") || !oneOf(v, "completed", "passed", "failed", "partial", "not-attempted", "not-configured", "skipped", "incomplete", "pre-existing", "not-applicable") {
 			return invalid("stage")
 		}
 	}

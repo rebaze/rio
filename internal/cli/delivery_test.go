@@ -229,6 +229,9 @@ func TestDeliveryOfflineNeverBuildsClient(t *testing.T) {
 	}
 	var out, err bytes.Buffer
 	for _, args := range [][]string{{"--help"}, {"version"}, {"plan", "--manifest", filepath.Join(filepath.Dir(ip), "rio.yaml")}, {"normalize", "--manifest", filepath.Join(filepath.Dir(ip), "rio.yaml")}} {
+		if len(args) > 0 && args[0] == "normalize" {
+			args = append(args, "--out", t.TempDir())
+		}
 		Main(args, &out, &err)
 	}
 	p := filepath.Join(t.TempDir(), "journal")

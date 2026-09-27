@@ -14,7 +14,7 @@ func TestClientRecordDemoNormalizationContract(t *testing.T) {
 		t.Fatal("client demonstration missing", err)
 	}
 	requireExit(t, rio(t, dir, "normalize", "--gate", "fail"), ExitOK)
-	idx := decode(t, readFile(t, dir, "target/rio/index.json"))
+	idx := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "index.json"))
 	artifacts := idx["artifacts"].([]any)
 	if len(artifacts) != 2 {
 		t.Fatal("two selected modules required")

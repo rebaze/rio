@@ -17,7 +17,7 @@ func TestRepairDemoFirstResult(t *testing.T) {
 	}
 	before := readFile(t, dir, "bom.json")
 	requireExit(t, rio(t, dir, "normalize", "--out", "out", "--gate", "fail"), ExitOK)
-	output := decode(t, readFile(t, dir, "out", "sample.cdx.json"))
+	output := decode(t, readFile(t, latestOutput(t, dir, "out"), "sample.cdx.json"))
 	got := purls(t, output)
 	if len(got) != 1 || got[0] != "pkg:maven/com.google.code.gson/gson@2.8.9" {
 		t.Fatalf("unexpected first result: %v", got)
@@ -25,10 +25,10 @@ func TestRepairDemoFirstResult(t *testing.T) {
 	if !bytes.Equal(before, readFile(t, dir, "bom.json")) {
 		t.Fatal("demo changed the input")
 	}
-	if !strings.Contains(string(readFile(t, dir, "out", "sample.cdx.json")), "rule=repair-purl/p2 | from=pkg:p2/com.google.gson@2.8.9?classifier=osgi.bundle | to=pkg:maven/com.google.code.gson/gson@2.8.9") {
+	if !strings.Contains(string(readFile(t, latestOutput(t, dir, "out"), "sample.cdx.json")), "rule=repair-purl/p2 | from=pkg:p2/com.google.gson@2.8.9?classifier=osgi.bundle | to=pkg:maven/com.google.code.gson/gson@2.8.9") {
 		t.Fatal("repair audit does not preserve the before/after URLs")
 	}
-	rows := decode(t, readFile(t, dir, "out", "index.json"))["artifacts"].([]any)
+	rows := decode(t, readFile(t, latestOutput(t, dir, "out"), "index.json"))["artifacts"].([]any)
 	if len(rows) != 1 {
 		t.Fatal(rows)
 	}

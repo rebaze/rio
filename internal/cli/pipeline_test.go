@@ -330,3 +330,14 @@ func TestPipelineContextMetadataAndVerifiedTLS(t *testing.T) {
 		t.Fatal("secret leak")
 	}
 }
+
+func TestPipelineBrokenConsumedInputKeepsExactDigest(t *testing.T) {
+	dir := pipelineFixture(t, "")
+	t.Chdir(dir)
+	broken := []byte("not-json\n")
+	os.WriteFile("worker.cdx.json", broken, 0600)
+	code, d, _ := rootReceipt(t)
+	if code == 0 || d.Artifacts[1].Input == nil || d.Artifacts[1].Input.SHA256 != delivery.Digest(broken) || d.Artifacts[1].Input.Size != int64(len(broken)) || d.Artifacts[1].Output != nil {
+		t.Fatalf("lost consumed identity: code=%d %#v", code, d.Artifacts[1])
+	}
+}

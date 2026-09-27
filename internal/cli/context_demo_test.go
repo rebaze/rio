@@ -27,7 +27,7 @@ func TestContextDemoFixtures(t *testing.T) {
 	}
 	r := rio(t, dir, "normalize", "--manifest", "rio.yaml", "--out", "normalized", "--gate", "fail", "--attest")
 	requireExit(t, r, ExitOK)
-	index := readFile(t, dir, "normalized", "index.json")
+	index := readFile(t, latestOutput(t, dir, "normalized"), "index.json")
 	rows := decode(t, index)["artifacts"].([]any)
 	contextBytes := readFile(t, dir, "context.json")
 	for i, tc := range []struct{ id, repo, buildURL, workspace string }{
@@ -35,7 +35,7 @@ func TestContextDemoFixtures(t *testing.T) {
 		{"agent", "https://code.example.org/agents/agent", "https://ci.example.org/agents/runs/7", "unknown"},
 	} {
 		input := decode(t, readFile(t, dir, "inputs", tc.id+".cdx.json"))
-		output := decode(t, readFile(t, dir, "normalized", tc.id+".cdx.json"))
+		output := decode(t, readFile(t, latestOutput(t, dir, "normalized"), tc.id+".cdx.json"))
 		inMeta := input["metadata"].(map[string]any)
 		outMeta := output["metadata"].(map[string]any)
 		if outMeta["timestamp"] != inMeta["timestamp"] || !bytes.Equal(mustJSON(t, input["components"]), mustJSON(t, output["components"])) {
@@ -67,7 +67,7 @@ func TestContextDemoFixtures(t *testing.T) {
 			t.Fatal("omitted workspace was not marked defaulted")
 		}
 		indexed := rows[i].(map[string]any)["context"]
-		statement := decode(t, readFile(t, dir, "normalized", tc.id+".intoto.json"))["predicate"].(map[string]any)["artifact"].(map[string]any)["context"]
+		statement := decode(t, readFile(t, latestOutput(t, dir, "normalized"), tc.id+".intoto.json"))["predicate"].(map[string]any)["artifact"].(map[string]any)["context"]
 		if !bytes.Equal(mustJSON(t, claim), mustJSON(t, indexed)) || !bytes.Equal(mustJSON(t, claim), mustJSON(t, statement)) {
 			t.Fatalf("%s context property, index and statement disagree", tc.id)
 		}
@@ -76,7 +76,7 @@ func TestContextDemoFixtures(t *testing.T) {
 		}
 	}
 	requireExit(t, rio(t, dir, "normalize", "--manifest", "rio.yaml", "--out", "normalized", "--gate", "fail", "--attest"), ExitOK)
-	if !bytes.Equal(index, readFile(t, dir, "normalized", "index.json")) {
+	if !bytes.Equal(index, readFile(t, latestOutput(t, dir, "normalized"), "index.json")) {
 		t.Fatal("same inputs changed index")
 	}
 	for _, tc := range []struct{ manifest, want string }{
@@ -86,13 +86,11 @@ func TestContextDemoFixtures(t *testing.T) {
 		if r.exit != ExitUsage || !strings.Contains(r.stderr, tc.want) {
 			t.Fatalf("%s exit=%d diagnostic=%s", tc.manifest, r.exit, r.stderr)
 		}
-		if _, err := os.Stat(filepath.Join(dir, "refused")); !os.IsNotExist(err) {
-			t.Fatal("refusal wrote output")
-		}
+		requireNoNormalizedOutputs(t, filepath.Join(dir, "refused"))
 	}
 	r = rio(t, dir, "normalize", "--manifest", "replace.yaml", "--out", "replaced")
 	requireExit(t, r, ExitOK)
-	claim := decode(t, readFile(t, dir, "replaced", "index.json"))["artifacts"].([]any)[0].(map[string]any)["context"].(map[string]any)
+	claim := decode(t, readFile(t, latestOutput(t, dir, "replaced"), "index.json"))["artifacts"].([]any)[0].(map[string]any)["context"].(map[string]any)
 	effective := claim["effective"].(map[string]any)
 	if effective["source"].(map[string]any)["workspace"] != "unknown" {
 		t.Fatal("clean workspace inherited")
@@ -125,7 +123,7 @@ func TestContextDemoFixtures(t *testing.T) {
 			}
 		}
 		check := filepath.Join(dir, "check-replacement.sh")
-		replacementIndex := filepath.Join(dir, "replaced", "index.json")
+		replacementIndex := filepath.Join(latestOutput(t, dir, "replaced"), "index.json")
 		if output, err := exec.Command("sh", check, replacementIndex).CombinedOutput(); err != nil {
 			t.Fatalf("public replacement check rejected valid output: %s: %v", output, err)
 		}

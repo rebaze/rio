@@ -16,6 +16,8 @@ import (
 )
 
 type pipelineOptions struct {
+	operation          string
+	attest             bool
 	receipt, gate      string
 	artifacts, targets []string
 	skip, json         bool
@@ -46,11 +48,14 @@ func runPipeline(cmd *cobra.Command, g *globalOptions, o pipelineOptions, stdout
 		return usageErrorf("no receipt created: %v", e)
 	}
 	mode := man.Gate.Mode
+	if o.operation == "normalize" && !man.Gate.ModeExplicit {
+		mode = gateWarn
+	}
 	if cmd.Flags().Changed("gate") {
 		mode = o.gate
 	}
 	if mode != gateFail && mode != gateWarn {
-		return usageErrorf("no receipt created: --gate must be fail or warn")
+		return usageErrorf("no receipt created: --gate must be %q or %q, got %q", gateWarn, gateFail, mode)
 	}
 	selected := map[string]bool{}
 	for _, id := range o.artifacts {
@@ -61,7 +66,7 @@ func runPipeline(cmd *cobra.Command, g *globalOptions, o pipelineOptions, stdout
 	}
 	// Manifest validation is configuration work; input resolution belongs to the
 	// invocation so ordinary missing/broken inputs can leave a failed receipt.
-	s, e := receipt.Start(g.out, o.receipt, "pipeline", Version())
+	s, e := receipt.Start(g.out, o.receipt, pipelineOperation(o), Version())
 	if e != nil {
 		return usageErrorf("no receipt created: %v", e)
 	}
@@ -119,6 +124,9 @@ func runPipeline(cmd *cobra.Command, g *globalOptions, o pipelineOptions, stdout
 	for i, input := range inputs {
 		a, e := normalizeArtifact(man, input, mode, contexts)
 		if e != nil {
+			if a != nil && a.inputSHA != "" {
+				r.doc.Artifacts[i].Input = &receipt.Bytes{Path: a.inputRel, SHA256: a.inputSHA, Size: a.inputSize}
+			}
 			r.doc.Artifacts[i].State = "failed"
 			r.doc.Artifacts[i].ErrorCode = "normalization_failed"
 			r.doc.Run.Stages["normalize"] = "failed"
@@ -130,9 +138,22 @@ func runPipeline(cmd *cobra.Command, g *globalOptions, o pipelineOptions, stdout
 	r.doc.Run.Stages["intake"] = "completed"
 	r.doc.Run.Stages["normalize"] = "completed"
 	r.doc.Run.Stages["checks"] = "passed"
-	if e = writeAll(man, artifacts, s.Dir, false); e != nil {
+	if e = writeAll(man, artifacts, s.Dir, o.attest); e != nil {
 		r.doc.Run.Stages["normalize"] = "failed"
 		return e
+	}
+	if o.operation == "normalize" {
+		r.doc.Run.Stages["delivery"] = "not-applicable"
+		for _, a := range artifacts {
+			if !a.gate.OK() {
+				r.doc.Run.Stages["checks"] = "failed"
+			}
+		}
+		progress := stdout
+		if o.json {
+			progress = io.Discard
+		}
+		return report(artifacts, mode, g.quiet, progress, stderr)
 	}
 	config, e := delivery.ParseConfig(man.Delivery, man.Dir, man.SHA256)
 	if e != nil {
@@ -251,4 +272,11 @@ func safeCode(e error) string {
 		return safe.Code
 	}
 	return "execution_failed"
+}
+
+func pipelineOperation(o pipelineOptions) string {
+	if o.operation != "" {
+		return o.operation
+	}
+	return "pipeline"
 }

@@ -58,7 +58,7 @@ func TestArtifactSetsPlanNormalizeMembership(t *testing.T) {
 		t.Fatal(rows)
 	}
 	requireExit(t, rio(t, dir, "normalize", "--out", "out", "--attest", "--gate", "fail"), ExitOK)
-	idx := decode(t, readFile(t, dir, "out/index.json"))["artifacts"].([]any)
+	idx := decode(t, readFile(t, latestOutput(t, dir, "out"), "index.json"))["artifacts"].([]any)
 	for i, id := range wantIDs {
 		p := rows[i].(map[string]any)
 		a := idx[i].(map[string]any)
@@ -68,7 +68,7 @@ func TestArtifactSetsPlanNormalizeMembership(t *testing.T) {
 		if !reflect.DeepEqual(p["selection"], a["selection"]) {
 			t.Fatal("selection differs")
 		}
-		stmt := decode(t, readFile(t, dir, "out", id+".intoto.json"))["predicate"].(map[string]any)["artifact"].(map[string]any)
+		stmt := decode(t, readFile(t, latestOutput(t, dir, "out"), id+".intoto.json"))["predicate"].(map[string]any)["artifact"].(map[string]any)
 		if !reflect.DeepEqual(stmt["selection"], a["selection"]) {
 			t.Fatal("statement selection differs")
 		}
@@ -83,14 +83,14 @@ func TestArtifactSetsPlanNormalizeMembership(t *testing.T) {
 		if !reflect.DeepEqual(p["selection"], want) {
 			t.Fatalf("selection %v want %v", p["selection"], want)
 		}
-		output := decode(t, readFile(t, dir, "out", id+".cdx.json"))
+		output := decode(t, readFile(t, latestOutput(t, dir, "out"), id+".cdx.json"))
 		if output["metadata"].(map[string]any)["component"].(map[string]any)["name"] != "original-subject" || !reflect.DeepEqual(output["components"], decode(t, []byte(setBOM))["components"]) {
 			t.Fatal("directory identity changed SBOM inventory/subject")
 		}
 	}
-	before := readFile(t, dir, "out/index.json")
+	before := readFile(t, latestOutput(t, dir, "out"), "index.json")
 	requireExit(t, rio(t, dir, "normalize", "--out", "out", "--attest", "--gate", "fail"), ExitOK)
-	if !bytes.Equal(before, readFile(t, dir, "out/index.json")) {
+	if !bytes.Equal(before, readFile(t, latestOutput(t, dir, "out"), "index.json")) {
 		t.Fatal("nondeterministic index")
 	}
 	textPlan := rio(t, dir, "plan")
@@ -111,14 +111,12 @@ func TestArtifactSetsPlanNormalizeMembership(t *testing.T) {
 		requireExit(t, r, ExitUsage)
 		requireStderr(t, r, "artifactSets[0]", "services/new-server", "target/*.json")
 	}
-	if _, err := os.Stat(filepath.Join(dir, "refused")); !os.IsNotExist(err) {
-		t.Fatal("failure wrote output")
-	}
+	requireNoNormalizedOutputs(t, filepath.Join(dir, "refused"))
 	if err := os.Remove(filepath.Join(dir, "services/new-server/pom.xml")); err != nil {
 		t.Fatal(err)
 	}
 	requireExit(t, rio(t, dir, "normalize", "--out", "fresh"), ExitOK)
-	if got := decode(t, readFile(t, dir, "fresh/index.json"))["artifacts"].([]any); len(got) != 3 {
+	if got := decode(t, readFile(t, latestOutput(t, dir, "fresh"), "index.json"))["artifacts"].([]any); len(got) != 3 {
 		t.Fatal(got)
 	}
 	if !bytes.Equal(manifestBefore, readFile(t, dir, "rio.yaml")) {
@@ -172,9 +170,7 @@ func TestArtifactSetsRefuseAmbiguities(t *testing.T) {
 				requireExit(t, r, ExitUsage)
 				requireStderr(t, r, tc.want, "artifactSets[")
 			}
-			if _, err := os.Stat(filepath.Join(dir, "refused")); !os.IsNotExist(err) {
-				t.Fatal("failure wrote output")
-			}
+			requireNoNormalizedOutputs(t, filepath.Join(dir, "refused"))
 		})
 	}
 }
@@ -210,7 +206,7 @@ enrichment: {producer: {name: Example}}
 	}
 	setWrite(t, dir, "context.json", `{"contextVersion":1,"artifacts":[`+strings.Join(assertions, ",")+`]}`)
 	requireExit(t, rio(t, dir, "normalize", "--out", "out", "--attest"), ExitOK)
-	for _, raw := range decode(t, readFile(t, dir, "out/index.json"))["artifacts"].([]any) {
+	for _, raw := range decode(t, readFile(t, latestOutput(t, dir, "out"), "index.json"))["artifacts"].([]any) {
 		a := raw.(map[string]any)
 		effective := a["context"].(map[string]any)["effective"].(map[string]any)
 		if effective["id"] != a["id"] || effective["build"].(map[string]any)["url"] != "https://ci.example/"+a["id"].(string) {
@@ -224,9 +220,7 @@ enrichment: {producer: {name: Example}}
 	r := rio(t, dir, "normalize", "--out", "stale")
 	requireExit(t, r, ExitUsage)
 	requireStderr(t, r, "sha256")
-	if _, err := os.Stat(filepath.Join(dir, "stale")); !os.IsNotExist(err) {
-		t.Fatal("stale context wrote output")
-	}
+	requireNoNormalizedOutputs(t, filepath.Join(dir, "stale"))
 }
 
 func TestArtifactSetsExclusionPrecedesSBOMAndExplicitOnlyOverlapRemainsValid(t *testing.T) {
@@ -239,7 +233,7 @@ func TestArtifactSetsExclusionPrecedesSBOMAndExplicitOnlyOverlapRemainsValid(t *
 	}
 	setWrite(t, dir, "rio.yaml", "version: 1\nartifacts: [{id: one, sbom: services/a-server/target/bom.json}, {id: two, sbom: services/a-server/target/bom.json}]\n")
 	requireExit(t, rio(t, dir, "normalize", "--out", "out"), ExitOK)
-	if strings.Contains(string(readFile(t, dir, "out/index.json")), `"selection"`) {
+	if strings.Contains(string(readFile(t, latestOutput(t, dir, "out"), "index.json")), `"selection"`) {
 		t.Fatal("legacy shape changed")
 	}
 }

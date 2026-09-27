@@ -2,7 +2,6 @@ package cli
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -32,13 +31,10 @@ func TestNormalizeTychoFixture(t *testing.T) {
 	r := rio(t, dir, "normalize")
 	requireExit(t, r, ExitOK)
 
-	golden(t, "rcp-client.cdx.json", readFile(t, dir, "target", "rio", "rcp-client.cdx.json"))
-	golden(t, "index.json", readFile(t, dir, "target", "rio", "index.json"))
+	golden(t, "rcp-client.cdx.json", readFile(t, latestOutput(t, dir, "target/rio"), "rcp-client.cdx.json"))
+	golden(t, "index.json", readFile(t, latestOutput(t, dir, "target/rio"), "index.json"))
 
-	if want := "rcp-client  12 components   repaired 8    unmapped 1    gate ok\n" +
-		"1 artifact, no gate failures\n"; r.stdout != want {
-		t.Fatalf("stdout =\n%q\nwant\n%q", r.stdout, want)
-	}
+	requireProgressAndReceipt(t, r, "rcp-client  12 components   repaired 8    unmapped 1    gate ok\n1 artifact, no gate failures\n")
 }
 
 // §11 fixture 1 spells out what this one document has to exercise. Each
@@ -48,7 +44,7 @@ func TestNormalizeTychoFixtureCoversEveryClauseOfFixtureOne(t *testing.T) {
 	requireExit(t, rio(t, dir, "normalize"), ExitOK)
 
 	in := decode(t, readFile(t, dir, "in", "tycho-rcp.cdx.json"))
-	out := decode(t, readFile(t, dir, "target", "rio", "rcp-client.cdx.json"))
+	out := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "rcp-client.cdx.json"))
 	got := purls(t, out)
 
 	cases := []struct {
@@ -107,7 +103,7 @@ func TestRepairsAreTraceableFromTheOutputAlone(t *testing.T) {
 	dir := project(t, tychoManifest, "tycho-rcp.cdx.json")
 	requireExit(t, rio(t, dir, "normalize"), ExitOK)
 
-	out := decode(t, readFile(t, dir, "target", "rio", "rcp-client.cdx.json"))
+	out := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "rcp-client.cdx.json"))
 	props := properties(t, out)
 
 	if got := len(props["rebaze:normalize:repair"]); got != 8 {
@@ -154,14 +150,14 @@ func TestTwoRunsAreByteIdentical(t *testing.T) {
 	dir := project(t, tychoManifest, "tycho-rcp.cdx.json")
 
 	requireExit(t, rio(t, dir, "normalize"), ExitOK)
-	firstDoc := readFile(t, dir, "target", "rio", "rcp-client.cdx.json")
-	firstIndex := readFile(t, dir, "target", "rio", "index.json")
+	firstDoc := readFile(t, latestOutput(t, dir, "target/rio"), "rcp-client.cdx.json")
+	firstIndex := readFile(t, latestOutput(t, dir, "target/rio"), "index.json")
 
 	requireExit(t, rio(t, dir, "normalize"), ExitOK)
-	if diff := cmp.Diff(string(firstDoc), string(readFile(t, dir, "target", "rio", "rcp-client.cdx.json"))); diff != "" {
+	if diff := cmp.Diff(string(firstDoc), string(readFile(t, latestOutput(t, dir, "target/rio"), "rcp-client.cdx.json"))); diff != "" {
 		t.Fatalf("the output document differs between runs (-first +second):\n%s", diff)
 	}
-	if diff := cmp.Diff(string(firstIndex), string(readFile(t, dir, "target", "rio", "index.json"))); diff != "" {
+	if diff := cmp.Diff(string(firstIndex), string(readFile(t, latestOutput(t, dir, "target/rio"), "index.json"))); diff != "" {
 		t.Fatalf("index.json differs between runs (-first +second):\n%s", diff)
 	}
 }
@@ -182,7 +178,7 @@ func TestComponentMembershipNeverChanges(t *testing.T) {
 			requireExit(t, rio(t, dir, "normalize", "--gate", "warn"), ExitOK)
 
 			in := decode(t, readFile(t, dir, "in", name))
-			out := decode(t, readFile(t, dir, "target", "rio", "a.cdx.json"))
+			out := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "a.cdx.json"))
 
 			inList, _ := in["components"].([]any)
 			outList, _ := out["components"].([]any)
@@ -206,7 +202,7 @@ func TestPlainDocumentGainsOnlyTheRunMetadata(t *testing.T) {
 	requireExit(t, rio(t, dir, "normalize"), ExitOK)
 
 	in := decode(t, readFile(t, dir, "in", "plain-maven.cdx.json"))
-	out := decode(t, readFile(t, dir, "target", "rio", "server-war.cdx.json"))
+	out := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "server-war.cdx.json"))
 
 	if diff := cmp.Diff(in["components"], out["components"]); diff != "" {
 		t.Fatalf("components changed with no transform configured (-input +output):\n%s", diff)
@@ -242,7 +238,7 @@ func TestUpliftFromOneFourRecordsItselfAndLeavesToolsFlat(t *testing.T) {
 	dir := project(t, manifest, "uplift-1.4.cdx.json")
 	requireExit(t, rio(t, dir, "normalize"), ExitOK)
 
-	out := decode(t, readFile(t, dir, "target", "rio", "client.cdx.json"))
+	out := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "client.cdx.json"))
 	if got := out["specVersion"]; got != "1.6" {
 		t.Fatalf("specVersion = %v, want 1.6", got)
 	}
@@ -275,7 +271,7 @@ func TestIdentityEvidenceObjectIsWrappedWithItsContentIntact(t *testing.T) {
 	dir := project(t, manifest, "evidence-1.5-object.cdx.json")
 	requireExit(t, rio(t, dir, "normalize"), ExitOK)
 
-	out := decode(t, readFile(t, dir, "target", "rio", "scanner.cdx.json"))
+	out := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "scanner.cdx.json"))
 	components, _ := out["components"].([]any)
 	component, _ := components[0].(map[string]any)
 	evidence, _ := component["evidence"].(map[string]any)
@@ -305,7 +301,7 @@ func TestFutureSpecVersionPassesThroughUnvalidated(t *testing.T) {
 	dir := project(t, manifest, "future-1.9.cdx.json")
 	requireExit(t, rio(t, dir, "normalize"), ExitOK)
 
-	out := decode(t, readFile(t, dir, "target", "rio", "future.cdx.json"))
+	out := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "future.cdx.json"))
 	if got := out["specVersion"]; got != "1.9" {
 		t.Fatalf("specVersion = %v, want 1.9 passed through", got)
 	}
@@ -333,7 +329,7 @@ func TestFieldsTheTypedModelWouldRewriteSurviveExactly(t *testing.T) {
 	requireExit(t, rio(t, dir, "normalize"), ExitOK)
 
 	in := decode(t, readFile(t, dir, "in", "unmodelled-fields.cdx.json"))
-	out := decode(t, readFile(t, dir, "target", "rio", "round-trip.cdx.json"))
+	out := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "round-trip.cdx.json"))
 
 	// cyclonedx-go injects resolves[].description on encode. rio must not.
 	if diff := cmp.Diff(in["components"], out["components"]); diff != "" {
@@ -368,7 +364,7 @@ func TestInvalidInputIsAttributedToTheInput(t *testing.T) {
 func indexArtifact(t *testing.T, dir, out string, i int) map[string]any {
 	t.Helper()
 
-	idx := decode(t, readFile(t, dir, filepath.FromSlash(out), "index.json"))
+	idx := decode(t, readFile(t, latestOutput(t, dir, out), "index.json"))
 	artifacts, _ := idx["artifacts"].([]any)
 	if i >= len(artifacts) {
 		t.Fatalf("index has %d artifacts, wanted index %d", len(artifacts), i)
@@ -380,15 +376,7 @@ func indexArtifact(t *testing.T, dir, out string, i int) map[string]any {
 func requireNothingWritten(t *testing.T, dir string) {
 	t.Helper()
 
-	// Exit 2 writes nothing (§1). The output directory must not even exist.
-	if _, err := os.Stat(filepath.Join(dir, "target")); !os.IsNotExist(err) {
-		entries, _ := os.ReadDir(filepath.Join(dir, "target", "rio"))
-		var names []string
-		for _, e := range entries {
-			names = append(names, e.Name())
-		}
-		t.Fatalf("the output directory exists after an exit 2, holding %v", names)
-	}
+	requireNoNormalizedOutputs(t, filepath.Join(dir, "target", "rio"))
 }
 
 // index.json's digests describe the bytes a consumer will read, so they are
@@ -397,7 +385,7 @@ func TestIndexDigestsMatchTheBytesOnDisk(t *testing.T) {
 	dir := project(t, tychoManifest, "tycho-rcp.cdx.json")
 	requireExit(t, rio(t, dir, "normalize"), ExitOK)
 
-	outDir := filepath.Join(dir, "target", "rio")
+	outDir := latestOutput(t, dir, "target/rio")
 	entry := indexArtifact(t, dir, "target/rio", 0)
 
 	output, _ := entry["output"].(map[string]any)
@@ -434,14 +422,14 @@ func TestNoTimestampsAreAddedAndTheGeneratorsIsPreserved(t *testing.T) {
 	requireExit(t, rio(t, dir, "normalize"), ExitOK)
 
 	in := decode(t, readFile(t, dir, "in", "tycho-rcp.cdx.json"))
-	out := decode(t, readFile(t, dir, "target", "rio", "rcp-client.cdx.json"))
+	out := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "rcp-client.cdx.json"))
 	inMeta, _ := in["metadata"].(map[string]any)
 	outMeta, _ := out["metadata"].(map[string]any)
 	if inMeta["timestamp"] != outMeta["timestamp"] {
 		t.Fatalf("metadata.timestamp = %v, want the input's %v", outMeta["timestamp"], inMeta["timestamp"])
 	}
 
-	idx := readFile(t, dir, "target", "rio", "index.json")
+	idx := readFile(t, latestOutput(t, dir, "target/rio"), "index.json")
 	for _, forbidden := range []string{"timestamp", "generatedAt", "generated", "createdAt"} {
 		if strings.Contains(string(idx), forbidden) {
 			t.Fatalf("index.json contains %q; the index carries no run timestamp (§7)", forbidden)
@@ -461,7 +449,7 @@ func TestSyntheticMavenNamespaceEndToEnd(t *testing.T) {
 	requireExit(t, rio(t, dir, "normalize", "--gate", "fail"), ExitOK)
 
 	in := decode(t, readFile(t, dir, "in", "tycho-synthetic-maven.cdx.json"))
-	out := decode(t, readFile(t, dir, "target", "rio", "rcp-product.cdx.json"))
+	out := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "rcp-product.cdx.json"))
 	got := purls(t, out)
 
 	cases := []struct {

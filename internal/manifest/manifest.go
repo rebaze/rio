@@ -117,8 +117,9 @@ type Output struct {
 
 // Gate is the gate section.
 type Gate struct {
-	Mode    string
-	Require []string
+	ModeExplicit bool
+	Mode         string
+	Require      []string
 }
 
 // Requires reports whether field is one of the gate's required fields.
@@ -406,6 +407,7 @@ func (l loader) gate(f *fileSection, m *Manifest) error {
 			return l.errf("gate.mode", "must be fail or warn")
 		}
 		m.Gate.Mode = f.Gate.Mode
+		m.Gate.ModeExplicit = true
 	}
 	if f.Gate == nil || f.Gate.Require == nil {
 		m.Gate.Require = DefaultRequire()

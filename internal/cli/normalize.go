@@ -29,25 +29,15 @@ const (
 )
 
 func newNormalizeCommand(opts *globalOptions, stdout, stderr io.Writer) *cobra.Command {
-	var gateMode string
-	var attest bool
-
-	cmd := &cobra.Command{
-		Use:   "normalize",
-		Short: "Level the spec version, repair identity, and check quality",
-		Long: "normalize reads the manifest, resolves each artifact's SBOM, raises it to\n" +
-			"the spec version floor, applies the configured transforms, checks the gate,\n" +
-			"and writes one normalized document per artifact plus index.json.\n\n" +
-			"With --attest, also write one unsigned in-toto Statement per artifact.\n\n" +
-			"Run it from the repository root, after the build has produced SBOMs.",
-		Args: cobra.NoArgs,
-		RunE: func(*cobra.Command, []string) error {
-			return runNormalize(opts, gateMode, attest, stdout, stderr)
-		},
-	}
-	// Local to normalize; the persistent flags live on the root (§8).
-	cmd.Flags().StringVar(&gateMode, "gate", gateWarn, `"warn" or "fail"`)
-	cmd.Flags().BoolVar(&attest, "attest", false, "write an unsigned in-toto Statement per artifact")
+	o := pipelineOptions{operation: "normalize"}
+	cmd := &cobra.Command{Use: "normalize", Short: "Normalize and check SBOMs offline; write a scoped run receipt", Args: cobra.NoArgs}
+	f := cmd.Flags()
+	f.StringVar(&o.receipt, "receipt", "", "new receipt destination; default inside the isolated run directory")
+	f.StringVar(&o.gate, "gate", "", "gate policy: flag > manifest > warn (standalone default)")
+	f.StringArrayVar(&o.artifacts, "artifact", nil, "artifact ID filter (repeatable; default all)")
+	f.BoolVar(&o.attest, "attest", false, "write an unsigned in-toto Statement per artifact")
+	f.BoolVar(&o.json, "json", false, "print structured run result and receipt location")
+	cmd.RunE = func(cmd *cobra.Command, _ []string) error { return runPipeline(cmd, opts, o, stdout, stderr) }
 	return cmd
 }
 
@@ -77,44 +67,6 @@ type artifact struct {
 	normalization    *index.Normalization
 	evidenceSnapshot map[string]any
 	output           []byte
-}
-
-func runNormalize(opts *globalOptions, gateMode string, attest bool, stdout, stderr io.Writer) error {
-	if gateMode != gateWarn && gateMode != gateFail {
-		return usageErrorf("--gate must be %q or %q, got %q", gateWarn, gateFail, gateMode)
-	}
-
-	man, err := manifest.Load(opts.manifest)
-	if err != nil {
-		return usageErrorf("%v", err)
-	}
-
-	resolved, err := resolveArtifacts(man)
-	if err != nil {
-		return err
-	}
-
-	// Steps 1 to 4 for every artifact before anything is written. Exit 2
-	// conditions abort the whole run before any file is created (§5, §10).
-	artifacts := make([]*artifact, 0, len(resolved))
-	contextFiles := map[string]*buildcontext.File{}
-	for _, input := range resolved {
-		a, err := normalizeArtifact(man, input, gateMode, contextFiles)
-		if err != nil {
-			return err
-		}
-		artifacts = append(artifacts, a)
-	}
-
-	outDir, err := filepath.Abs(opts.out)
-	if err != nil {
-		return internalErrorf("resolving --out %q: %w", opts.out, err)
-	}
-	if err := writeAll(man, artifacts, outDir, attest); err != nil {
-		return err
-	}
-
-	return report(artifacts, gateMode, opts.quiet, stdout, stderr)
 }
 
 // normalizeArtifact is shared by root orchestration and standalone normalization.
@@ -164,7 +116,7 @@ func prepare(man *manifest.Manifest, input resolvedArtifact) (*artifact, error) 
 	for _, ts := range spec.Transforms {
 		t, err := transform.New(ts.Name, ts.Config, man.Dir)
 		if err != nil {
-			return nil, usageErrorf("%s: artifact %q: %v", man.Path, spec.ID, err)
+			return a, usageErrorf("%s: artifact %q: %v", man.Path, spec.ID, err)
 		}
 		a.transforms = append(a.transforms, t)
 	}
@@ -173,20 +125,20 @@ func prepare(man *manifest.Manifest, input resolvedArtifact) (*artifact, error) 
 	a.inputPath = path
 	rel, err := index.RelPath(man.Dir, path)
 	if err != nil {
-		return nil, usageErrorf("artifact %q: %v", spec.ID, err)
+		return a, usageErrorf("artifact %q: %v", spec.ID, err)
 	}
 	a.inputRel = rel
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, usageErrorf("artifact %q: reading %s: %v", spec.ID, path, err)
+		return a, usageErrorf("artifact %q: reading %s: %v", spec.ID, path, err)
 	}
 	a.inputSHA = index.SHA256Bytes(data)
 	a.inputSize = int64(len(data))
 
 	doc, err := sbom.Load(data)
 	if err != nil {
-		return nil, usageErrorf("artifact %q: %s: %v", spec.ID, a.inputRel, err)
+		return a, usageErrorf("artifact %q: %s: %v", spec.ID, a.inputRel, err)
 	}
 	a.doc = doc
 	a.inputSpec = doc.SpecVersion()
@@ -200,12 +152,12 @@ func prepare(man *manifest.Manifest, input resolvedArtifact) (*artifact, error) 
 		case errors.As(err, &noSchema):
 			// Above the highest embedded schema: pass through (§3).
 		case errors.As(err, &invalid):
-			return nil, usageErrorf(
+			return a, usageErrorf(
 				"artifact %q: %s is not valid CycloneDX %s as generated, before rio touched it.\n"+
 					"This is a finding about the input, not a rio bug: fix the generator or the document, then run rio again.\n%v",
 				spec.ID, a.inputRel, a.inputSpec, invalid)
 		default:
-			return nil, internalErrorf("artifact %q: validating %s: %w", spec.ID, a.inputRel, err)
+			return a, internalErrorf("artifact %q: validating %s: %w", spec.ID, a.inputRel, err)
 		}
 	}
 

@@ -55,7 +55,7 @@ func TestNormalizationLedgerAndConfidence(t *testing.T) {
 	if total != 4 {
 		t.Fatalf("skipped denominator = %d", total)
 	}
-	out := decode(t, readFile(t, dir, "target", "rio", "rcp-client.cdx.json"))
+	out := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "rcp-client.cdx.json"))
 	for _, raw := range out["components"].([]any) {
 		comp := raw.(map[string]any)
 		e, _ := comp["evidence"].(map[string]any)

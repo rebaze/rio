@@ -195,17 +195,17 @@ func TestRecordPreservesProducerContextAndEnrichmentChanges(t *testing.T) {
 			if code != 0 {
 				t.Fatal("normalization fixture", code, stderr.String())
 			}
-			ip := filepath.Join(dir, "index.json")
+			ip := filepath.Join(latestOutput(t, "", dir), "index.json")
 			raw, _ := os.ReadFile(ip)
 			if !bytes.Contains(raw, []byte(`"before": null`)) {
 				t.Fatal("fixture lacks nullable producer changes")
 			}
-			out := filepath.Join(t.TempDir(), "record.json")
-			code, r, err := recordRun(t, "record", "--index", ip, "--output", out)
-			if code != 0 {
-				t.Fatal("valid producer context cannot be collected", code, r, err)
+			out := filepath.Join(latestOutput(t, "", dir), "record.json")
+			compact := readFile(t, out)
+			if !bytes.Contains(compact, []byte(`"before": null`)) {
+				t.Fatal("compact receipt lost nullable changes")
 			}
-			code, r, err = recordRun(t, "record", "inspect", "--file", out)
+			code, r, err := recordRun(t, "record", "inspect", "--file", out)
 			if code != 0 {
 				t.Fatal("valid producer context cannot be inspected", code, r, err)
 			}

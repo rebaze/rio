@@ -73,6 +73,12 @@ func Text(raw []byte, w io.Writer) error {
 			fmt.Fprintf(&b, "  output sha256=%s bytes=%d\n", a.Output.SHA256, a.Output.Size)
 		}
 		if a.Changes != nil {
+			if spec := a.Changes.SpecVersion; spec != nil {
+				fmt.Fprintf(&b, "  spec %s → %s\n", spec.From, spec.To)
+			}
+			for _, bulk := range a.Changes.Bulk {
+				fmt.Fprintf(&b, "  %s scope=%s evaluated=%d applied=%d unmapped=%d skipped=%d (counters may overlap)\n", bulk.Operation, bulk.Scope, bulk.Evaluated, bulk.Applied, bulk.Unmapped, bulk.Skipped)
+			}
 			for _, c := range a.Changes.Metadata {
 				fmt.Fprintf(&b, "  %s: %s → %s (%s assertion, %s)\n", c.Field, displayValue(c.Before), displayValue(c.After), c.Assertion, c.Source)
 			}

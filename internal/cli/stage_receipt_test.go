@@ -3,10 +3,12 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/rebaze/rio/internal/delivery"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/rebaze/rio/internal/receipt"
@@ -109,5 +111,32 @@ func TestReconciliationReceiptKeepsPriorHistorySeparate(t *testing.T) {
 	unchanged, _ := os.ReadFile(firstPath)
 	if !bytes.Equal(first, unchanged) {
 		t.Fatal("prior receipt changed")
+	}
+}
+
+func TestStandaloneNormalizeReceiptAndOutputsAreIsolated(t *testing.T) {
+	dir := pipelineFixture(t, "https://unused.invalid")
+	t.Chdir(dir)
+	old := deliveryBuild
+	deliveryBuild = func(delivery.Provider, delivery.Description) (delivery.Target, error) {
+		t.Fatal("normalize built client")
+		return nil, nil
+	}
+	defer func() { deliveryBuild = old }()
+	code, first, firstPath := rootReceipt(t, "normalize", "--attest")
+	if code != 0 || first.Run.Operation != "normalize" || len(first.Deliveries) != 0 || first.Run.Stages["delivery"] != "not-applicable" || len(first.Artifacts) != 2 {
+		t.Fatalf("%d %#v", code, first)
+	}
+	for _, name := range []string{"index.json", "api.cdx.json", "worker.cdx.json", "api.intoto.json"} {
+		if _, e := os.Stat(filepath.Join(filepath.Dir(firstPath), name)); e != nil {
+			t.Fatal(e)
+		}
+	}
+	code, second, secondPath := rootReceipt(t, "normalize")
+	if code != 0 || firstPath == secondPath || first.Run.ID == second.Run.ID {
+		t.Fatal("shared run")
+	}
+	if _, e := os.Stat("target/rio/api.cdx.json"); !os.IsNotExist(e) {
+		t.Fatal("mutable singleton output")
 	}
 }
