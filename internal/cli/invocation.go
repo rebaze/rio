@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/rebaze/rio/internal/delivery"
+	"github.com/rebaze/rio/internal/manifest"
 	"github.com/rebaze/rio/internal/receipt"
 )
 
@@ -37,7 +38,7 @@ func (r *invocation) finish(workErr error) (receipt.Publication, error) {
 	}
 	return pub, workErr
 }
-func startDeliveryInvocation(g *globalOptions, o deliveryOptions, plan delivery.BatchPlan, path string) (*invocation, error) {
+func startDeliveryInvocation(g *globalOptions, o deliveryOptions, config delivery.Config, plan delivery.BatchPlan, path string) (*invocation, error) {
 	s, e := receipt.Start(g.out, path, "deliver", Version())
 	if e != nil {
 		return nil, usageErrorf("no receipt created: %v", e)
@@ -47,6 +48,29 @@ func startDeliveryInvocation(g *globalOptions, o deliveryOptions, plan delivery.
 		s.Close()
 		return nil, e
 	}
+	idx, e := delivery.ParseIndex(plan.IndexBytes())
+	if e != nil {
+		s.Close()
+		return nil, e
+	}
+	requested := map[string]bool{}
+	for _, id := range o.artifacts {
+		requested[id] = true
+	}
+	var inputs []resolvedArtifact
+	for _, a := range idx.Artifacts {
+		if len(requested) > 0 && !requested[a.ID] {
+			r.doc.Exclusions = append(r.doc.Exclusions, receipt.Exclusion{ArtifactID: a.ID, Reason: "artifact-filter"})
+			continue
+		}
+		inputs = append(inputs, resolvedArtifact{Spec: manifest.Artifact{ID: a.ID}})
+	}
+	routing, excluded, e := describeRouting(config, inputs, pipelineOptions{targets: o.targets})
+	if e != nil {
+		s.Close()
+		return nil, e
+	}
+	r.applyRouting(routing, excluded)
 	if e = r.describeDeliveries(plan); e != nil {
 		s.Close()
 		return nil, e

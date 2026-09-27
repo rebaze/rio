@@ -15,7 +15,7 @@ import (
 
 	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/delivery/record"
-	"github.com/rebaze/rio/internal/evidence"
+	"github.com/rebaze/rio/internal/receipt"
 )
 
 func TestDTrackTLSSavedPolicyAndPortableEvidence(t *testing.T) {
@@ -44,7 +44,7 @@ func TestDTrackTLSSavedPolicyAndPortableEvidence(t *testing.T) {
 	if calls.Load() != 0 {
 		t.Fatal("plan requested network")
 	}
-	code, _, _ := deliveryRun(t, "deliver", "--index", ip, "--manifest", cfg, "--record", journal)
+	code, delivered, _ := deliveryRun(t, "deliver", "--index", ip, "--manifest", cfg, "--record", journal)
 	if code != 0 {
 		t.Fatalf("bypass submission exit%d", code)
 	}
@@ -56,11 +56,8 @@ func TestDTrackTLSSavedPolicyAndPortableEvidence(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("reconcile exit%d", code)
 	}
-	doc, e := evidence.Collect(ip, []string{journal}, "test", validateSnapshot, recordPolicy)
-	if e != nil {
-		t.Fatal(e)
-	}
-	encoded, e := evidence.Marshal(doc)
+	receiptPath := delivered["receipt"].(map[string]any)["path"].(string)
+	encoded, e := os.ReadFile(receiptPath)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -99,15 +96,17 @@ func TestDTrackTLSSavedPolicyAndPortableEvidence(t *testing.T) {
 	s.Close()
 	os.RemoveAll(filepath.Dir(ip))
 	os.RemoveAll(journal)
-	parsed, e := evidence.Parse(encoded, validateSnapshot, recordPolicy)
-	if e != nil {
+	if _, e := receipt.Parse(encoded); e != nil {
 		t.Fatal(e)
 	}
 	var human bytes.Buffer
-	renderRecord(parsed, &human)
-	if !strings.Contains(human.String(), "insecureSkipVerify=true") || !strings.Contains(human.String(), "certificateVerification=disabled TLSObserved=true") {
-		t.Fatal("portable human record omitted TLS policy/facts")
+	if e := receipt.Text(encoded, &human); e != nil {
+		t.Fatal(e)
 	}
+	if !strings.Contains(human.String(), "verification=disabled") || !strings.Contains(human.String(), "TLS=observed") {
+		t.Fatal("compact receipt omitted TLS bypass/facts")
+	}
+
 }
 
 func TestDTrackTLSDetailsBoundToSavedPolicy(t *testing.T) {

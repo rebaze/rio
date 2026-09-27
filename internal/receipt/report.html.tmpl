@@ -43,6 +43,7 @@ th { background: #eef2ef; } .muted, footer { color: #50636b; } .notice { border-
 <h2>Destinations and acknowledgments</h2>
 {{range .Deliveries}}<section class="card"><h3>{{.ArtifactID}} → {{.Target}} <span class="status">{{.State}}</span></h3>
 {{$target := index $.Targets .Target}}<dl><dt>Receiver URL</dt><dd><code>{{$target.URL}}</code> ({{$target.Type}})</dd>
+{{if .ProjectSource}}<dt>Project selector</dt><dd>From {{.ProjectSource}} (resolved at execution)</dd>{{end}}
 {{range $key,$value := .Project}}<dt>Project {{$key}}</dt><dd><code>{{$value}}</code></dd>{{end}}
 <dt>Transport</dt><dd>{{.Transport.Scheme}} · TLS {{tls .Transport.TLSObserved}} · Certificate verification {{.Transport.CertificateVerification}}</dd>
 {{if .AttemptID}}<dt>Attempt</dt><dd><code>{{.AttemptID}}</code>{{if .AttemptedAt}} · {{.AttemptedAt}}{{end}}</dd>{{end}}
@@ -52,7 +53,7 @@ th { background: #eef2ef; } .muted, footer { color: #50636b; } .notice { border-
 {{range .Responses}}<dt>{{.Kind}}</dt><dd><strong>{{.Value}}</strong>{{if .HTTPStatus}} · HTTP {{.HTTPStatus}}{{end}} · {{.Code}}{{if .ObservedAt}} · {{.ObservedAt}}{{end}}</dd>
 {{range .References}}<dt>{{.Kind}}</dt><dd><code>{{.Value}}</code></dd>{{end}}{{end}}</dl>
 {{if .ErrorCode}}<p class="notice">{{.ErrorCode}}</p>{{end}}</section>{{else}}<p>Delivery stage: {{index .Run.Stages "delivery"}}.</p>{{end}}
-{{if .Exclusions}}<h2>Excluded scope</h2>{{range .Exclusions}}<p>{{.ArtifactID}} {{.Target}} · {{.Reason}}</p>{{end}}{{end}}
+{{if .Exclusions}}<h2>Excluded scope</h2>{{range .Exclusions}}<p>{{.ArtifactID}} {{.Target}} · {{.Reason}} {{.Scope}} <code>{{.Rule}}</code></p>{{end}}{{end}}
 {{if .Exceptions}}<h2>Exceptions</h2>{{range .Exceptions}}<p class="notice">{{.}}</p>{{end}}{{end}}
 <footer><h2>Receipt identity and limits</h2><p>Exact JSON SHA-256: <code>{{.Digest}}</code><br>{{.Size}} bytes · <code>{{.Kind}}</code> version {{.SchemaVersion}}</p>
 <p>Inspection validates schema, references and internal consistency. It cannot replay absent source documents or detect every coherently forged unsigned receipt. Paths and URLs are references, not promises of future accessibility. This standalone view loads no remote resources.</p></footer>

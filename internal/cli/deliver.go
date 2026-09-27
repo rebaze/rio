@@ -12,35 +12,34 @@ import (
 
 func newDeliverCommand(g *globalOptions, stdout, stderr io.Writer) *cobra.Command {
 	var o deliveryOptions
-	var evidencePath, receiptPath string
+	var receiptPath string
 	cmd := &cobra.Command{Use: "deliver", Short: "Deliver all indexed SBOMs to configured targets; accepted does not mean ingested", Args: cobra.NoArgs}
 	deliveryFlags(cmd, &o, true, true)
 	cmd.Flags().StringVar(&o.retry, "retry-of", "", "prior journal; authorize possible duplicate with an explicit fresh --record")
-	cmd.Flags().StringVar(&evidencePath, "evidence", "", "publish a new portable v2 record and immutable batch recovery sources")
 	cmd.Flags().StringVar(&receiptPath, "receipt", "", "new compact receipt path; existing files are refused")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
-		if cmd.Flags().Changed("evidence") {
-			c := &batchCapture{Output: evidencePath, AutoCollect: true}
-			if evidencePath == "" {
-				e := delivery.Fail("invalid_flag", "--evidence requires a new output path")
-				c.note(e)
-				return finishDeliveryEvidence(runner.NewBatch("deliver", delivery.BatchPlan{}), e, c, o, g, stdout, stderr)
-			}
-			r, e := executeDeliverBatch(cmd, g, o, c)
-			return finishDeliveryEvidence(r, e, c, o, g, stdout, stderr)
-		}
+
 		if e := rejectDeliveryInherited(cmd); e != nil {
 			return batchFinish(runner.NewBatch("deliver", delivery.BatchPlan{}), e, o, g, stdout, stderr)
 		}
-		_, plan, e := batchPreflight(g.manifest, o)
+		man, config, e := loadDeliveryManifest(g.manifest)
+		if e != nil {
+			return batchFinish(runner.NewBatch("deliver", delivery.BatchPlan{}), e, o, g, stdout, stderr)
+		}
+		effective := *g
+		effective.out = effectiveOutput(cmd, g, man)
+		g = &effective
+		plan, e := delivery.PlanBatch(config, o.index, delivery.PlanOptions{Artifacts: o.artifacts, Targets: o.targets, AllowFailedGate: o.allowFailed}, providers(config.Directory))
 		if e != nil {
 			return batchFinish(runner.NewBatch("deliver", plan), e, o, g, stdout, stderr)
 		}
-		inv, e := startDeliveryInvocation(g, o, plan, receiptPath)
+		inv, e := startDeliveryInvocation(g, o, config, plan, receiptPath)
 		if e != nil {
 			return batchFinish(runner.NewBatch("deliver", plan), e, o, g, stdout, stderr)
 		}
+		inv.captureOverrides(cmd)
 		o.receipt = inv
+		o.planned = &plannedBatch{config: config, plan: plan}
 		r, e := runDeliverBatch(cmd, g, o)
 		inv.doc.Run.Stages["delivery"] = "completed"
 		if e != nil {
@@ -61,14 +60,21 @@ func newDeliverCommand(g *globalOptions, stdout, stderr io.Writer) *cobra.Comman
 	return cmd
 }
 func runDeliverBatch(cmd *cobra.Command, g *globalOptions, o deliveryOptions) (runner.BatchResult, error) {
-	return executeDeliverBatch(cmd, g, o, nil)
+	return executeDeliverBatch(cmd, g, o)
 }
-func executeDeliverBatch(cmd *cobra.Command, g *globalOptions, o deliveryOptions, capture *batchCapture) (result runner.BatchResult, err error) {
+func executeDeliverBatch(cmd *cobra.Command, g *globalOptions, o deliveryOptions) (result runner.BatchResult, err error) {
 	r := runner.NewBatch("deliver", delivery.BatchPlan{})
 	if e := rejectDeliveryInherited(cmd); e != nil && cmd.Name() != "rio" {
 		return r, e
 	}
-	c, plan, e := batchPreflight(g.manifest, o)
+	var c delivery.Config
+	var plan delivery.BatchPlan
+	var e error
+	if o.planned != nil {
+		c, plan = o.planned.config, o.planned.plan
+	} else {
+		c, plan, e = batchPreflight(g.manifest, o)
+	}
 	r = runner.NewBatch("deliver", plan)
 	if e != nil {
 		return r, e
@@ -132,39 +138,12 @@ func executeDeliverBatch(cmd *cobra.Command, g *globalOptions, o deliveryOptions
 			return r, delivery.Fail("persistence_failed", "create automatic journal parent")
 		}
 	}
-	if capture != nil {
-		defer func() {
-			if capture.Reservation != nil {
-				if e := capture.Reservation.Close(); e != nil {
-					capture.note(e)
-					capture.Publication.Output = nil
-					result, err = runner.BatchFailure(result, e, 3)
-				}
-			}
-		}()
-		if e := capture.prepare(plan, prepared, o.index, paths); e != nil {
-			capture.note(e)
-			return r, e
-		}
-	}
+
 	reservations, e := record.ReserveAll(paths)
 	if e != nil {
 		return r, e
 	}
-	if capture != nil {
-		if e := capture.Reservation.PublishSources(plan.IndexBytes(), capture.Raw); e != nil {
-			capture.note(e)
-			for _, res := range reservations {
-				if closeErr := res.Close(); closeErr != nil {
-					e = closeErr
-				}
-			}
-			return runner.BatchFailure(r, e, 3)
-		}
-	}
-	if capture != nil {
-		capture.SourcesReady = true
-	}
+
 	var hooks []runner.BatchHooks
 	if o.receipt != nil {
 		if e := o.receipt.prepareDeliveries(plan, prepared); e != nil {
@@ -176,18 +155,6 @@ func executeDeliverBatch(cmd *cobra.Command, g *globalOptions, o deliveryOptions
 		hooks = append(hooks, o.receipt.hooks())
 	}
 	result, err = runner.SubmitBatch(cmd.Context(), r, prepared, reservations, hooks...)
-	if capture != nil {
-		if e := capture.complete(result); e != nil {
-			capture.note(e)
-		}
-		if capture.AutoCollect {
-			if e := capture.collect(); e != nil {
-				capture.note(e)
-			}
-		}
-		if capture.EvidenceError != nil {
-			return runner.BatchFailure(result, capture.EvidenceError, 3)
-		}
-	}
+
 	return result, err
 }

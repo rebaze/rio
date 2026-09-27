@@ -15,6 +15,7 @@ import (
 )
 
 type deliveryOptions struct {
+	planned                     *plannedBatch
 	receipt                     *invocation
 	index, record, retry        string
 	legacyConfig, legacyBinding string
@@ -28,16 +29,21 @@ var deliveryBuild = func(p delivery.Provider, d delivery.Description) (delivery.
 	return p.Build(d, deliveryLookupEnv)
 }
 
-func loadDeliveryConfig(path string) (delivery.Config, error) {
+func loadDeliveryManifest(path string) (*manifest.Manifest, delivery.Config, error) {
 	m, e := manifest.Load(path)
 	if e != nil {
 		var safe *delivery.Error
 		if errors.As(e, &safe) {
-			return delivery.Config{}, safe
+			return nil, delivery.Config{}, safe
 		}
-		return delivery.Config{}, delivery.Fail("invalid_manifest", "rio.yaml could not be loaded or validated")
+		return nil, delivery.Config{}, delivery.Fail("invalid_manifest", "rio.yaml could not be loaded or validated")
 	}
-	return delivery.ParseConfig(m.Delivery, m.Dir, m.SHA256)
+	c, e := delivery.ParseConfig(m.Delivery, m.Dir, m.SHA256)
+	return m, c, e
+}
+func loadDeliveryConfig(path string) (delivery.Config, error) {
+	_, c, e := loadDeliveryManifest(path)
+	return c, e
 }
 func batchPreflight(path string, o deliveryOptions) (delivery.Config, delivery.BatchPlan, error) {
 	c, e := loadDeliveryConfig(path)

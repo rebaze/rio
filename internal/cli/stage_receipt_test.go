@@ -140,3 +140,29 @@ func TestStandaloneNormalizeReceiptAndOutputsAreIsolated(t *testing.T) {
 		t.Fatal("mutable singleton output")
 	}
 }
+
+func TestStandaloneDeliveryReceiptRetainsFilteredScope(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"token":"11111111-1111-4111-8111-111111111111"}`)
+	}))
+	defer srv.Close()
+	dir := batchFixture(t, srv.URL)
+	t.Chdir(dir)
+	t.Setenv("DTRACK_API_KEY", "synthetic")
+	f, _ := os.OpenFile("rio.yaml", os.O_APPEND|os.O_WRONLY, 0600)
+	f.WriteString("    other:\n      type: dependency-track\n      url: https://unused.example.org\n")
+	f.Close()
+	code, result, _ := runBatch(t, "deliver", "--artifact", "app", "--target", "security")
+	if code != 0 {
+		t.Fatal(code)
+	}
+	raw, _ := os.ReadFile(result["receipt"].(map[string]any)["path"].(string))
+	d, e := receipt.Parse(raw)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(d.Targets) != 2 || len(d.Exclusions) != 3 || d.Run.Overrides["artifact"] != "[app]" || d.Run.Overrides["target"] != "[security]" {
+		t.Fatalf("scope omitted: %#v", d)
+	}
+}

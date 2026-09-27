@@ -22,11 +22,20 @@ func newDeliveryReconcileCommand(g *globalOptions, stdout, stderr io.Writer) *co
 		if e := rejectDeliveryInherited(cmd); e != nil {
 			return deliveryFinish(runner.NewResult("reconcile", o.record), e, o, g, stdout, stderr)
 		}
+		man, config, e := loadDeliveryManifest(g.manifest)
+		if e != nil {
+			return deliveryFinish(runner.NewResult("reconcile", o.record), e, o, g, stdout, stderr)
+		}
+		effective := *g
+		effective.out = effectiveOutput(cmd, g, man)
+		g = &effective
+		o.planned = &plannedBatch{config: config}
 		s, e := receipt.Start(g.out, receiptPath, "reconcile", Version())
 		if e != nil {
 			return usageErrorf("no receipt created: %v", e)
 		}
 		o.receipt = &invocation{store: s, doc: s.Initial}
+		o.receipt.captureOverrides(cmd)
 		r, e := runDeliveryReconcile(cmd, o, g.manifest, wait)
 		o.receipt.doc.Run.Stages["delivery"] = "completed"
 		if e != nil {
@@ -92,7 +101,12 @@ func runDeliveryReconcile(cmd *cobra.Command, o deliveryOptions, manifestPath st
 	if e != nil {
 		return r, e
 	}
-	c, e := loadDeliveryConfig(manifestPath)
+	var c delivery.Config
+	if o.planned != nil {
+		c = o.planned.config
+	} else {
+		c, e = loadDeliveryConfig(manifestPath)
+	}
 	if e != nil {
 		return r, e
 	}

@@ -2,7 +2,7 @@ package cli
 
 import (
 	"github.com/rebaze/rio/internal/delivery"
-	"github.com/rebaze/rio/internal/evidence"
+	"github.com/rebaze/rio/internal/receipt"
 	"github.com/spf13/cobra"
 	"io"
 )
@@ -10,35 +10,22 @@ import (
 func newRecordInspectCommand(g *globalOptions, stdout, stderr io.Writer) *cobra.Command {
 	var file string
 	var asJSON bool
-	cmd := &cobra.Command{Use: "inspect", Short: "Check a record's embedded evidence and readable claims offline", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		r := recordResult{SchemaVersion: 1, Operation: "record-inspect", Outcome: "error"}
+	cmd := &cobra.Command{Use: "inspect", Short: "Validate unsigned receipt structure and internal consistency offline", Args: cobra.NoArgs}
+	cmd.Flags().StringVar(&file, "file", "", "compact run receipt (required)")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print a structured result including the validated receipt")
+	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		e := recordFlags(cmd)
 		if e == nil && file == "" {
 			e = delivery.Fail("invalid_flag", "inspect requires --file")
 		}
+		var raw []byte
+		if e == nil {
+			raw, e = delivery.ReadBounded(file, receipt.MaxBytes)
+		}
 		if e != nil {
-			return recordFinish(r, nil, e, asJSON, g, stdout, stderr)
+			return compactRecordFinish(compactRecordResult{SchemaVersion: 1, Operation: "record-inspect"}, e, asJSON, stdout, stderr)
 		}
-		raw, e := delivery.ReadBounded(file, evidence.FileLimit)
-		if e != nil {
-			return recordFinish(r, nil, e, asJSON, g, stdout, stderr)
-		}
-		if isCompactReceipt(raw) {
-			return inspectCompactReceipt(raw, asJSON, g, stdout, stderr)
-		}
-		d, e := evidence.Parse(raw, validateSnapshot, recordPolicy)
-		if e != nil {
-			return recordFinish(r, nil, e, asJSON, g, stdout, stderr)
-		}
-		r.raw = raw
-		r.Outcome = "valid"
-		r.Counts = countsFor(d)
-		if asJSON {
-			r.Record = &d
-		}
-		return recordFinish(r, &d, nil, asJSON, g, stdout, stderr)
-	}}
-	cmd.Flags().StringVar(&file, "file", "", "consolidated evidence file (required)")
-	cmd.Flags().BoolVar(&asJSON, "json", false, "emit one versioned result including the validated document")
+		return inspectCompactReceipt(raw, asJSON, g, stdout, stderr)
+	}
 	return cmd
 }

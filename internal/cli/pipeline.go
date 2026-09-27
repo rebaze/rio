@@ -47,23 +47,13 @@ func runPipeline(cmd *cobra.Command, g *globalOptions, o pipelineOptions, stdout
 	if e != nil {
 		return usageErrorf("no receipt created: %v", e)
 	}
-	mode := man.Gate.Mode
-	if o.operation == "normalize" && !man.Gate.ModeExplicit {
-		mode = gateWarn
+	mode, e := effectiveGate(cmd, man, o)
+	if e != nil {
+		return e
 	}
-	if cmd.Flags().Changed("gate") {
-		mode = o.gate
-	}
-	if mode != gateFail && mode != gateWarn {
-		return usageErrorf("no receipt created: --gate must be %q or %q, got %q", gateWarn, gateFail, mode)
-	}
-	selected := map[string]bool{}
-	for _, id := range o.artifacts {
-		if selected[id] {
-			return usageErrorf("duplicate --artifact %q", id)
-		}
-		selected[id] = true
-	}
+	effective := *g
+	effective.out = effectiveOutput(cmd, g, man)
+	g = &effective
 	// Manifest validation is configuration work; input resolution belongs to the
 	// invocation so ordinary missing/broken inputs can leave a failed receipt.
 	s, e := receipt.Start(g.out, o.receipt, pipelineOperation(o), Version())
@@ -71,12 +61,7 @@ func runPipeline(cmd *cobra.Command, g *globalOptions, o pipelineOptions, stdout
 		return usageErrorf("no receipt created: %v", e)
 	}
 	r := &invocation{store: s, doc: s.Initial}
-	r.doc.Run.Overrides = map[string]string{}
-	for _, flag := range []string{"gate", "skip-delivery"} {
-		if cmd.Flags().Changed(flag) {
-			r.doc.Run.Overrides[flag] = cmd.Flags().Lookup(flag).Value.String()
-		}
-	}
+	r.captureOverrides(cmd)
 	defer func() {
 		pub, finishErr := r.finish(err)
 		err = finishErr
@@ -94,24 +79,29 @@ func runPipeline(cmd *cobra.Command, g *globalOptions, o pipelineOptions, stdout
 			fmt.Fprintf(stdout, "run %s: %s\nreceipt: %s\n", s.ID, r.doc.Run.Outcome, s.Path)
 		}
 	}()
-	resolved, e := resolveArtifacts(man)
+	resolved, e := resolveArtifacts(man, o.artifacts)
 	if e != nil {
 		r.doc.Run.Stages["intake"] = "failed"
 		r.doc.Exceptions = append(r.doc.Exceptions, "input_resolution_failed")
 		return e
 	}
-	var inputs []resolvedArtifact
-	for _, input := range resolved {
-		if len(o.artifacts) > 0 && !selected[input.Spec.ID] {
-			r.doc.Exclusions = append(r.doc.Exclusions, receipt.Exclusion{ArtifactID: input.Spec.ID, Reason: "artifact-filter"})
-			continue
-		}
-		inputs = append(inputs, input)
-		delete(selected, input.Spec.ID)
-	}
-	if len(selected) > 0 {
+	inputs, excluded, e := selectInputs(resolved, o.artifacts)
+	if e != nil {
 		r.doc.Run.Stages["intake"] = "failed"
-		return usageErrorf("unknown artifact selection")
+		return e
+	}
+	r.doc.Exclusions = append(excluded, declaredExclusions(man)...)
+	var config delivery.Config
+	if o.operation != "normalize" {
+		config, e = delivery.ParseConfig(man.Delivery, man.Dir, man.SHA256)
+		if e != nil {
+			return e
+		}
+		routing, exclusions, e := describeRouting(config, inputs, o)
+		if e != nil {
+			return e
+		}
+		r.applyRouting(routing, exclusions)
 	}
 	for _, input := range inputs {
 		r.doc.Artifacts = append(r.doc.Artifacts, receipt.Artifact{ID: input.Spec.ID, State: "not-attempted"})
@@ -155,21 +145,6 @@ func runPipeline(cmd *cobra.Command, g *globalOptions, o pipelineOptions, stdout
 		}
 		return report(artifacts, mode, g.quiet, progress, stderr)
 	}
-	config, e := delivery.ParseConfig(man.Delivery, man.Dir, man.SHA256)
-	if e != nil {
-		return e
-	}
-	if len(config.Targets) > 0 {
-		// Describe failed-gate destinations offline before enforcing the gate. The
-		// actual request policy is resolved separately, only after this check.
-		plan, e := delivery.PlanBatch(config, filepath.Join(s.Dir, "index.json"), delivery.PlanOptions{Targets: o.targets, AllowFailedGate: true}, providers(config.Directory))
-		if e != nil {
-			return e
-		}
-		if e = r.describeDeliveries(plan); e != nil {
-			return e
-		}
-	}
 	gateFailed := false
 	for _, a := range artifacts {
 		if !a.gate.OK() {
@@ -194,8 +169,12 @@ func runPipeline(cmd *cobra.Command, g *globalOptions, o pipelineOptions, stdout
 		r.doc.Run.Stages["delivery"] = "not-configured"
 		return nil
 	}
-	opts := deliveryOptions{index: filepath.Join(s.Dir, "index.json"), targets: o.targets, allowFailed: mode == gateWarn, receipt: r}
-	result, e := executeDeliverBatch(cmd, g, opts, nil)
+	plan, e := delivery.PlanBatch(config, filepath.Join(s.Dir, "index.json"), delivery.PlanOptions{Targets: o.targets, AllowFailedGate: mode == gateWarn}, providers(config.Directory))
+	if e != nil {
+		return e
+	}
+	opts := deliveryOptions{index: filepath.Join(s.Dir, "index.json"), targets: o.targets, allowFailed: mode == gateWarn, receipt: r, planned: &plannedBatch{config: config, plan: plan}}
+	result, e := executeDeliverBatch(cmd, g, opts)
 	r.doc.Run.Stages["delivery"] = "completed"
 	if e != nil {
 		r.doc.Run.Stages["delivery"] = "failed"
@@ -267,6 +246,9 @@ func metadataChange(field string, before, after any, source string) receipt.Chan
 	return receipt.Change{Field: field, Operation: op, Before: receipt.SummarizeValue(before), After: receipt.SummarizeValue(after), Assertion: "producer", Source: source}
 }
 func safeCode(e error) string {
+	if errors.Is(e, gateFailure) {
+		return "gate-failed"
+	}
 	var safe *delivery.Error
 	if errors.As(e, &safe) {
 		return safe.Code

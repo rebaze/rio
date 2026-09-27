@@ -40,12 +40,7 @@ func compactRecordFinish(result compactRecordResult, e error, asJSON bool, stdou
 	}
 	return nil
 }
-func isCompactReceipt(raw []byte) bool {
-	var header struct {
-		Kind string `json:"kind"`
-	}
-	return json.Unmarshal(raw, &header) == nil && header.Kind == receipt.Kind
-}
+
 func inspectCompactReceipt(raw []byte, asJSON bool, g *globalOptions, stdout, stderr io.Writer) error {
 	r := compactRecordResult{SchemaVersion: 1, Operation: "record-inspect", Outcome: "valid", InputSHA256: delivery.Digest(raw)}
 	d, e := receipt.Parse(raw)

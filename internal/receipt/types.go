@@ -105,11 +105,14 @@ type Target struct {
 	URL  string `json:"url"`
 }
 type Exclusion struct {
+	Rule       string `json:"rule,omitempty"`
+	Scope      string `json:"scope,omitempty"`
 	ArtifactID string `json:"artifactId,omitempty"`
 	Target     string `json:"target,omitempty"`
 	Reason     string `json:"reason"`
 }
 type Delivery struct {
+	ProjectSource          string            `json:"projectSource,omitempty"`
 	ArtifactID             string            `json:"artifactId"`
 	Target                 string            `json:"target"`
 	Project                map[string]string `json:"project,omitempty"`

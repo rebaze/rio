@@ -1,4 +1,9 @@
 {
+  "runDirectory": "target/rio/runs/<run-id>",
+  "receipt": "target/rio/runs/<run-id>/record.json",
+  "delivery": {
+    "mode": "not-configured"
+  },
   "planVersion": 1,
   "tool": {
     "name": "rio",
@@ -80,6 +85,7 @@
     }
   ],
   "gate": {
+    "mode": "fail",
     "require": [
       "name",
       "version",

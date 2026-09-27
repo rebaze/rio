@@ -89,13 +89,23 @@ func Text(raw []byte, w io.Writer) error {
 	}
 	for _, v := range d.Deliveries {
 		fmt.Fprintf(&b, "\n%s → %s (%s): %s\n", v.ArtifactID, v.Target, d.Targets[v.Target].URL, v.State)
-		fmt.Fprintf(&b, "  project=%s transport=%s TLS=%s verification=%s\n", displayValue(v.Project), v.Transport.Scheme, observed(v.Transport.TLSObserved), v.Transport.CertificateVerification)
+		project := displayValue(v.Project)
+		if v.ProjectSource != "" {
+			project = "from " + v.ProjectSource + " (resolved at execution)"
+		}
+		fmt.Fprintf(&b, "  project=%s transport=%s TLS=%s verification=%s\n", project, v.Transport.Scheme, observed(v.Transport.TLSObserved), v.Transport.CertificateVerification)
 		for _, r := range v.Responses {
 			fmt.Fprintf(&b, "  %s=%s HTTP=%d code=%s\n", r.Kind, r.Value, r.HTTPStatus, r.Code)
 			for _, ref := range r.References {
 				fmt.Fprintf(&b, "    %s: %s\n", ref.Kind, ref.Value)
 			}
 		}
+	}
+	for _, excluded := range d.Exclusions {
+		fmt.Fprintf(&b, "excluded: artifact=%s target=%s reason=%s scope=%s rule=%s\n", excluded.ArtifactID, excluded.Target, excluded.Reason, excluded.Scope, excluded.Rule)
+	}
+	for _, exception := range d.Exceptions {
+		fmt.Fprintf(&b, "exception: %s\n", exception)
 	}
 	fmt.Fprintf(&b, "\nValid structure and internal consistency; unsigned recorded assertions/observations.\nHTTP acceptance does not prove ingestion or retained content.\nJSON sha256=%s bytes=%d\n", delivery.Digest(raw), len(raw))
 	_, e = w.Write(b.Bytes())

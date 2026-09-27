@@ -63,6 +63,9 @@ func deliveryRun(t *testing.T, args ...string) (int, map[string]any, string) {
 		items := result["items"].([]any)
 		if len(items) == 1 {
 			if one, ok := items[0].(map[string]any)["result"].(map[string]any); ok {
+				if pub, ok := result["receipt"]; ok {
+					one["receipt"] = pub
+				}
 				result = one
 			}
 		}
