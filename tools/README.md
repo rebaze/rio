@@ -1081,7 +1081,9 @@ Xray/Lifecycle ingestion, and unavailable vendor evidence is never replaced by s
 
 See the result before running anything: [full record.json](demo-client-record/example/record.json),
 [downloadable offline HTML](demo-client-record/example/report.html), and
-[report preview](demo-client-record/example/report-preview.png), generated with released Rio v0.6.0.
+[the small reproducible delivery example](demo-client-record/example/README.md), generated with released Rio v0.6.0.
+The example consumes two SBOMs, adds a pipeline URL and build ID, and records the destination URL,
+TLS verification and HTTP acknowledgments from a synthetic Dependency-Track API receiver.
 
 
 The [normalization evidence demo](demo-normalization-evidence/README.md) checks change pointers,

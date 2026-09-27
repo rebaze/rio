@@ -67,7 +67,8 @@ the main README. Exercise the demo against the built binary during verification.
 Lead the README and release notes with a concrete example of the output users receive, before
 setup instructions or feature inventories. For new artifacts, include an actual generated preview
 and a directly inspectable or downloadable sample. Readers should see the result without first
-running a demo. Keep the preview faithful to output from a released binary and label synthetic data.
+running a demo. Lead with the common consumed → enriched → delivered → acknowledged workflow;
+keep specialized normalization repairs secondary. Keep the preview faithful to output from a released binary and label synthetic data.
 
 ## Task Tracking
 
