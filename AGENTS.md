@@ -62,6 +62,13 @@ Rio release binary. Users must not need a Go toolchain or a source build to run 
 demo scripts and fixtures under `tools/`, document them in `tools/README.md`, and link there from
 the main README. Exercise the demo against the built binary during verification.
 
+## First impression: Time to Wow
+
+Lead the README and release notes with a concrete example of the output users receive, before
+setup instructions or feature inventories. For new artifacts, include an actual generated preview
+and a directly inspectable or downloadable sample. Readers should see the result without first
+running a demo. Keep the preview faithful to output from a released binary and label synthetic data.
+
 ## Task Tracking
 
 Tasks are tracked as GitHub issues on `rebaze/rio` — **not** as files in this repository. Never create
