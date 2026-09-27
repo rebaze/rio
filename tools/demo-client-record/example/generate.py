@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Generate the small delivery-first documentation example with an installed Rio."""
 import argparse
+from email import policy
+from email.parser import BytesParser
 import hashlib
 import http.server
 import json
@@ -45,6 +47,17 @@ def main():
                     assert self.rfile.read(2) == b"\r\n"
             else:
                 body.extend(self.rfile.read(int(self.headers["Content-Length"])))
+            multipart = BytesParser(policy=policy.default).parsebytes(
+                ("Content-Type: " + self.headers["Content-Type"] + "\r\nMIME-Version: 1.0\r\n\r\n").encode()
+                + body)
+            assert multipart.is_multipart()
+            fields = {part.get_param("name", header="Content-Disposition"): part.get_payload(decode=True)
+                      for part in multipart.iter_parts()}
+            expected_project = ("api", "worker")[len(received)]
+            assert fields["projectName"].decode() == expected_project
+            assert fields["projectVersion"].decode() == "1.0.0"
+            subject = json.loads(fields["bom"])["metadata"]["component"]
+            assert subject["name"] == expected_project and subject["version"] == "1.0.0"
             token = tokens[len(received)]
             received.append(bytes(body))
             response = json.dumps({"token": token}).encode()
@@ -111,6 +124,8 @@ def main():
                 assert observation["httpStatus"] == 200 and observation["value"] == "accepted"
                 assert observation["details"]["tls"] == {"certificateVerification": "enforced", "observed": True}
                 assert attempt["intent"]["destination"]["identity"]["url"] == url
+                assert attempt["intent"]["destination"]["identity"]["project"] == {
+                    "name": attempt["artifactId"], "version": "1.0.0"}
             (output / "record.json").write_bytes(raw)
         # The source workspace is gone and the receiver is stopped before inspection.
     finally:
@@ -119,6 +134,7 @@ def main():
         thread.join()
     env.pop("RIO_DEMO_DELIVERY_KEY")
     run(output, "record", "inspect", "--file", "record.json")
+    run(output, "record", "inspect", "--file", Path(__file__).with_name("record.json").resolve())
     run(output, "record", "report", "--file", "record.json", "--output", "report.html")
     for path in (output / "record.json", output / "report.html"):
         assert secret.encode() not in path.read_bytes()

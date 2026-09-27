@@ -11,6 +11,7 @@ import shutil
 import socket
 import ssl
 import subprocess
+import sys
 import tempfile
 import threading
 import uuid
@@ -231,6 +232,10 @@ def main():
         (retained / "walkthrough.json").write_text(json.dumps({"syntheticReceiver": True,
             "networkRequests": state["requests"], "commands": commands,
             "originalSnapshotSHA256": original_sha, "sourceWorkspaceRemoved": True}, indent=2) + "\n")
+        # Exercise the documentation's common delivery story wherever this
+        # installed-binary demo already runs, including release verification.
+        subprocess.run([sys.executable, str(HERE / "example" / "generate.py"),
+                        binary, str(retained / "delivery-first")], check=True, timeout=120)
         print("PASS: two artifact sets, uplift/repair/enrichment, exact routing and trusted HTTPS.")
         print("PASS: separate TLS bypass, lost response, failed gate/explicit override and retained reconciliation snapshots.")
         print("PASS: receiver stopped and sources removed; offline JSON/HTML handoff; three projection corruptions refused.")
