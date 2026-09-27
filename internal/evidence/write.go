@@ -25,11 +25,17 @@ func Publish(path, indexPath string, journalPaths []string, raw []byte, validate
 	return publish(path, indexPath, journalPaths, raw, validate, retryPolicy, nil)
 }
 func publish(path, indexPath string, journalPaths []string, raw []byte, validate Validator, retryPolicy []RetryValidator, fail func(string) error) (result Publication, err error) {
+	return publishProtected(path, indexPath, journalPaths, nil, raw, validate, retryPolicy, fail)
+}
+func publishProtected(path, indexPath string, journalPaths, protected []string, raw []byte, validate Validator, retryPolicy []RetryValidator, fail func(string) error) (result Publication, err error) {
 	if _, err = Parse(raw, validate, retryPolicy...); err != nil {
 		return result, err
 	}
 	out, e := preflightOutput(path, indexPath, journalPaths)
 	if e != nil {
+		return result, e
+	}
+	if e = protectedOutput(out, protected); e != nil {
 		return result, e
 	}
 	lock := out + ".lock"
@@ -64,6 +70,9 @@ func publish(path, indexPath string, journalPaths []string, raw []byte, validate
 			result.Output = nil
 		}
 	}()
+	if e = protectedOutput(out, protected); e != nil {
+		return result, e
+	}
 	if e = absent(out); e != nil {
 		return result, e
 	}
@@ -218,4 +227,35 @@ func journalNamespaceCollision(out, root string) (collision bool, err error) {
 		return nil
 	})
 	return collision, err
+}
+
+// PublishV2 protects descriptor/completion sources in addition to the existing
+// index/journal namespaces. It never acquires locks on immutable batch sources,
+// so a fresh recovery output works even after a crash left their old locks.
+func PublishV2(path string, d Document, raw []byte, validate Validator, retryPolicy ...RetryValidator) (Publication, error) {
+	if d.SchemaVersion != 2 || d.sourceIndexPath == "" {
+		return Publication{}, invalid()
+	}
+	return publishProtected(path, d.sourceIndexPath, d.journalPaths, d.sourcePaths, raw, validate, retryPolicy, nil)
+}
+func protectedOutput(out string, sources []string) error {
+	for _, source := range sources {
+		name, err := canonicalParent(source)
+		if err != nil {
+			return err
+		}
+		for _, candidate := range []string{out, out + ".lock"} {
+			for _, protected := range []string{name, name + ".lock"} {
+				if inside(candidate, protected) || inside(protected, candidate) {
+					return delivery.Fail("output_collision", "output overlaps batch source")
+				}
+			}
+		}
+		// The owned output lock materializes aliases of an otherwise absent source
+		// lock name without acquiring or breaking that source's lock.
+		if samePath(out+".lock", name+".lock.lock") {
+			return delivery.Fail("output_collision", "output overlaps batch source lock")
+		}
+	}
+	return nil
 }

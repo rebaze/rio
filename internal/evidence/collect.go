@@ -57,8 +57,11 @@ func source(id, kind string, b []byte) SourceDocument {
 }
 func eventID(id string, n int) string { return fmt.Sprintf("delivery/%s/%020d", id, n) }
 func assemble(raw []byte, captures []record.Capture, version string, validate Validator, retryPolicy ...RetryValidator) (Document, error) {
+	return assembleLimited(raw, captures, version, MaxJournals, validate, retryPolicy...)
+}
+func assembleLimited(raw []byte, captures []record.Capture, version string, maxJournals int, validate Validator, retryPolicy ...RetryValidator) (Document, error) {
 	var d Document
-	if version == "" || int64(len(raw)) > delivery.IndexLimit || len(captures) > MaxJournals {
+	if version == "" || int64(len(raw)) > delivery.IndexLimit || len(captures) > maxJournals {
 		return d, invalid()
 	}
 	idx, e := delivery.ParseIndex(raw)

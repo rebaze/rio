@@ -14,6 +14,7 @@ import (
 )
 
 var recordPublish = evidence.Publish
+var recordPublishV2 = evidence.PublishV2
 
 type recordCounts struct {
 	Artifacts  int `json:"artifacts"`
@@ -46,14 +47,31 @@ func recordFlags(cmd *cobra.Command) error {
 }
 func newRecordCommand(g *globalOptions, stdout, stderr io.Writer) *cobra.Command {
 	var indexPath, output string
-	var journals []string
+	var journals, batches []string
+	var schemaVersion int
 	var asJSON bool
 	cmd := &cobra.Command{Use: "record", Short: "Collect one offline record of current evidence", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		r := recordResult{SchemaVersion: 1, Operation: "record", Outcome: "error"}
 		if e := recordFlags(cmd); e != nil {
 			return recordFinish(r, nil, e, asJSON, g, stdout, stderr)
 		}
-		d, e := evidence.Collect(indexPath, journals, Version(), validateSnapshot, recordPolicy)
+		if schemaVersion != 1 && schemaVersion != 2 {
+			return recordFinish(r, nil, delivery.Fail("unsupported_version", "record schema version must be 1 or 2"), asJSON, g, stdout, stderr)
+		}
+		if len(batches) > 0 && schemaVersion != 2 {
+			return recordFinish(r, nil, delivery.Fail("invalid_flag", "--batch requires --schema-version 2"), asJSON, g, stdout, stderr)
+		}
+		var d evidence.Document
+		var e error
+		if schemaVersion == 2 {
+			sourceIndex := indexPath
+			if len(batches) > 0 && !cmd.Flags().Changed("index") {
+				sourceIndex = ""
+			}
+			d, e = evidence.CollectV2(sourceIndex, batches, journals, Version(), validateSnapshot, recordPolicy)
+		} else {
+			d, e = evidence.Collect(indexPath, journals, Version(), validateSnapshot, recordPolicy)
+		}
 		if e != nil {
 			return recordFinish(r, nil, e, asJSON, g, stdout, stderr)
 		}
@@ -62,7 +80,12 @@ func newRecordCommand(g *globalOptions, stdout, stderr io.Writer) *cobra.Command
 		if e != nil {
 			return recordFinish(r, &d, e, asJSON, g, stdout, stderr)
 		}
-		pub, e := recordPublish(output, indexPath, journals, raw, validateSnapshot, recordPolicy)
+		var pub evidence.Publication
+		if schemaVersion == 2 {
+			pub, e = recordPublishV2(output, d, raw, validateSnapshot, recordPolicy)
+		} else {
+			pub, e = recordPublish(output, indexPath, journals, raw, validateSnapshot, recordPolicy)
+		}
 		r.OutputMayExist = pub.OutputMayExist
 		r.Output = pub.Output
 		if e == nil {
@@ -70,6 +93,8 @@ func newRecordCommand(g *globalOptions, stdout, stderr io.Writer) *cobra.Command
 		}
 		return recordFinish(r, &d, e, asJSON, g, stdout, stderr)
 	}}
+	cmd.Flags().IntVar(&schemaVersion, "schema-version", 1, "record format version (1 or 2)")
+	cmd.Flags().StringArrayVar(&batches, "batch", nil, "explicit immutable batch descriptor (repeatable; requires v2)")
 	cmd.Flags().StringVar(&indexPath, "index", "target/rio/index.json", "normalization index file")
 	cmd.Flags().StringArrayVar(&journals, "delivery-record", nil, "explicit delivery journal directory (repeatable)")
 	cmd.Flags().StringVar(&output, "output", "record.json", "new evidence file; existing parent required")
