@@ -176,7 +176,7 @@ rio record report --file target/rio/record.json --output target/rio/report.html
 Only proceed to delivery when normalization succeeds. The v2 record retains scope, changes, effective
 checks, all selected attempts and missing-evidence gaps. It also remains collectable offline after
 partial delivery. See the [client evidence workflow](docs/cli.md#portable-client-evidence) and
-[installed-binary examples](tools/README.md#client-evidence-demos).
+[installed-binary examples](tools/README.md#client-evidence-demos), including a complete client handoff.
 
 To collect an explicitly selected journal using the v1 default, replace `JOURNAL_PATH` with its path:
 

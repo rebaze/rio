@@ -1087,3 +1087,41 @@ installed release binary; no Go toolchain is needed. The existing [record demo](
 also verifies explicit v2 collection with expected scope not recorded while retaining its v1 cases.
 The record, batch and TLS demos render offline HTML after source removal; the batch demo retains
 accepted, partial and combined-history reports for comparison.
+
+The [complete client handoff](demo-client-record/README.md) combines two artifact sets, repairs,
+uplift, enrichment, expected routing, trusted HTTPS, explicit bypass and retained observations in
+one standalone JSON/HTML story. Partial delivery and failed-gate cases stay separate.
+The [owned real Dependency-Track harness](demo-delivery/integration/README.md#repeatable-owned-setup-and-client-handoff)
+provisions pinned disposable infrastructure and distinguishes native evidence from harness inventory checks.
+
+## Authored release notes
+
+`release-notes.py` selects `docs/releases/<tag>.md` before `release-publish.py stage` freezes the
+release inventory. The first line must identify the exact tag (`# Rio v0.6.0`, optionally followed
+by a title), and the body must be nonempty. Exact bytes are copied into `dist/CHANGELOG.md`, which
+remains inside the existing verification/publication boundary.
+
+Tags v0.6.0 and newer, including prereleases, refuse missing, empty or mismatched authored notes.
+For tags below v0.6.0, a missing authored file explicitly permits the nonempty generated GoReleaser
+changelog; an authored file that exists still must validate. Existing tags/releases remain immutable.
+
+## Published-release verification
+
+`verify-release.py` downloads the complete stable OS/architecture asset set into a fresh directory,
+checks archive checksums, the Sigstore checksum bundle, and GitHub build/SBOM attestations against
+the exact repository, release workflow/tag and source commit. The downloaded source SBOM must match
+the signed predicate, and the public non-draft release body must match the supplied authored notes.
+Only after those checks does it extract and execute the native binary, assert version/commit, and
+run the complete client-record demo. It does not install or replace a user's Rio binary.
+
+```sh
+python3 tools/verify-release.py --tag v0.6.0 --commit FULL_VERIFIED_COMMIT \
+  --notes docs/releases/v0.6.0.md --output /absolute/new/private/verification
+```
+
+Requires Python 3.9+, `gh` and `cosign`. The manual `Verify published release` workflow runs the same
+checks with native Linux/macOS/Windows binaries and installs the Homebrew cask only on a disposable
+macOS runner. Its input commit is the exact verified integrated commit. Architecture execution is
+reported explicitly; verifying an archive is not a claim that its binary ran natively.
+`--legacy-smoke` permits version-only execution for older releases before v0.6.0, which lack this
+client demo. It is refused for v0.6.0 and newer, so it cannot waive this release's client gate.

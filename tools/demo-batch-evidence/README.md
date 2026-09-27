@@ -1,6 +1,6 @@
 # Batch evidence and portable record v2
 
-Run with Python 3.9+ and an installed Rio containing the client evidence workflow (v0.6.0 planned):
+Run with Python 3.9+ and an installed Rio containing the client evidence workflow (v0.6.0 or newer):
 
 ```sh
 python3 tools/demo-batch-evidence/run.py /absolute/path/to/rio
@@ -26,5 +26,5 @@ acknowledgment and uncertainty, not Dependency-Track processing or content verif
 The optional HTML client report is covered by the complete client-record demo.
 
 The client-evidence version of this demo requires an installed release containing `record report`
-(v0.6.0 planned). It renders self-contained HTML after removing the source workspace. No JavaScript,
+(v0.6.0 or newer). It renders self-contained HTML after removing the source workspace. No JavaScript,
 external fonts or network resources are needed to read it; retain the JSON for machine inspection.

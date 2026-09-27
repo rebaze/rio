@@ -1,5 +1,5 @@
 #!/bin/sh
-# Synthetic example. Requires only an installed Rio containing #71 and standard utilities.
+# Synthetic example. Requires only an installed Rio v0.6.0+ and standard utilities.
 set -eu
 if [ "$#" -gt 1 ]; then
   printf 'Usage: %s [rio-command-or-path]\n' "$0" >&2
@@ -7,7 +7,7 @@ if [ "$#" -gt 1 ]; then
 fi
 rio_command=${1:-${RIO_BIN:-rio}}
 if ! rio_bin=$(command -v "$rio_command"); then
-  printf 'Cannot find rio: %s. Install a release containing #71 or set RIO_BIN.\n' "$rio_command" >&2
+  printf 'Cannot find rio: %s. Install a release v0.6.0 or newer or set RIO_BIN.\n' "$rio_command" >&2
   exit 2
 fi
 case "$rio_bin" in

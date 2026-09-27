@@ -55,6 +55,11 @@ jobs:
             --exclude './dist/**' \
             --output "cyclonedx-json=dist/rio-${GITHUB_REF_NAME}-source.cdx.json"
 
+      - name: Select authored notes for the exact tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: python3 tools/release-notes.py --tag "$TAG" --notes-dir docs/releases --dist dist
+
       - name: Stage the exact release assets
         shell: bash
         env:
