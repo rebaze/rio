@@ -1,6 +1,7 @@
 package delivery
 
 import (
+	"bytes"
 	"encoding/json"
 	"github.com/rebaze/rio/internal/index"
 	"gopkg.in/yaml.v3"
@@ -28,11 +29,29 @@ type UnusedRule struct {
 	ArtifactID string `json:"artifactId"`
 	Rule       string `json:"rule"`
 }
+
+// BatchScope retains allowlisted routing configuration and invocation filters.
+// Configured targets include those excluded by filters; no secrets are resolved.
+type BatchScope struct {
+	ArtifactFilter  []string      `json:"artifactFilter"`
+	TargetFilter    []string      `json:"targetFilter"`
+	AllowFailedGate bool          `json:"allowFailedGate"`
+	Targets         []BatchTarget `json:"targets"`
+}
+type BatchTarget struct {
+	Name    string   `json:"name"`
+	Exclude []string `json:"exclude"`
+}
+
 type BatchPlan struct {
+	indexRaw                    []byte
+	Scope                       BatchScope `json:"scope"`
 	IndexSHA256, ManifestSHA256 string
 	Jobs                        []Job
 	UnusedRules                 []UnusedRule
 }
+
+func (p BatchPlan) IndexBytes() []byte { return bytes.Clone(p.indexRaw) }
 
 // ValidateConfig validates every target and override with a placeholder subject.
 // Only selected jobs resolve actual subjects, credentials or transport files.
@@ -128,6 +147,7 @@ func planBatch(c Config, indexPath string, o PlanOptions, registry map[string]Pr
 		return plan, e
 	}
 	plan.IndexSHA256 = Digest(raw)
+	plan.indexRaw = bytes.Clone(raw)
 	idx, e := ParseIndex(raw)
 	if e != nil {
 		return plan, e
@@ -152,6 +172,10 @@ func planResolved(plan BatchPlan, c Config, indexPath string, idx index.Index, o
 		return plan, e
 	}
 	order := sortedTargets(c.Targets)
+	plan.Scope = BatchScope{ArtifactFilter: append([]string{}, o.Artifacts...), TargetFilter: append([]string{}, o.Targets...), AllowFailedGate: o.AllowFailedGate, Targets: []BatchTarget{}}
+	for _, id := range order {
+		plan.Scope.Targets = append(plan.Scope.Targets, BatchTarget{Name: id, Exclude: append([]string{}, c.Targets[id].Exclude...)})
+	}
 	for _, id := range order {
 		t := c.Targets[id]
 		for _, a := range t.Exclude {

@@ -10,6 +10,7 @@ import (
 )
 
 type Prepared struct {
+	AttemptID          string
 	ExpectedReferences []delivery.Reference
 	ValidateIntent     func(record.Intent) error
 	Verified           delivery.Verified
@@ -97,7 +98,11 @@ func submitWithJournal(ctx context.Context, p Prepared, path string, create func
 	if create != nil {
 		w, e = create(intent)
 	} else if p.Reservation != nil {
-		w, e = p.Reservation.Create(intent)
+		if p.AttemptID != "" {
+			w, e = p.Reservation.CreateWithAttemptID(intent, p.AttemptID)
+		} else {
+			w, e = p.Reservation.Create(intent)
+		}
 	} else {
 		w, e = record.Create(path, intent)
 	}
