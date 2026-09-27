@@ -7,6 +7,7 @@ import (
 	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/delivery/runner"
 	"github.com/rebaze/rio/internal/manifest"
+	"github.com/rebaze/rio/internal/receipt"
 	"github.com/spf13/cobra"
 	"io"
 	"os"
@@ -51,10 +52,22 @@ func deliveryFinish(r runner.Result, e error, o deliveryOptions, global *globalO
 		r, e = runner.Failure(r, e, runner.PreflightCode(e))
 	}
 	if o.json {
-		if err := json.NewEncoder(stdout).Encode(r); err != nil {
+		var result any = r
+		if o.receipt != nil {
+			result = struct {
+				runner.Result
+				Receipt      *receipt.Publication `json:"receipt,omitempty"`
+				RunID        string               `json:"runId"`
+				RunDirectory string               `json:"runDirectory"`
+			}{r, o.receipt.publication, o.receipt.store.ID, o.receipt.store.Dir}
+		}
+		if err := json.NewEncoder(stdout).Encode(result); err != nil {
 			return internalErrorf("writing delivery result")
 		}
 	} else if !global.quiet {
+		if o.receipt != nil {
+			fmt.Fprintf(stdout, "receipt: %s\n", o.receipt.store.Path)
+		}
 		word := r.Outcome
 		if word == "not-observed" {
 			word = "no processing observed"
@@ -145,7 +158,7 @@ func rejectDeliveryInherited(cmd *cobra.Command) error {
 	if cmd.Flags().Changed("config") || cmd.Flags().Changed("delivery") {
 		return delivery.Fail("removed_flag", "put delivery.targets in rio.yaml; use --manifest and --target")
 	}
-	if cmd.Flags().Changed("out") {
+	if cmd.Flags().Changed("out") && cmd.Name() != "deliver" && cmd.Name() != "reconcile" {
 		return delivery.Fail("invalid_flag", "delivery does not accept --out; use --index")
 	}
 	if cmd.Name() == "inspect" && cmd.Flags().Changed("manifest") {
@@ -158,9 +171,21 @@ func batchFinish(r runner.BatchResult, e error, o deliveryOptions, g *globalOpti
 		r, e = runner.BatchFailure(r, e, runner.PreflightCode(e))
 	}
 	if o.json {
-		if err := json.NewEncoder(stdout).Encode(r); err != nil {
+		var result any = r
+		if o.receipt != nil {
+			result = struct {
+				runner.BatchResult
+				Receipt      *receipt.Publication `json:"receipt,omitempty"`
+				RunID        string               `json:"runId"`
+				RunDirectory string               `json:"runDirectory"`
+			}{r, o.receipt.publication, o.receipt.store.ID, o.receipt.store.Dir}
+		}
+		if err := json.NewEncoder(stdout).Encode(result); err != nil {
 			return internalErrorf("writing delivery batch result")
 		}
+	}
+	if !o.json && o.receipt != nil {
+		fmt.Fprintf(stdout, "receipt: %s\n", o.receipt.store.Path)
 	}
 	if !o.json && !g.quiet {
 		fmt.Fprintf(stderr, "%s: %s\n", r.Operation, r.Outcome)

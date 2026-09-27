@@ -130,12 +130,13 @@ type Transport struct {
 	CertificateVerification string `json:"certificateVerification"`
 }
 type Response struct {
-	Kind       string      `json:"kind"`
-	Value      string      `json:"value"`
-	HTTPStatus int         `json:"httpStatus,omitempty"`
-	ObservedAt string      `json:"observedAt,omitempty"`
-	Code       string      `json:"code,omitempty"`
-	References []Reference `json:"references,omitempty"`
+	AttemptedAt string      `json:"attemptedAt,omitempty"`
+	Kind        string      `json:"kind"`
+	Value       string      `json:"value"`
+	HTTPStatus  int         `json:"httpStatus,omitempty"`
+	ObservedAt  string      `json:"observedAt,omitempty"`
+	Code        string      `json:"code,omitempty"`
+	References  []Reference `json:"references,omitempty"`
 }
 type Reference struct {
 	Kind  string `json:"kind"`

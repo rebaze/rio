@@ -7,11 +7,13 @@ import (
 	"github.com/rebaze/rio/internal/delivery/dtrack"
 	"github.com/rebaze/rio/internal/delivery/oci"
 	"github.com/rebaze/rio/internal/delivery/record"
+	"github.com/rebaze/rio/internal/receipt"
 	"strings"
 )
 
 // This local registry owns adapter policies; core delivery remains HTTP-free.
 type adapterEntry struct {
+	CompactDestination         func(delivery.Description) (receipt.Target, map[string]string, receipt.Transport, error)
 	HumanIdentityLabel         string
 	HumanDescription           func(delivery.Description) string
 	HumanTransportPolicy       func(delivery.Description) string

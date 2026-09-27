@@ -67,7 +67,7 @@ func TestDTrackTLSSavedPolicyAndPortableEvidence(t *testing.T) {
 	if bytes.Contains(encoded, []byte("synthetic-tls-DO-NOT-RETAIN")) {
 		t.Fatal("API key retained")
 	}
-	for _, args := range [][]string{{"delivery", "inspect", "--record", journal}, {"delivery", "reconcile", "--record", journal, "--manifest", cfg}} {
+	for _, args := range [][]string{{"delivery", "inspect", "--record", journal}, {"delivery", "reconcile", "--out", t.TempDir(), "--record", journal, "--manifest", cfg}} {
 		out.Reset()
 		stderr.Reset()
 		if code := Main(args, &out, &stderr); code != 0 || !strings.Contains(stderr.String(), "insecureSkipVerify=true") || !strings.Contains(stderr.String(), "certificateVerification=disabled TLSObserved=true") {

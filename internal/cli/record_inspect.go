@@ -23,6 +23,9 @@ func newRecordInspectCommand(g *globalOptions, stdout, stderr io.Writer) *cobra.
 		if e != nil {
 			return recordFinish(r, nil, e, asJSON, g, stdout, stderr)
 		}
+		if isCompactReceipt(raw) {
+			return inspectCompactReceipt(raw, asJSON, g, stdout, stderr)
+		}
 		d, e := evidence.Parse(raw, validateSnapshot, recordPolicy)
 		if e != nil {
 			return recordFinish(r, nil, e, asJSON, g, stdout, stderr)

@@ -213,3 +213,13 @@ func (s *Store) WriteRecovery(raw []byte) error {
 	_, err := publishNew(filepath.Join(s.Dir, ".internal", "attempts.json"), raw)
 	return err
 }
+
+// PublishRecovered publishes a fresh immutable snapshot of the original run.
+// Unlike normal completion, an explicitly recovered snapshot may be incomplete.
+func PublishRecovered(path string, d Document) (Publication, error) {
+	raw, e := Marshal(d)
+	if e != nil {
+		return Publication{}, e
+	}
+	return publishNew(path, raw)
+}

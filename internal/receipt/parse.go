@@ -179,7 +179,7 @@ func Validate(d Document) error {
 		artifacts[a.ID] = a
 	}
 	for label, t := range d.Targets {
-		if label == "" || !oneOf(t.Type, "dependency-track", "oci") || !validURL(t.URL) {
+		if label == "" || t.Type == "" || !validURL(t.URL) {
 			return invalid("target")
 		}
 	}
@@ -189,7 +189,7 @@ func Validate(d Document) error {
 		if !ok || artifacts[v.ArtifactID].ID == "" {
 			return invalid("delivery reference")
 		}
-		if !oneOf(v.State, "accepted", "rejected", "unknown", "unattempted", "error", "evidence-gap") || !validPrior(v.Prior) {
+		if !oneOf(v.State, "accepted", "rejected", "unknown", "unattempted", "error", "evidence-gap", "observed", "unavailable") || !validPrior(v.Prior) {
 			return invalid("delivery state")
 		}
 		if v.AttemptID != "" {
@@ -245,7 +245,11 @@ func Validate(d Document) error {
 				return invalid("reference count")
 			}
 			for _, ref := range r.References {
-				if !oneOf(ref.Kind, "dependency-track:event-token", "oci:manifest", "oci:blob", "oci:subject", "oci:tag") || ref.Value == "" {
+				allowed := oneOf(ref.Kind, "dependency-track:event-token", "oci:manifest", "oci:blob", "oci:subject", "oci:tag")
+				if !oneOf(target.Type, "dependency-track", "oci") {
+					allowed = strings.HasPrefix(ref.Kind, target.Type+":") && len(ref.Kind) > len(target.Type)+1
+				}
+				if !allowed || ref.Value == "" {
 					return invalid("receiver reference")
 				}
 			}

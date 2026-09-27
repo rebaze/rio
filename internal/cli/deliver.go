@@ -12,11 +12,12 @@ import (
 
 func newDeliverCommand(g *globalOptions, stdout, stderr io.Writer) *cobra.Command {
 	var o deliveryOptions
-	var evidencePath string
+	var evidencePath, receiptPath string
 	cmd := &cobra.Command{Use: "deliver", Short: "Deliver all indexed SBOMs to configured targets; accepted does not mean ingested", Args: cobra.NoArgs}
 	deliveryFlags(cmd, &o, true, true)
 	cmd.Flags().StringVar(&o.retry, "retry-of", "", "prior journal; authorize possible duplicate with an explicit fresh --record")
 	cmd.Flags().StringVar(&evidencePath, "evidence", "", "publish a new portable v2 record and immutable batch recovery sources")
+	cmd.Flags().StringVar(&receiptPath, "receipt", "", "new compact receipt path; existing files are refused")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		if cmd.Flags().Changed("evidence") {
 			c := &batchCapture{Output: evidencePath, AutoCollect: true}
@@ -28,7 +29,33 @@ func newDeliverCommand(g *globalOptions, stdout, stderr io.Writer) *cobra.Comman
 			r, e := executeDeliverBatch(cmd, g, o, c)
 			return finishDeliveryEvidence(r, e, c, o, g, stdout, stderr)
 		}
+		if e := rejectDeliveryInherited(cmd); e != nil {
+			return batchFinish(runner.NewBatch("deliver", delivery.BatchPlan{}), e, o, g, stdout, stderr)
+		}
+		_, plan, e := batchPreflight(g.manifest, o)
+		if e != nil {
+			return batchFinish(runner.NewBatch("deliver", plan), e, o, g, stdout, stderr)
+		}
+		inv, e := startDeliveryInvocation(g, o, plan, receiptPath)
+		if e != nil {
+			return batchFinish(runner.NewBatch("deliver", plan), e, o, g, stdout, stderr)
+		}
+		o.receipt = inv
 		r, e := runDeliverBatch(cmd, g, o)
+		inv.doc.Run.Stages["delivery"] = "completed"
+		if e != nil {
+			inv.doc.Run.Stages["delivery"] = "failed"
+			if r.Outcome == "partial" {
+				inv.doc.Run.Stages["delivery"] = "partial"
+			}
+		}
+		publication, finalErr := inv.finish(e)
+		if finalErr != nil && finalErr != e {
+			r, e = runner.BatchFailure(r, finalErr, 3)
+		} else {
+			e = finalErr
+		}
+		inv.publication = &publication
 		return batchFinish(r, e, o, g, stdout, stderr)
 	}
 	return cmd

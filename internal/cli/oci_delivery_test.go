@@ -289,7 +289,7 @@ func TestOCICompleteJSONExitContracts(t *testing.T) {
 			config := fmt.Sprintf("version: 1\nartifacts: [{id: app, sbom: bom.json}]\ndelivery:\n  targets:\n    registry:\n      type: oci\n      registry: '%s'\n      repository: acme/app\n      auth: {anonymous: true}\n      allowHTTP: true\n", strings.TrimPrefix(server.URL, "http://"))
 			os.WriteFile(cfg, []byte(config), 0600)
 			var stdout, stderr bytes.Buffer
-			code := Main([]string{"deliver", "--index", ip, "--manifest", cfg, "--record", journal, "--json", "--quiet"}, &stdout, &stderr)
+			code := Main([]string{"deliver", "--out", t.TempDir(), "--index", ip, "--manifest", cfg, "--record", journal, "--json", "--quiet"}, &stdout, &stderr)
 			if code != tc.exit {
 				t.Fatal(code, stderr.String())
 			}
@@ -336,7 +336,7 @@ func TestOCIWholeBatchIntentLimitBeforeHTTP(t *testing.T) {
 	deliveryLookupEnv = func(string) (string, bool) { return "synthetic-value", true }
 	defer func() { deliveryLookupEnv = old }()
 	var stdout, stderr bytes.Buffer
-	code := Main([]string{"deliver", "--index", ip, "--manifest", cfg, "--json"}, &stdout, &stderr)
+	code := Main([]string{"deliver", "--out", t.TempDir(), "--index", ip, "--manifest", cfg, "--json"}, &stdout, &stderr)
 	if code != 2 || requests.Load() != 0 {
 		t.Fatal("HTTP before complete intent bound", code, requests.Load())
 	}

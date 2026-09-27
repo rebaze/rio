@@ -34,6 +34,17 @@ func deliveryFixture(t *testing.T, url string) (string, string) {
 func deliveryRun(t *testing.T, args ...string) (int, map[string]any, string) {
 	t.Helper()
 	var out, err bytes.Buffer
+	if len(args) > 0 && (args[0] == "deliver" || len(args) > 1 && args[1] == "reconcile") {
+		hasOut := false
+		for _, a := range args {
+			if a == "--out" {
+				hasOut = true
+			}
+		}
+		if !hasOut {
+			args = append(args, "--out", t.TempDir())
+		}
+	}
 	code := Main(append(args, "--json"), &out, &err)
 	var result map[string]any
 	d := json.NewDecoder(&out)

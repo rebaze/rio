@@ -7,7 +7,6 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/rebaze/rio/internal/buildcontext"
 	"github.com/rebaze/rio/internal/delivery"
@@ -22,8 +21,9 @@ type pipelineOptions struct {
 	skip, json         bool
 }
 type invocation struct {
-	store *receipt.Store
-	doc   receipt.Document
+	publication *receipt.Publication
+	store       *receipt.Store
+	doc         receipt.Document
 }
 
 func configurePipeline(cmd *cobra.Command, g *globalOptions, stdout, stderr io.Writer) {
@@ -73,23 +73,8 @@ func runPipeline(cmd *cobra.Command, g *globalOptions, o pipelineOptions, stdout
 		}
 	}
 	defer func() {
-		if err != nil {
-			r.doc.Exceptions = append(r.doc.Exceptions, safeCode(err))
-			r.doc.Run.Outcome = "failed"
-			if r.doc.Run.Stages["delivery"] == "partial" {
-				r.doc.Run.Outcome = "partial"
-			}
-		} else {
-			r.doc.Run.Outcome = "success"
-		}
-		r.doc.Run.FinishedAt = time.Now().UTC().Format(time.RFC3339Nano)
-		pub, persist := s.Publish(r.doc)
-		if closeErr := s.Close(); persist == nil {
-			persist = closeErr
-		}
-		if persist != nil {
-			err = internalErrorf("receipt persistence failed; a request may have happened; output may exist at %s; recover locally from %s without resubmitting: %v", s.Path, s.Dir, persist)
-		}
+		pub, finishErr := r.finish(err)
+		err = finishErr
 		result := struct {
 			RunID        string              `json:"runId"`
 			Outcome      string              `json:"outcome"`

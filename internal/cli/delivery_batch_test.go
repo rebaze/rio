@@ -35,6 +35,17 @@ func batchFixture(t *testing.T, server string) string {
 func runBatch(t *testing.T, args ...string) (int, map[string]any, string) {
 	t.Helper()
 	var out, stderr bytes.Buffer
+	if len(args) > 0 && args[0] == "deliver" {
+		hasOut := false
+		for _, a := range args {
+			if a == "--out" {
+				hasOut = true
+			}
+		}
+		if !hasOut {
+			args = append(args, "--out", t.TempDir())
+		}
+	}
 	code := Main(append(args, "--json"), &out, &stderr)
 	var r map[string]any
 	dec := json.NewDecoder(&out)

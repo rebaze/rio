@@ -101,7 +101,7 @@ func newRecordCommand(g *globalOptions, stdout, stderr io.Writer) *cobra.Command
 	cmd.Flags().StringArrayVar(&journals, "delivery-record", nil, "explicit delivery journal directory (repeatable)")
 	cmd.Flags().StringVar(&output, "output", "record.json", "new evidence file; existing parent required")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit one versioned result object")
-	cmd.AddCommand(newRecordInspectCommand(g, stdout, stderr), newRecordReportCommand(g, stdout, stderr))
+	cmd.AddCommand(newRecordInspectCommand(g, stdout, stderr), newRecordReportCommand(g, stdout, stderr), newRecordRecoverCommand(g, stdout, stderr))
 	return cmd
 }
 func countsFor(d evidence.Document) *recordCounts {

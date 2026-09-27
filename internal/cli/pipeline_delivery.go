@@ -56,6 +56,9 @@ func (r *invocation) prepareDeliveries(plan delivery.BatchPlan, prepared []runne
 		}
 		prepared[i].AttemptID = fmt.Sprintf("%x", id)
 		r.doc.Deliveries[i].AttemptID = prepared[i].AttemptID
+		if prior := prepared[i].Intent.Retry; prior != nil {
+			r.doc.Deliveries[i].Prior = &receipt.Prior{AttemptID: prior.AttemptID, SHA256: prior.SHA256}
+		}
 		recovery = append(recovery, struct {
 			AttemptID string `json:"attemptId"`
 			Journal   string `json:"journal"`
@@ -72,6 +75,9 @@ func (r *invocation) prepareDeliveries(plan delivery.BatchPlan, prepared []runne
 }
 
 func compactDestination(d delivery.Description) (receipt.Target, map[string]string, receipt.Transport, error) {
+	if entry, e := adapter(d.Type); e == nil && entry.CompactDestination != nil {
+		return entry.CompactDestination(d)
+	}
 	target := receipt.Target{Type: d.Type}
 	project := map[string]string{}
 	transport := receipt.Transport{}

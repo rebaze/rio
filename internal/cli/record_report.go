@@ -30,6 +30,12 @@ func newRecordReportCommand(g *globalOptions, stdout, stderr io.Writer) *cobra.C
 	cmd.Flags().StringVar(&output, "output", "", "new HTML output file (required)")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit one versioned result")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		if recordFlags(cmd) == nil && file != "" && output != "" {
+			raw, e := delivery.ReadBounded(file, evidence.FileLimit)
+			if e == nil && isCompactReceipt(raw) {
+				return reportCompactReceipt(raw, output, asJSON, stdout, stderr)
+			}
+		}
 		result := reportResult{SchemaVersion: 1, Operation: "record-report", Outcome: "error"}
 		var err error
 		run := func() error {
