@@ -64,7 +64,7 @@ does not assert that the certificate was invalid; an accepted upload still does 
 Neither file includes API keys, private certificate material, raw authentication responses, or
 production identifiers. The endpoint, database, teams and projects were dedicated synthetic test
 infrastructure. The [installed-binary HTTPS demo](../../demo-dtrack-tls/README.md) reproduces the
-verification-policy and portable-record behavior with a clearly labeled local synthetic receiver.
+verification-policy behavior and v0.7 compact receipts with a clearly labeled local synthetic receiver.
 
 ## Repeatable owned setup and client handoff
 
@@ -85,7 +85,7 @@ python3 tools/demo-delivery/integration/exercise.py /absolute/private/rio-dtrack
 python3 tools/demo-delivery/integration/setup.py stop /absolute/private/rio-dtrack
 ```
 
-Requires a local Docker socket, Docker Compose, Python 3.9+ and an installed Rio. `--adapter-tests`
+Requires a local Docker socket, Docker Compose, Python 3.9+ and installed Rio v0.7.0 or newer. `--adapter-tests`
 also requires Go and runs the existing real adapter suite over both HTTP and the local HTTPS gateway.
 Omit that flag to exercise only the installed binary, including published-release verification.
 The fixture directory is mode 0700, secret files are mode 0600, and private credentials are never
@@ -99,14 +99,19 @@ It rotates only the new server's initial admin password. The endpoint and owners
 checked before testing or teardown; production/non-loopback API URLs and foreign resources refuse.
 Cleanup removes only the matching Compose project's labelled containers, network and volumes.
 
-`exercise.py` checks default TLS refusal before application upload, three CA-verified artifact/target
-pairs, explicit bypass to a separate project, actual receipt/activity handling and separate harness
-inventory observations. It stops the gateway and real receiver, removes only its source workspace,
+`exercise.py` checks default TLS refusal before application upload, then runs `rio --json` once
+for intake, enrichment, checks and three CA-verified artifact/target pairs. It verifies compact
+receipt digests/sizes against exact multipart bytes, destination projects, TLS facts and server
+event tokens. Specialist invocations check explicit bypass to a separate project and activity
+reconciliation, each with its own immutable receipt. Inventory observations belong to the harness. It stops the gateway and real receiver, removes only its source workspace,
 and inspects/renders the retained JSON offline. Earlier snapshots remain unchanged. Expected
 component PURLs observed by the harness do not establish byte-for-byte retention or add a native
 Dependency-Track content-verification capability.
 
 Only `exercise-*/verification.json`, `adapter-*-observations.json`, sanitized adapter logs,
-`record-before.json`, `record-after.json` and `report.html` are suitable for retention/sharing.
+`record-before.json` (the pipeline receipt), `record-untrusted.json`, `record-bypass.json`,
+`record-reconcile-*.json` and `report.html` are suitable for retention/sharing.
+The committed 5.1.1 captures above remain historical; this harness update does not assert a new
+real-server verification until the harness is run successfully.
 Never publish `private.json` or `test-env.json`. CI uploads only the allowlisted evidence files and
 runs teardown even after failure. Source-free HTML/JSON inspection needs no Go or Docker runtime.

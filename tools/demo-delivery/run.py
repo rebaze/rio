@@ -24,7 +24,7 @@ def main():
         raise SystemExit("Provide an installed Rio binary path")
     work = Path(tempfile.mkdtemp(prefix="rio-delivery-demo-"))
     env = dict(os.environ, RIO_SYNTHETIC_KEY="synthetic-demo-key", RIO_MISSING_KEY="")
-    received, expected, modes = [], set(), {"security": "accepted", "mirror": "accepted"}
+    received, payloads, expected, modes = [], [], set(), {"security": "accepted", "mirror": "accepted"}
 
     class Receiver(http.server.BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -49,7 +49,9 @@ def main():
             parts = {part.get_param("name", header="content-disposition"): part.get_payload(decode=True)
                      for part in message.iter_parts()}
             digest = hashlib.sha256(parts["bom"]).hexdigest()
-            assert digest in expected, "upload differed from a verified normalization output"
+            if expected:
+                assert digest in expected, "upload differed from a verified normalization output"
+            payloads.append(parts["bom"])
             received.append({"sha256": digest, "receiver": self.server.label, "synthetic": True,
                              "fields": {k: v.decode() for k, v in parts.items() if k != "bom"}})
             mode = modes[self.server.label]
@@ -94,7 +96,7 @@ def main():
         source(name)
 
     def run(*args, code=0, json_result=True):
-        command = [str(binary), *args]
+        command = [str(binary), *map(str, args)]
         if json_result:
             command.append("--json")
         result = subprocess.run(command, cwd=work, env=env, capture_output=True, text=True)
@@ -102,10 +104,16 @@ def main():
         assert env["RIO_SYNTHETIC_KEY"] not in result.stdout + result.stderr
         if json_result:
             value = json.loads(result.stdout)
+            if "receipt" in value:
+                raw = Path(value["receipt"]["path"]).read_bytes()
+                assert hashlib.sha256(raw).hexdigest() == value["receipt"]["sha256"]
+                assert len(raw) == value["receipt"]["size"]
+                receipt = json.loads(raw)
+                assert receipt["kind"] == "rio-run-receipt" and receipt["schemaVersion"] == 1
             (work / ("result-%02d.json" % len(list(work.glob("result-*.json"))))).write_text(result.stdout)
             return value
 
-    def refresh_outputs(folder="target/rio"):
+    def refresh_outputs(folder):
         idx = json.loads((work / folder / "index.json").read_text())
         for artifact in idx["artifacts"]:
             expected.add(artifact["output"]["sha256"])
@@ -113,47 +121,62 @@ def main():
 
     def single(record, *extra, code=0):
         return run("deliver", "--artifact", "application", "--target", "security",
-                   "--record", record, *extra, code=code)
+                   "--record", record, "--index", index_path, *extra, code=code)
 
     try:
-        # Normal path uses default filenames and no delivery selection or record flags.
-        run("normalize", "--gate", "fail", "--attest", json_result=False)
-        idx = refresh_outputs()
+        # One root invocation owns normalization, checks, fan-out and its compact receipt.
+        execution = run()
+        run_dir = Path(execution["runDirectory"])
+        index_path = run_dir / "index.json"
+        idx = refresh_outputs(run_dir)
         assert len(idx["artifacts"]) == 3
-        # Delivery uses index membership even when source modules change afterwards.
+        receipt = json.loads(Path(execution["receipt"]["path"]).read_text())
+        assert receipt["kind"] == "rio-run-receipt" and receipt["schemaVersion"] == 1
+        assert receipt["run"]["operation"] == "pipeline" and receipt["run"]["outcome"] == "success"
+        assert len(receipt["deliveries"]) == len(payloads) == 3
+        assert all(item["state"] == "accepted" for item in receipt["deliveries"])
+        assert [entry["fields"]["projectName"] for entry in received] == ["application", "mirror-application", "worker"]
+        assert all(entry["fields"]["autoCreate"] == "false" for entry in received)
+        artifacts = {item["id"]: item for item in receipt["artifacts"]}
+        for attempt, payload in zip(receipt["deliveries"], payloads):
+            output = artifacts[attempt["artifactId"]]["output"]
+            assert payload == (run_dir / output["path"]).read_bytes()
+            assert hashlib.sha256(payload).hexdigest() == output["sha256"]
+            assert attempt["submitted"][0]["artifactOutput"] == attempt["artifactId"]
+            assert attempt["transport"] == {"scheme": "http", "certificateVerification": "not-applicable"}
+            assert attempt["responses"][0]["references"] == [{"kind": "dependency-track:event-token", "value": TOKEN}]
+        # Specialist stage planning consumes the verified index even after modules change.
         shutil.rmtree(work / "services/worker")
         source("late-module")
-        plan = run("delivery", "plan")
+        plan = run("delivery", "plan", "--index", index_path)
         assert [(item["artifactId"], item["target"]) for item in plan["items"]] == [
             ("application", "security"), ("application", "z-mirror"), ("worker", "security")]
         assert plan["unusedRules"] == [{"target": "z-mirror", "artifactId": "absent-module", "rule": "override"}]
-        assert not (work / "target/rio/deliveries").exists()
-        result = run("deliver")
-        assert result["schemaVersion"] == 2 and result["outcome"] == "accepted"
-        assert all(item["state"] == "accepted" for item in result["items"])
-        assert [entry["fields"]["projectName"] for entry in received] == ["application", "mirror-application", "worker"]
-        assert all(entry["fields"]["autoCreate"] == "false" for entry in received)
-        first = result["items"][0]["record"]
+        recovery = json.loads((run_dir / ".internal/attempts.json").read_text())
+        first = recovery[0]["journal"]
         assert run("delivery", "inspect", "--record", first)["acknowledgment"] == "accepted"
         assert run("delivery", "reconcile", "--record", first)["activity"] == "not-observed"
         count = len(received)
-        assert run("deliver", code=2)["error"]["code"] == "record_exists"
+        assert run("deliver", "--index", index_path, code=2)["error"]["code"] == "record_exists"
         assert len(received) == count
 
         # Collision and a later target's missing credential both refuse before any request.
         (work / "rio.yaml").write_text(manifest.replace("      exclude: [test-fixtures]", "      project: {name: collision, version: '1'}\n      exclude: [test-fixtures]"))
-        assert run("deliver", code=2)["error"]["code"] == "target_collision"
+        assert run("deliver", "--index", index_path, code=2)["error"]["code"] == "target_collision"
         (work / "rio.yaml").write_text(manifest.replace("      exclude: [worker, test-fixtures]", "      exclude: [worker, test-fixtures]").replace(
             "apiKeyEnv: RIO_SYNTHETIC_KEY\n      exclude: [worker", "apiKeyEnv: RIO_MISSING_KEY\n      exclude: [worker"))
-        assert run("deliver", code=2)["error"]["code"] == "invalid_credential"
+        assert run("deliver", "--index", index_path, code=2)["error"]["code"] == "invalid_credential"
         assert len(received) == count
         (work / "rio.yaml").write_text(manifest)
 
         # A fresh output location scopes a deliberate new batch. No automatic resume.
-        shutil.copytree(work / "target/rio", work / "partial", ignore=shutil.ignore_patterns("deliveries"))
+        shutil.copytree(run_dir, work / "partial", ignore=shutil.ignore_patterns("deliveries", ".internal", "record.json"))
         modes["mirror"] = "lost"
         partial = run("deliver", "--index", "partial/index.json", code=4)
         assert partial["outcome"] == "partial"
+        partial_receipt = json.loads(Path(partial["receipt"]["path"]).read_text())
+        assert partial_receipt["run"]["operation"] == "deliver"
+        assert [item["state"] for item in partial_receipt["deliveries"]] == ["accepted", "unknown", "unattempted"]
         assert [item["state"] for item in partial["items"]] == ["accepted", "unknown", "unattempted"]
         unknown = partial["items"][1]["record"]
         assert run("delivery", "inspect", "--record", unknown)["outcome"] == "unknown"
@@ -163,10 +186,12 @@ def main():
         assert len(received) == count
         modes["mirror"] = "accepted"
         run("deliver", "--index", "partial/index.json", "--artifact", "worker", "--target", "security")
-        run("deliver", "--index", "partial/index.json", "--artifact", "application", "--target", "z-mirror",
-            "--retry-of", unknown, "--record", "deliberate-retry")
+        retried = run("deliver", "--index", "partial/index.json", "--artifact", "application", "--target", "z-mirror",
+                      "--retry-of", unknown, "--record", "deliberate-retry")
+        retry_receipt = json.loads(Path(retried["receipt"]["path"]).read_text())
+        assert retry_receipt["deliveries"][0]["prior"]["attemptId"] == partial_receipt["deliveries"][1]["attemptId"]
 
-        output = work / "target/rio/application.cdx.json"
+        output = run_dir / "application.cdx.json"
         checked = output.read_bytes()
         output.write_bytes(checked + b" ")
         count = len(received)
@@ -188,14 +213,14 @@ def main():
         missing = json.loads(json.dumps(seed))
         del missing["metadata"]["component"]["version"]
         source("application", missing)
-        run("normalize", "--out", "failed", "--gate", "fail", code=1, json_result=False)
-        refresh_outputs("failed")
+        failed = Path(run("normalize", "--out", "failed", "--gate", "fail", code=1)["runDirectory"])
+        refresh_outputs(failed)
         count = len(received)
-        single("failed-gate", "--index", "failed/index.json", code=2)
+        single("failed-gate", "--index", failed / "index.json", code=2)
         assert len(received) == count
         explicit = manifest.replace("      exclude: [test-fixtures]", "      project: {name: application, version: '1.2.3'}\n      exclude: [test-fixtures]")
         (work / "rio.yaml").write_text(explicit)
-        overridden = single("overridden-gate", "--index", "failed/index.json", "--allow-failed-gate")
+        overridden = single("overridden-gate", "--index", failed / "index.json", "--allow-failed-gate")
         assert overridden["items"][0]["source"]["gate"] == "fail"
         assert overridden["items"][0]["source"]["allowFailedGate"]
 
@@ -205,13 +230,13 @@ def main():
                                  "purl": "pkg:p2/synthetic.unmapped@1?classifier=osgi.bundle"}]
         source("application", future)
         (work / "rio.yaml").write_text(manifest.replace("    idFrom: module-directory", "    idFrom: module-directory\n    transforms:\n      - repair-purl: {ecosystem: p2}"))
-        run("normalize", "--out", "future", "--attest", json_result=False)
-        future_index = refresh_outputs("future")
+        future_dir = Path(run("normalize", "--out", "future", "--attest")["runDirectory"])
+        future_index = refresh_outputs(future_dir)
         artifact = future_index["artifacts"][0]
         assert artifact["schemaValidated"] is False and artifact["transforms"][0]["unmapped"] == 1
-        assert single("unmapped-skipped-schema", "--index", "future/index.json")["items"][0]["source"]["schemaValidated"] is False
+        assert single("unmapped-skipped-schema", "--index", future_dir / "index.json")["items"][0]["source"]["schemaValidated"] is False
         (work / "synthetic-requests.json").write_text(json.dumps(received, indent=2))
-        print("Synthetic demo passed:", len(received), "uploads; default paths, indexed membership, fan-out, collision/preflight refusal, partial history and deliberate retry.")
+        print("Synthetic demo passed:", len(received), "uploads; one-command receipt, isolated run directories, indexed membership, fan-out, collision/preflight refusal, partial history and deliberate retry.")
         print("Evidence (including unsigned statements and skipped validation):", work)
         print("No real Dependency-Track compatibility or ingestion claim is made by this demo.")
     finally:

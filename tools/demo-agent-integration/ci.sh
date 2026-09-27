@@ -1,7 +1,7 @@
 #!/bin/sh
 # Copyable CI step. Run from your project root, with Rio installed and rio.yaml present.
 # Usage: sh ci/rio.sh /path/to/rio sh ci/build-and-sbom.sh [build arguments...]
-# This does not install Rio, choose a generator, upload files, or delete old outputs.
+# Requires Python 3.9+. Configured delivery targets run in the root pipeline.
 set -eu
 if [ "$#" -lt 2 ]; then
   printf 'Usage: %s rio-command-or-path build-command [arguments...]\n' "$0" >&2
@@ -26,12 +26,10 @@ run_dir=$(mktemp -d "./rio-run.XXXXXXXX")
 run_dir=$(CDPATH='' cd "$run_dir" && pwd)
 printf 'Rio run directory: %s\n' "$run_dir"
 "$rio_bin" version
-"$rio_bin" plan --manifest rio.yaml --out "$run_dir/normalized" --json > "$run_dir/plan.json"
-"$rio_bin" normalize --manifest rio.yaml --out "$run_dir/normalized" --gate fail --attest
-# This directory was created for this invocation. It cannot include an older run.
-# With set -e, neither a plan refusal nor a gate failure reaches collection.
-# Suppress macOS AppleDouble metadata entries; ignored by other tar implementations.
-COPYFILE_DISABLE=1 tar -czf "$run_dir/bundle.tgz.partial" -C "$run_dir" plan.json normalized
-# Only expose the completed bundle name once archiving succeeds.
-mv "$run_dir/bundle.tgz.partial" "$run_dir/bundle.tgz"
-printf 'Bundle ready for the CI artifact collector: %s/bundle.tgz\n' "$run_dir"
+"$rio_bin" plan --manifest rio.yaml --out "$run_dir/output" --json > "$run_dir/plan.json"
+# Root execution applies the manifest's local processing and configured delivery.
+# On failure its automatic receipt remains available, but no success is announced.
+"$rio_bin" --manifest rio.yaml --out "$run_dir/output" --gate fail --json > "$run_dir/result.json"
+receipt=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["receipt"]["path"])' "$run_dir/result.json")
+"$rio_bin" record inspect --file "$receipt" --json > "$run_dir/inspection.json"
+printf 'Receipt ready for the CI artifact collector: %s\n' "$receipt"

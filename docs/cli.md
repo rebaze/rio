@@ -1,368 +1,107 @@
 # Command reference
 
-[Start here](../README.md#quick-start) · [Manifest](manifest.md) · [Output records](output.md)
+[One-command quick start](quick-start.md) · [Manifest](manifest.md) · [Receipt contract](output.md)
 
-Rio reads existing local CycloneDX JSON SBOMs. Run it after the project's SBOM-producing build.
-This reference describes `main`; use a release containing the configuration features you need.
-
-- [Installation](#install)
-- [Commands and flags](#usage)
-- [Preview a run](#rio-plan)
-- [Plan JSON contract](#the-plan-json)
-- [Exit codes](#exit-codes)
+Rio 0.7.0 uses one invocation owner and one compact receipt. Root execution, native delivery and reconciliation may use the network. Normalize, plan, inspect, report and recovery are offline. Read-only commands do not create execution receipts.
 
 ## Install
-
-Single command, for pipelines:
-
-```sh
-curl -sSL https://raw.githubusercontent.com/rebaze/rio/main/install.sh | sh
-```
-
-The script detects the platform, downloads the matching release binary and installs it. Set
-`RIO_VERSION` to pin a release instead of taking the latest, and `RIO_INSTALL_DIR` to choose the
-install directory, which otherwise is `/usr/local/bin` when that is writable and `$HOME/.local/bin`
-when it is not. If `rio` is not on your PATH afterwards, add the chosen install directory to PATH
-or invoke the binary by its full path.
-
-The assignments go after the pipe, on `sh`. In front of `curl` they would be set for `curl`, which
-does not read them, and the installer would run with neither.
-
-```sh
-curl -sSL https://raw.githubusercontent.com/rebaze/rio/main/install.sh \
-  | RIO_VERSION=v0.3.0 RIO_INSTALL_DIR=/usr/local/bin sh
-```
-
-Homebrew:
 
 ```sh
 brew install rebaze/tap/rio
 ```
 
-From source, if you already have a Go toolchain:
+Or install a release binary with a pinned version and chosen directory:
 
 ```sh
-go install github.com/rebaze/rio/cmd/rio@latest
+curl -sSL https://raw.githubusercontent.com/rebaze/rio/main/install.sh \
+  | RIO_VERSION=v0.7.0 RIO_INSTALL_DIR="$HOME/.local/bin" sh
 ```
 
-## Usage
+The installer variables belong on `sh`, after the pipe. Without them it uses the latest release and chooses a writable installation directory. Add the selected directory to `PATH`. [Platform downloads](https://github.com/rebaze/rio/releases/latest) also include Windows archives. Rio itself has no external runtime dependencies; supporting demos use Python 3.9+ where documented.
 
-Run from the repository root, after the build has produced SBOMs.
+## Root execution
 
-```
-rio normalize [flags]
-
-  --manifest string   path to manifest (default "rio.yaml")
-  --out string        output directory (default "target/rio")
-  --gate string       "warn" or "fail" (default "warn")
-  --attest            write an unsigned in-toto statement per artifact
-  --quiet             suppress per artifact progress on stdout
-
-rio plan [flags]
-
-  --manifest string   path to manifest (default "rio.yaml")
-  --out string        output directory (default "target/rio")
-  --json              print the plan as JSON
-  --quiet             suppress per artifact progress on stdout
-
-rio version
+```text
+rio [flags]
+  --manifest PATH       default rio.yaml
+  --out DIR             output root; flag > output.directory > target/rio
+  --receipt PATH        new public receipt destination; default <runDirectory>/record.json
+  --artifact ID         repeatable artifact selection; default all
+  --target ID           repeatable target selection; default all
+  --gate fail|warn      flag > gate.mode > fail
+  --skip-delivery       local stages only
+  --json                structured result with runId, outcome, runDirectory and receipt metadata
+  --quiet               suppress optional progress
 ```
 
-For a Maven build already configured to produce SBOMs, choose a
-[minimal Dependency-Track or OCI configuration](../README.md#deliver-your-first-sbom) in `rio.yaml`
-and inject that destination's credentials through the environment. The examples state which
-features are released or require a preview build. Then run:
+Bare `rio` runs intake, normalization/enrichment/context, schema/quality checks, then configured delivery. It does not prompt before configured uploads. No targets means successful local work with delivery `not-configured`. An enforced gate failure blocks every selected upload. A deliberate warn policy retains failed checks and the override while permitting continuation.
 
-```sh
-mvn -B verify && rio normalize --gate fail && rio deliver --json
-```
+`--manifest`, `--out` and `--receipt` are relative to the caller's working directory. Paths inside the manifest, including `output.directory`, are relative to the manifest. Explicit flags override manifest values; omitted flags do not. A receipt override changes only the public receipt destination. Its parent must exist. Existing files, locks or unsafe collisions are refused before requests.
 
-Intake and delivery targets stay together in `rio.yaml`. Native delivery verifies the recorded
-output before upload; accepted receipts do not prove ingestion. Each attempt gets an automatic
-journal path. Use that path with `rio record --delivery-record PATH --output record.json` to keep
-portable evidence. Offline preview and inspection,
-reconciliation, permissions and delivery exit codes are documented in
-[the delivery guide](../tools/README.md#native-verified-delivery).
-Pipelines using the retired shell uploader should follow the
-[native delivery migration guide](../tools/README.md#migrating-to-native-dependency-track-delivery).
-
-Normalization prints one line per artifact on stdout, then a summary. Machine detail belongs in `index.json`, not here.
-Errors and warnings go to stderr. A run over the committed fixtures `testdata/tycho-rcp.cdx.json`
-and `testdata/gate-missing-version.cdx.json` prints:
-
-```
-rcp-client  12 components   repaired 8    unmapped 1    gate ok
-server-war   2 components   repaired 0    unmapped 0    gate FAIL (1 component missing version)
-2 artifacts, 1 gate failure
-```
+Each execution owns a collision-resistant `runs/<run-id>/` directory. Never infer the current run from old files or a mutable `latest` alias; use the printed path or structured result. Inputs, metadata assertions, checks, byte identities, selected/excluded scope and overrides are recorded compactly.
 
 ## `rio plan`
 
-`plan` prints what a `normalize` run would read, write and repair, and does none of it. It writes no
-files and makes no network calls.
-
-```
-$ rio plan
-manifest  rio.yaml (sha256 a1b2c3d4e5f6...)
-
-rcp-client
-  read   target/bom.json
-  write  target/rio/rcp-client.cdx.json
-  repair-purl  ecosystem p2  table p2-maven.json
-
-gate  require name, version, purl
+```sh
+rio plan --json
+rio plan --artifact app --target security --gate warn --out release-output
 ```
 
-Only the options a manifest actually set are shown; `--json` carries every one of them, resolved.
-Exit 2 for the same manifest and glob problems `normalize` refuses, exit 0 otherwise. There is no
-exit 1, because no gate runs.
+Plan accepts the root manifest/output/receipt/gate/artifact/target/skip settings and previews their effective values. It resolves input wiring and describes transforms without constructing them, opening SBOM/context contents, loading CA files, resolving credentials or making requests. Projects derived from normalized subjects are explicitly marked `projectSource: "normalized-subject"`; final identity is resolved during execution.
 
-A table that does not exist yet is reported on the line that names it, rather than being an error.
-That is the point of the command: the table is built *from* the plan, so the first run in a
-repository necessarily names one that is not there.
+The additive `planVersion: 1` JSON contract retains `manifest`, `out`, `builtinTable`, `artifacts`, transform options and gate requirements. It also includes `runDirectory` and `receipt` templates containing `<run-id>`, effective `gate.mode`, delivery mode/targets/pairs, and compact exclusions. `artifacts[].input.path` is manifest-relative; `artifacts[].output.path` is relative to the eventual run directory. Supporting tools can keep harvesting declared inputs without requiring the transform's mapping table to exist.
 
-### The plan JSON
+Plan writes nothing and creates no run receipt. It is a preview of configured work, not evidence that checks or uploads succeeded.
 
-`rio plan --json` is a machine contract. It is what `tools/build-p2-table.py` reads to learn which
-SBOMs to harvest, which table to write and under which scope filter, so that none of it has to be
-restated on a command line where it could disagree with the manifest.
+## Stage commands
 
-```json
-{
-  "planVersion": 1,
-  "tool": { "name": "rio", "version": "0.3.0" },
-  "manifest": { "path": "rio.yaml", "dir": "/abs/repo", "sha256": "a1b2c3..." },
-  "out": "target/rio",
-  "builtinTable": { "org.objectweb.asm": { "groupId": "org.ow2.asm", "artifactId": "asm" } },
-  "artifacts": [
-    {
-      "id": "rcp-client",
-      "input":  { "path": "target/bom.json" },
-      "output": { "path": "rcp-client.cdx.json" },
-      "transforms": [
-        { "name": "repair-purl", "ecosystem": "p2", "table": "p2-maven.json",
-          "groupPrefix": "p2.", "classifier": "osgi.bundle",
-          "syntheticNamespace": "p2.eclipse.plugin" }
-      ]
-    }
-  ],
-  "gate": { "require": ["name", "version", "purl"] }
-}
+Use stages separately only when that is the intended workflow:
+
+```sh
+rio normalize --json --attest
+rio deliver --index PATH_FROM_NORMALIZE/index.json --json
 ```
 
-- `planVersion` is the compatibility lever, the role `version` plays in the manifest. A consumer
-  checks it before anything else and refuses a number it does not know.
-- Paths follow `index.json`'s convention: `input.path` is relative to the manifest's directory,
-  `output.path` to `out`, and `table` is exactly as the manifest wrote it, since that is how rio
-  resolves it.
-- Every transform option is reported **resolved**, defaults filled in, so a consumer never carries
-  its own copy of `p2.` or `osgi.bundle`.
-- `builtinTable` is the mapping table compiled into this binary. An override always wins over it, so
-  a generated table that repeats an entry verbatim would silently shadow any later fix rio makes to
-  it; publishing the asset is what lets a generator stay a delta over it.
-- `manifest.dir` is the one absolute path rio ever writes, and the one deliberate break from
-  `index.json`'s rules. The index refuses absolute paths because it is a committed artifact whose
-  digests are a contract; a plan is transient stdout that exists to be joined against, and making
-  the consumer guess the base directory is worse.
+`normalize` supports `--manifest`, `--out`, `--receipt`, `--artifact`, `--gate`, `--attest`, `--json`, and `--quiet`. Its historical default gate policy is `warn` when neither manifest nor flags select a mode. It never delivers. Generated SBOMs, index and optional unsigned in-toto statements share its fresh run directory.
 
-When enrichment is configured, each artifact also has an optional `enrichment` object with its own
-`version: 1` and resolved `fields`. Each field reports `field`, `value`, `source` (a manifest selector
-such as `enrichment.producer.name` or `artifacts[0].enrichment.subject.name`) and `replace` (boolean).
-Fields are sorted by name. Planning resolves declarations without reading SBOM content: it can
-show replacement intent but cannot establish whether an existing value conflicts.
+`deliver` consumes already-normalized index members, verifies their captured bytes, and produces its own receipt. It does not attribute earlier normalization/context additions to this invocation. Use explicit `--index`; its conventional default is `target/rio/index.json`, which is not the new normalization run path. Artifact/target filters are repeatable. `--allow-failed-gate` is the explicit standalone override; root's warn policy does not silently change standalone refusal.
 
-When an artifact binds context, the plan artifact has `context: {"version":1,
-"file":"build-context.json","require":["source.repository"],"replace":[]}`. The path is
-manifest-relative. Planning reports only that binding and never opens the context file or SBOM;
-it can succeed before the producer writes the context file; the selected SBOM must already exist.
+Delivery JSON exposes the batch result and automatic receipt metadata. Its `items[].record` paths identify internal attempt journals for specialist inspection, retry and reconciliation. An explicit fresh `--record DIR` requires one selected artifact/target pair. Reusing a journal is refused.
 
-This is not `index.json` with fewer fields. The index describes a run that happened, and a run needs
-the mapping table that the plan is read to produce, so the index can never describe the first run
-in a repository.
+```sh
+rio delivery plan --index RUN_DIRECTORY/index.json --json
+rio delivery inspect --record JOURNAL_DIRECTORY --json
+rio deliver --index RUN_DIRECTORY/index.json --artifact app --target security \
+  --retry-of PRIOR_JOURNAL --record FRESH_JOURNAL --json
+rio delivery reconcile --record JOURNAL_DIRECTORY --json
+```
+
+`delivery plan` verifies current index members offline. `delivery inspect` reads the selected internal journal offline. Neither creates an execution receipt. Explicit retry authorizes possible duplicate delivery only when source/target/policies match and a fresh journal is selected. Reconciliation performs supported read-only receiver observations; it creates a new receipt referencing the prior attempt and includes only observations made in that invocation. Earlier public receipts stay unchanged. DTrack `--wait DURATION` may poll for up to 10 minutes; OCI content observations do not poll. Acceptance, processing activity and content verification remain distinct.
+
+## Inspect, report and recover
+
+```sh
+rio record inspect --file record.json
+rio record inspect --file record.json --json
+rio record report --file record.json --output report.html
+rio record recover --run INTERRUPTED_RUN_DIRECTORY --output recovered.json
+```
+
+Inspection validates the compact schema, references and internal consistency; it does not replay absent source documents or authenticate unsigned claims. Reporting uses the exact inspected JSON digest, escapes supplied text and embeds all styles. Neither follows receipt URLs or workspace paths. Existing report files are refused.
+
+Recovery is an exceptional offline operation on explicitly selected local checkpoints/journals, not a normal assembly step. Choose a fresh output outside the recovery sources. It never uploads, resolves credentials, removes crash locks or declares an interrupted run completed. [Detailed recovery semantics](output.md#interruption-and-recovery).
+
+The v0.6 client bundle and collection contracts are unsupported. There is no `record --index`, `--delivery-record`, `--batch`, `--schema-version`, or `deliver --evidence` mode.
 
 ## Exit codes
 
-- **0** All artifacts processed. No gate failure, or `--gate warn`.
-- **1** At least one artifact failed the gate, under `--gate fail`.
-- **2** Usage or configuration error: missing manifest, invalid manifest, glob matched zero or
-  several files, glob matched one file over a tree rio could not fully search, unreadable or
-  schema-invalid SBOM.
-- **3** Internal error.
-
-Exit code 1 still writes every output file and the index: a human has to be able to see why the gate
-failed. Exit code 2 writes nothing.
-
-
-### Unified delivery configuration and batch results
-
-Delivery reads targets from the same `rio.yaml` as normalization. `rio deliver` and
-`rio delivery plan` default to all indexed artifacts and all eligible targets, with optional
-repeatable `--artifact`/`--target` filters. `--manifest` defaults to `rio.yaml`; `--index` defaults
-to `target/rio/index.json` relative to cwd. Nondefault output directories require `--index`.
-`--out` is invalid here. Inspect reads only its journal and rejects explicit `--manifest`.
-The removed `--config`/`--delivery` interface reports migration guidance.
-
-Plan/deliver `--json` suppress human progress and emit exactly one schemaVersion 2 batch object
-with operation, outcome,
-raw index/current manifest digests when available, requestMayHaveOccurred, items, unusedRules,
-and a safe error when present. Each item reports artifactId, target, resolved record path, state,
-verified source/destination, optional predicted `expectedReferences`, and the existing v1 result
-when attempted. OCI v1 results also expose optional `verification`, separately from
-`acknowledgment` and Dependency-Track `activity`. Plan items are ready;
-delivery items are accepted, rejected, unknown, unattempted or error. Partial means an earlier
-attempt completed before failure. Exit remains that failure's code. An observed acceptance can
-remain visible alongside exit 3 if result persistence failed. Inspect/reconcile remain v1.
-
-All input/client preflight and journal reservations precede requests. Attempts run sequentially,
-stop at failure and never roll back. Default journals live below the index directory in
-`deliveries/<pair-key>/`; unchanged reruns refuse existing journals. Explicit `--record` requires
-one pair; `--retry-of` additionally requires an explicit fresh record path. See the
-[configuration, recovery and demo guide](../tools/README.md#native-verified-delivery).
-
-### OCI delivery and reconciliation
-
-Use `type: oci` in `delivery.targets`; standalone and exact-subject attachment share all existing
-selection, automatic-journal, retry and JSON contracts. There is no separate OCI command family or
-configuration file. [The early example](../README.md#deliver-to-an-oci-registry) shows both forms.
-
-`registry` is a host/port authority and `repository` is a lowercase OCI repository path. Authentication
-is exactly one of `anonymous: true`, username/password environment references, or `bearerTokenEnv`.
-Only explicit deliver/reconcile builds a client or reads selected credentials/CA files. Planning,
-inspection and evidence collection validate descriptions without doing so.
-
-The intent commits exact expected `oci:manifest`, `oci:blob`, `oci:tag`, and optional `oci:subject`
-references before HTTP. They are predictions, not receipts. OCI `verification` values are `verified`,
-`mismatch`, or `unavailable`; allowlisted `details.oci` separates protocol phase, whether publication
-began, and current manifest/config/blob/tag/subject/discovery facts. An already-present artifact
-requires a complete read-back and records `already_present` with `publicationBegan: false`.
-
-One OCI reconcile performs one bounded traversal. Any explicitly supplied `--wait` is refused
-before HTTP. Intent-only journals may reconcile by committed expected references; acknowledgment
-stays unknown and no submission can later be appended to that same attempt. An explicit fresh
-`--retry-of` is the sole retry linkage. Credential environment references and CA files may rotate;
-repository, registry, subject, publication, HTTP policy or trusted-token-origin changes refuse.
-
-| Exit | OCI meaning |
+| Code | Meaning |
 |---|---|
-| 0 | Receipt persisted, fully verified already-present artifact, valid offline data, or complete requested read-back/discovery |
-| 2 | Local config/source/journal/credential/policy refusal, including OCI wait; no HTTP |
-| 3 | Local persistence or cleanup failure; reported remote facts may already have occurred |
-| 4 | Ambiguous publication, unusable receipt, conflict/drift, incomplete content or required discovery |
-| 5 | Trustworthy supported-endpoint rejection of publication |
+| 0 | Requested execution/read operation succeeded; not proof of server ingestion |
+| 1 | Enforced quality gate failed; selected delivery blocked |
+| 2 | Usage, configuration, input or preflight refusal |
+| 3 | Internal or persistence failure; a request may already have occurred |
+| 4 | Delivery outcome/observation unknown or unavailable |
+| 5 | Supported receiver rejection |
 
-A manifest receipt may use a same-origin mounted URI preserving the configured repository namespace;
-Rio validates it without following it. Read-back and all uploads still use the configured repository.
-A positive HTTP 201 with an unusable digest/location or missing attachment acknowledgment is retained
-as an observed HTTP acceptance; it does not become a usable receipt. Inspecting a valid unresolved
-journal still exits 0. No reconciliation repairs tags, uploads blobs or maintains fallback indexes.
-See [the complete transport and compatibility scope](../tools/README.md#native-oci-delivery).
-
-## Record collection and inspection
-
-```sh
-rio record --index target/rio/index.json \
-  --delivery-record target/security-attempt \
-  --delivery-record target/security-retry --output record.json --json
-rio record inspect --file record.json --json
-```
-
-Collection is offline and explicit. `--index` defaults to `target/rio/index.json`; `--output`
-defaults to `record.json`. Paths are relative to the calling directory. `--delivery-record` is
-optional and repeatable; commas are literal path characters. Output is a new file in an existing
-parent, with no overwrite/force/auto-numbering option. `inspect --file` is required and reads only
-that file. Both commands reject positional arguments and explicitly inherited `--manifest` or
-`--out`. There are no upload or gate-override flags: recording a failed gate is always permitted.
-
-Without `--json`, stdout is empty and concise recorded-fact summaries go to stderr. `--quiet`
-suppresses summaries, but never requested JSON or errors. With `--json`, one result object appears
-on stdout for success or handled failure; Cobra syntax errors may be stderr-only. Export writes
-the document to the output file. Inspection includes it in the JSON result.
-
-| Field | Result envelope v1 |
-| --- | --- |
-| `schemaVersion` | `1` |
-| `operation` | `record` or `record-inspect` |
-| `outcome` | `written`, `valid`, or `error` |
-| `output` | `{path, sha256, size}`, successful export only |
-| `outputMayExist` | true after final publication, including later failures; false for inspection |
-| `counts` | `{artifacts, deliveries}` when available |
-| `record` | validated document on successful `inspect --json` only |
-| `error` | `{code, message}` on handled failure; no source snippets or credential values |
-
-| Exit | Meaning |
-| --- | --- |
-| 0 | selected evidence exported or record internally consistent, including recorded failed gates/rejection/unknown outcomes |
-| 2 | invalid arguments/source/schema/link, missing requested input, unsupported version/adapter, limit exceeded, existing output or busy lock; no persistent output change |
-| 3 | local output/persistence/lock-cleanup failure; check `outputMayExist` before retrying |
-
-No gate/delivery exits 1/4/5 arise merely from recorded facts. A valid consistency check does not
-authenticate the producer or verify external SBOM bytes/ingestion. Check earlier normalization and
-delivery exits yourself: collecting an old index does not prove a new normalization completed.
-Use a fresh output path after observations change. Normalize and reconcile never collect automatically;
-`deliver --evidence PATH` explicitly opts into automatic v2 collection. See [record schema and scope](output.md#consolidated-recordjson-v1) and the
-[installed-binary walkthrough](../tools/README.md#consolidated-record-demo).
-
-
-### Portable client evidence
-
-With configured delivery targets, use fresh output paths:
-
-```sh
-rio normalize --gate fail &&
-  rio deliver --evidence target/rio/record.json
-rio record inspect --file target/rio/record.json
-```
-
-Only run delivery after normalization succeeds. A failed enforced gate still leaves normalization
-evidence: export it with `rio record` instead of delivering. Invalid normalization inputs do not
-create a new completed run; collecting a previous index cannot change that.
-
-`--evidence` is opt-in. `--record` still selects one attempt journal for one artifact/target pair.
-Automatic collection runs after ordinary accepted, rejected, partial or unknown delivery outcomes.
-Successful collection preserves the delivery exit (0, 4 or 5). Collection or persistence failure
-returns 3, retains the original delivery outcome and provides `requestMayHaveOccurred`, possible
-output presence, the batch path and an exact offline recovery command. Rio never retries an upload
-to repair a local evidence problem. Existing output/source files and locks refuse before requests.
-
-For `deliver --evidence --json`, the result is separately versioned as `schemaVersion: 3`, with
-`delivery` retaining the ordinary batch result, `evidence` carrying output/source paths, errors and
-recovery arguments, and top-level outcome and request uncertainty. Without `--evidence`, the current
-schema-2 batch result is unchanged. A final record is reported only after read-back validation.
-
-Standalone collection defaults to record v1. Select v2 explicitly; `--batch` requires it:
-
-```sh
-rio record --schema-version 2 --batch target/rio/record.json.batch.json --output record-after.json
-```
-
-Repeat `--batch` for compatible retries or additional batches sharing the exact index. Repeat
-`--delivery-record` to include other explicit journals. With batches and no explicit `--index`,
-collection uses the retained index snapshot; an explicitly supplied index must match exactly.
-The captured sources support offline recovery after the working index changes. Missing bound
-journals remain visible gaps; an ordinary-return completion may separately say unattempted.
-Neither missing evidence nor receiver acknowledgment establishes successful processing.
-
-
-### Offline HTML report
-
-```sh
-rio record report --file target/rio/record.json --output target/rio/report.html
-```
-
-Both paths are required. The command validates the entire v1 or v2 record, then renders the same
-scope, changes, checks, attempt history, exceptions and evidence boundaries used by terminal
-inspection. It reads only the selected JSON; referenced workspaces, targets and credentials are
-never opened. Existing output paths, including symlinks, refuse. The self-contained HTML uses
-escaped text, embedded CSS, system fonts and no JavaScript or external resources. URLs stay text.
-A restrictive content security policy also blocks external resource loads. HTML is limited to
-128 MiB; an oversized rendering refuses without truncation.
-
-The report includes SHA-256 of the **exact input JSON bytes**, including whitespace, and asks the
-recipient to retain that JSON for machine inspection. Rendering is a separate offline step, so
-presentation failure does not change delivery results or trigger another upload. No combined
-success badge conflates internal consistency, gate outcomes, acknowledgment or processing.
-
-`--json` returns an independent schema-1 `record-report` result: `outcome`, `inputSHA256`, optional
-`output` (`path`, HTML `sha256`, `size`), `outputMayExist`, and a safe `error` when present. Exit 0
-means written, 2 means invalid input/flags/limits or an existing output, and 3 means an execution or
-persistence failure. `--quiet` suppresses human output but not requested JSON or errors.
+Ordinary failed or partial executions still attempt to publish their receipt. Initial invalid CLI/configuration or an unwritable/occupied destination may prevent receipt creation; no request is made. After a request, a persistence error reports possible output and the run directory for local recovery. Never retry automatically merely to obtain a receipt. `record inspect` can return 0 for a structurally valid receipt describing a failed or incomplete run.

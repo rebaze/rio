@@ -67,7 +67,7 @@ exit 2 before writing outputs.
 ## Existing values and explicit replacement
 
 An absent SBOM value is filled. An identical value is left alone. A different existing value
-causes exit 2 with the artifact, field and source identified, and no new output files are written.
+causes exit 2 with the artifact, field and source identified, and no generated SBOM/index is published; a failed execution receipt may still be written.
 Artifact precedence changes which manifest value wins; it does not authorize overwriting SBOM
 values. To intentionally change an existing value, list each field under `replace`:
 

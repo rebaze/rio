@@ -1,8 +1,8 @@
 # Manifest enrichment demo
 
-Run three small, offline examples with an **installed rio release containing #61**. You need a
-POSIX shell and standard command-line tools (`cp`, `sed`, `find`, `mktemp`); no Go, source build,
-Python, jq, credentials or network access is required. The organizations, products and dependency
+Run three small, offline examples with an **installed Rio v0.7.0+ release**. You need a
+POSIX shell and standard command-line tools (`cp`, `sed`, `find`, `mktemp`) and Python 3.9+ (standard library only); no Go, source build,
+jq, credentials or network access is required. The organizations, products and dependency
 are synthetic. The `.example.com` URLs illustrate metadata and are never fetched.
 
 Get this directory from the matching release's tagged source archive, or copy it with its `inputs/`
@@ -29,7 +29,7 @@ specific directory when you have finished inspecting it.
 | Case | Manifest and input | Expected result |
 |---|---|---|
 | Shared defaults | `rio.yaml`; `inputs/console.cdx.json` and `inputs/agent.cdx.json` | Exit 0. Both subjects gain the shared group, version, manufacturer, supplier and contact URLs. Each artifact supplies its own name, purl and documentation URL. |
-| Conflict | `conflict.yaml`; `inputs/legacy-console.cdx.json` | Exit 2. Existing name, version and purl disagree with the requested identity. No output files are written under `refused/`. |
+| Conflict | `conflict.yaml`; `inputs/legacy-console.cdx.json` | Exit 2. Existing name, version and purl disagree with the requested identity. A failed receipt is written under `refused/runs/<run-id>/`; no SBOM, index or statement is generated. |
 | Explicit replacement | `replace.yaml`; the same legacy input | Exit 0. `replace: [subject.name, subject.version, subject.purl]` authorizes just those replacements. Changes retain their old values and manifest sources. |
 
 The runner executes the real `rio plan` and `rio normalize` commands, displays the subject before
@@ -38,23 +38,32 @@ not simulate rio. The refusal is an expected part of a successful demo.
 
 ## Inspect the retained directory
 
+Every normalization invocation produces its own compact receipt. The runner saves each
+`--json` result as `*-result.json`, reads `runDirectory` to locate generated outputs, and
+inspects `receipt.path` offline. Each output root contains `runs/<run-id>/`; paths below use
+`<enriched-run>` or `<replaced-run>` for the corresponding returned directory. Repeated
+invocations have distinct receipts, which are never assembled into a combined history.
+
+
 - `plan.json` contains resolved enrichment fields, the selectors identifying their defaults or
   artifact entries, and the per-field replacement policy. A plan reports intent; it does not read
   the SBOM content to detect conflicts.
-- `enriched/console.cdx.json` and `enriched/agent.cdx.json` show the two enriched subjects.
+- `<enriched-run>/console.cdx.json` and `<enriched-run>/agent.cdx.json` show the two enriched subjects.
   `metadata.manufacturer` identifies **Example Build Services**, the SBOM producer;
   `metadata.component.manufacturer` identifies **Example Products**, the product manufacturer;
   `metadata.component.supplier` identifies **Example Distribution**, the supplier.
 - `metadata.licenses` declares `CC0-1.0` for the **SBOM data**. The third-party component's existing
   `MIT` license does not change.
-- `enriched/index.json` and `replaced/index.json` carry enrichment changes with field, target,
+- `<enriched-run>/index.json` and `<replaced-run>/index.json` carry enrichment changes with field, target,
   before/after values, manifest path/digest/selector and `assertion: "producer"`. The SBOMs carry
   corresponding `rebaze:normalize:enrichment` properties, each carrying `version: 1` in addition
   to the change fields. These are supplied assertions, not
   independent verification of the organizations or product.
+- The automatic `record.json` receipt retains concise metadata before/after values, byte identities
+  and effective checks for that invocation. It contains no embedded source archive.
 - `*.intoto.json` statements beside each output include the same artifact record. They are
   unsigned normalization statements whose subject is the normalized SBOM.
-- `conflict.log` contains the actual refusal. `replaced/console.cdx.json` contains the explicitly
+- `conflict.log` contains the actual refusal. `<replaced-run>/console.cdx.json` contains the explicitly
   corrected identity. Its original `bom-ref`, `pkg:maven/com.example/legacy-console@0.9.0`, stays
   unchanged: it is a local identifier used by the dependency graph, not the new product purl.
 

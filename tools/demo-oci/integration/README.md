@@ -34,7 +34,11 @@ fresh immutable identities in the same dedicated repository. It seeds a tiny OCI
 obtains and hashes their real descriptors,
 and exercises standalone and attached delivery, exact raw-byte read-back, Referrers discovery,
 already-present handling, conflicts, denied credentials and actual child-process termination behind a controlled response-dropping proxy.
-It verifies portable evidence using recorded source bytes. Every run uses fresh synthetic input
+It validates the native OCI adapter and internal journal facts. The installed-binary
+[walkthrough](../README.md) separately verifies the compact public receipt contract, including
+one-command mixed delivery, exact submitted bodies, independent retry/reconciliation receipts,
+offline incomplete recovery, and source-free inspection/rendering. Public receipts do not embed
+source bytes or combine separate invocations. Every run uses fresh synthetic input
 identities. The child is killed only after the proxy observes the real registry’s HTTP 201, before the response
 reaches Rio. The journal remains intent-only; the known-exited child’s lock is explicitly removed,
 the original index/selected SBOM are deleted, and reconciliation verifies content while acknowledgment
@@ -99,7 +103,8 @@ evidence. No Artifactory instance or license acceptance is created by this harne
 | Nexus 3.94.0-12 Community, pinned image | Explicit loopback HTTP, Basic-to-Bearer negotiation, native OCI hosted path routing | Passed | Image and index subjects passed | ALLOW_ONCE tag rejection; valid read-only account can read and cannot write; attached crash recovery |
 | Artifactory | No disposable endpoint/version/scoped credentials supplied | Not run | Not run | Deferred to the next release iteration: [#88](https://github.com/rebaze/rio/issues/88) |
 
-Version-specific evidence from actual race-enabled runs on source commit `c84de29`:
+Historical version-specific adapter evidence from actual race-enabled runs on source commit
+`c84de29` (these files do not establish v0.7.0 receipt validation or an exact-candidate integration pass):
 
 - [Distribution 3.1.2](distribution-3.1.2.json): 10 scenarios, 79 sanitized request observations;
   standalone storage plus explicit no-write attachment refusal and actual standalone crash recovery.

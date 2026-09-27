@@ -53,7 +53,9 @@ def main():
              "mode": "normal", "no_referrers": False, "tamper_blob": False, "on_ping": None,
              "stored": threading.Event(), "release": threading.Event(), "dtrack": []}
     lock = threading.Lock()
-    steps, selected = [], []
+    steps, receipts = [], []
+    originals = {}
+    index_path = None
     output_bytes = b""
 
     class Registry(http.server.BaseHTTPRequestHandler):
@@ -115,6 +117,7 @@ def main():
                         parts = {p.get_param("name", header="content-disposition"): p.get_payload(decode=True)
                                  for p in message.iter_parts()}
                         assert parts["bom"] == output_bytes
+                        assert parts["projectName"] == b"synthetic-app" and parts["projectVersion"] == b"1.2.3"
                         state["dtrack"].append({"sbomSHA256": sha(parts["bom"]), "synthetic": True})
                         state["writes"] += 1
                         self.send(200, compact({"token": TOKEN}))
@@ -231,6 +234,24 @@ def main():
             text = text.replace("      auth:\n", "      subject: " + json.dumps(subject) + "\n      auth:\n")
         (workspace / "rio.yaml").write_text(text)
 
+    def capture(path, name):
+        path = Path(path)
+        if not path.is_absolute():
+            path = workspace / path
+        raw = path.read_bytes()
+        document = json.loads(raw)
+        assert document["kind"] == "rio-run-receipt" and document["schemaVersion"] == 1
+        assert not any(secret.encode() in raw for secret in canaries)
+        assert not any(key in document for key in ("sources", "indexes", "events", "evidence"))
+        copy = recipient / (name + ".json")
+        copy.write_bytes(raw)
+        originals[path] = raw
+        receipts.append(copy)
+        return document
+
+    def receipt(result):
+        return json.loads(Path(result["receipt"]["path"]).read_bytes())
+
     def run(*args, code=0, json_result=True, cwd=None):
         command = [binary, *map(str, args)] + (["--json"] if json_result else [])
         result = subprocess.run(command, cwd=cwd or workspace, env=env, capture_output=True, text=True)
@@ -240,6 +261,12 @@ def main():
         if json_result:
             value = json.loads(result.stdout)
             (results / ("%02d.json" % len(steps))).write_text(result.stdout)
+            if isinstance(value.get("receipt"), dict) and value["receipt"].get("path"):
+                doc = capture(value["receipt"]["path"], "%02d-%s" % (len(steps), value.get("operation", "pipeline")))
+                if doc["run"]["operation"] in ("deliver", "reconcile"):
+                    assert all(a.get("preExisting") and not a.get("changes") for a in doc.get("artifacts", []))
+                if doc["run"]["operation"] == "reconcile":
+                    assert all(d.get("prior") and not d.get("submitted") for d in doc["deliveries"])
             return value
         return result
 
@@ -247,9 +274,13 @@ def main():
         return result["items"][0]["result"]
 
     def deliver(name, code=0, *extra):
-        result = run("deliver", "--target", "registry", "--record", name, *extra, code=code)
-        if (workspace / name).is_dir():
-            selected.append(str(workspace / name))
+        result = run("deliver", "--index", index_path, "--target", "registry", "--record", name, *extra, code=code)
+        if result.get("receipt"):
+            doc = receipt(result)
+            if doc.get("deliveries"):
+                assert all(d["target"] == "registry" for d in doc["deliveries"])
+                assert any(e.get("target") == "security" and e["reason"] == "target-filter"
+                           for e in doc.get("exclusions", []))
         return one(result) if result["items"][0].get("result") else result
 
     def subject(label):
@@ -262,39 +293,71 @@ def main():
 
     try:
         config()
-        run("normalize", "--gate", "fail", "--attest", json_result=False)
-        index_path = workspace / "target/rio/index.json"
-        raw_index = index_path.read_bytes()
-        index_doc = json.loads(raw_index)
-        output_path = index_path.parent / index_doc["artifacts"][0]["output"]["path"]
-        output_bytes = output_path.read_bytes()
-        assert sha(output_bytes) == index_doc["artifacts"][0]["output"]["sha256"]
         count = len(state["requests"])
         old_password = env["RIO_OCI_DEMO_PASSWORD"]
         env["RIO_OCI_DEMO_PASSWORD"] = "\r\n"
         (workspace / "rio.yaml").write_text(manifest_text.replace("      auth:\n", "      caFile: missing-offline-ca.pem\n      auth:\n"))
-        plan = run("delivery", "plan")
-        assert len(plan["items"][0]["expectedReferences"]) == 3 and len(state["requests"]) == count
+        run("plan")
+        assert len(state["requests"]) == count
         env["RIO_OCI_DEMO_PASSWORD"] = old_password
         config()
-        # The first read-only HTTP request happens after verification. Replacing
-        # the source then must not change the uploaded immutable snapshot.
-        state["on_ping"] = lambda: output_path.write_bytes(b"source replaced after verification")
-        batch = run("deliver")
+
+        # One invocation verifies both targets' snapshots before any network request.
+        # Mutating its output on the first authenticated read must not alter uploads.
+        def replace_after_verification():
+            nonlocal output_bytes
+            indexes = list((workspace / "target/rio/runs").glob("*/index.json"))
+            assert len(indexes) == 1
+            index = json.loads(indexes[0].read_bytes())
+            output = indexes[0].parent / index["artifacts"][0]["output"]["path"]
+            output_bytes = output.read_bytes()
+            assert sha(output_bytes) == index["artifacts"][0]["output"]["sha256"]
+            output.write_bytes(b"source replaced after verification")
+
+        state["on_ping"] = replace_after_verification
+        pipeline = run()
+        assert pipeline["outcome"] == "success"
+        index_path = Path(pipeline["runDirectory"]) / "index.json"
+        index_doc = json.loads(index_path.read_bytes())
+        output_path = index_path.parent / index_doc["artifacts"][0]["output"]["path"]
         output_path.write_bytes(output_bytes)
-        assert batch["outcome"] == "accepted" and len(batch["items"]) == 2
-        selected.extend(item["record"] for item in batch["items"])
-        initial = batch["items"][0]["record"]
-        initial_result = batch["items"][0]["result"]
-        assert initial_result["acknowledgment"] == "accepted" and "verification" not in initial_result
+        primary = receipt(pipeline)
+        assert primary["run"]["operation"] == "pipeline" and len(primary["deliveries"]) == 2
+        assert primary["artifacts"][0]["input"]["sha256"] == sha(seed)
+        assert primary["artifacts"][0]["output"]["sha256"] == sha(output_bytes)
+        assert all(d["state"] == "accepted" for d in primary["deliveries"])
+        assert all(d["transport"] == {"scheme": "http", "certificateVerification": "not-applicable"}
+                   for d in primary["deliveries"])
+        oci = next(d for d in primary["deliveries"] if d["target"] == "registry")
+        assert len(oci["submitted"]) == 3
+        for body in oci["submitted"]:
+            identity = primary["artifacts"][0]["output"] if body.get("artifactOutput") else body
+            digest = "sha256:" + identity["sha256"]
+            raw = state["blobs"].get(digest, state["manifests"].get(digest))
+            assert raw is not None and len(raw) == identity["size"] and sha(raw) == identity["sha256"]
+        dtrack = next(d for d in primary["deliveries"] if d["target"] == "security")
+        assert dtrack["submitted"][0]["artifactOutput"] == "application"
+        assert any(ref["value"] == TOKEN for response in dtrack["responses"] for ref in response.get("references", []))
         assert state["blobs"]["sha256:" + sha(output_bytes)] == output_bytes
-        (work / "retrieved-sbom.cdx.json").write_bytes(state["blobs"]["sha256:" + sha(output_bytes)])
+        (work / "retrieved-sbom.cdx.json").write_bytes(output_bytes)
+        mappings = json.loads((Path(pipeline["runDirectory"]) / ".internal/attempts.json").read_bytes())
+        journals = {d["target"]: next(m["journal"] for m in mappings if m["attemptId"] == d["attemptId"])
+                    for d in primary["deliveries"]}
+        initial = journals["registry"]
+        count = len(state["requests"])
+        env["RIO_OCI_DEMO_PASSWORD"] = "\r\n"
+        plan = run("delivery", "plan", "--index", index_path)
+        assert len(plan["items"][0]["expectedReferences"]) == 3 and len(state["requests"]) == count
+        env["RIO_OCI_DEMO_PASSWORD"] = old_password
         assert run("delivery", "reconcile", "--record", initial)["verification"] == "verified"
-        run("delivery", "reconcile", "--record", batch["items"][1]["record"])
+        run("delivery", "reconcile", "--record", journals["security"])
         writes = state["writes"]
         repeated = deliver("explicit-retry", 0, "--retry-of", initial)
         assert repeated["verification"] == "verified" and state["writes"] == writes
         assert repeated["observations"][0]["code"] == "already_present"
+        retry_receipt = json.loads(receipts[-1].read_bytes())
+        assert retry_receipt["deliveries"][0]["prior"]["attemptId"] == oci["attemptId"]
+        assert not retry_receipt["deliveries"][0].get("submitted")
         output_path.write_bytes(output_bytes + b" ")
         count = len(state["requests"])
         deliver("tampered", 2)
@@ -341,16 +404,23 @@ def main():
         broken = json.loads(seed)
         del broken["metadata"]["component"]["version"]
         (workspace / "bom.json").write_bytes(compact(broken))
-        run("normalize", "--out", "failed", "--gate", "fail", code=1, json_result=False)
+        failed = run("normalize", "--out", "failed", "--gate", "fail", code=1)
+        failed_index = Path(failed["runDirectory"]) / "index.json"
+        assert receipt(failed)["run"]["operation"] == "normalize"
         count = len(state["requests"])
-        run("deliver", "--index", "failed/index.json", "--target", "registry", "--record", "failed-refused", code=2)
+        run("deliver", "--index", failed_index, "--target", "registry", "--record", "failed-refused", code=2)
         assert len(state["requests"]) == count
-        run("deliver", "--index", "failed/index.json", "--target", "registry", "--record", "failed-override", "--allow-failed-gate")
+        override = run("deliver", "--index", failed_index, "--target", "registry", "--record", "failed-override", "--allow-failed-gate")
+        override_receipt = receipt(override)
+        assert override_receipt["run"]["overrides"]["allow-failed-gate"] == "true"
+        assert override_receipt["artifacts"][0]["checks"]["gate"] == "fail"
+        assert override_receipt["artifacts"][0]["input"]["sha256"] == receipt(failed)["artifacts"][0]["output"]["sha256"]
         (workspace / "bom.json").write_bytes(seed)
 
         config(subject("process-crash"))
         state["mode"] = "crash"
-        command = [binary, "deliver", "--target", "registry", "--record", "crash", "--json"]
+        existing_runs = set((workspace / "target/rio/runs").iterdir())
+        command = [binary, "deliver", "--index", str(index_path), "--target", "registry", "--record", "crash", "--json"]
         process = subprocess.Popen(command, cwd=workspace, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             assert state["stored"].wait(10), "synthetic registry never stored the manifest"
@@ -367,9 +437,25 @@ def main():
         crash = workspace / "crash"
         assert list(crash.glob("*.json")) == [crash / "00000000000000000000.json"]
         run("delivery", "inspect", "--record", "crash", code=2)
-        (workspace / "crash.lock").rmdir()  # known child has exited; explicit owned-lock recovery.
-        selected.append(str(crash))
-        (work / "capture-index.json").write_bytes(raw_index)
+        crash_runs = set((workspace / "target/rio/runs").iterdir()) - existing_runs
+        assert len(crash_runs) == 1
+        crash_run = crash_runs.pop()
+        assert not (crash_run / "record.json").exists()
+        count = len(state["requests"])
+        recovery_path = recipient / "crash-incomplete.json"
+        run("record", "recover", "--run", crash_run, "--output", recovery_path)
+        assert len(state["requests"]) == count and (workspace / "crash.lock").is_dir()
+        incomplete = json.loads(recovery_path.read_bytes())
+        assert incomplete["run"]["outcome"] == "incomplete" and not incomplete["run"].get("finishedAt")
+        assert incomplete["run"]["stages"]["delivery"] == "incomplete"
+        assert incomplete["deliveries"][0]["state"] == "unknown"
+        assert incomplete["deliveries"][0]["errorCode"] == "response_unavailable"
+        assert incomplete["deliveries"][0]["requestMayHaveOccurred"]
+        assert not incomplete["deliveries"][0].get("submitted")
+        receipts.append(recovery_path)
+        # Explicit specialist reconciliation after confirming our child exited.
+        # Offline receipt recovery above never removes or bypasses the owned lock.
+        (workspace / "crash.lock").rmdir()
         index_path.unlink()
         output_path.unlink()
         (workspace / "bom.json").unlink()
@@ -387,25 +473,25 @@ def main():
         thread.join()
         stopped = True
         env["RIO_OCI_DEMO_PASSWORD"] = "\r\n"
-        args = ["record", "--index", str(work / "capture-index.json"), "--output", str(recipient / "record.json")]
-        for path in selected:
-            args.extend(["--delivery-record", path])
-        assert run(*args)["counts"]["deliveries"] == len(selected)
-        run("record", "--index", "failed/index.json", "--delivery-record", "failed-override",
-            "--output", str(work / "failed-record.json"))
+        for path, raw in originals.items():
+            assert path.read_bytes() == raw, "later invocation changed a completed receipt"
         shutil.rmtree(workspace)
-        (work / "capture-index.json").unlink()
-        portable = run("record", "inspect", "--file", "record.json", cwd=recipient)
-        assert len(portable["record"]["deliveries"]) == len(selected)
-        corrupt = json.loads((recipient / "record.json").read_bytes())
-        corrupt["deliveries"][0]["summary"]["acknowledgment"] = "invented"
+        for path in receipts:
+            portable = run("record", "inspect", "--file", path.name, cwd=recipient)
+            assert portable["record"] == json.loads(path.read_bytes())
+            run("record", "report", "--file", path.name, "--output", path.with_suffix(".html").name, cwd=recipient)
+            html = path.with_suffix(".html").read_text()
+            assert sha(path.read_bytes()) in html and "<script" not in html.lower()
+            assert not any(secret in html for secret in canaries)
+        corrupt = json.loads(receipts[0].read_bytes())
+        corrupt["deliveries"][0]["state"] = "invented"
         (recipient / "corrupt.json").write_bytes(compact(corrupt))
         run("record", "inspect", "--file", "corrupt.json", cwd=recipient, code=2)
         (work / "synthetic-observations.json").write_bytes(compact({"synthetic": True,
             "sbomSHA256": sha(output_bytes), "requests": state["requests"], "dtrack": state["dtrack"]}))
         (work / "walkthrough.json").write_bytes(compact({"synthetic": True, "steps": steps}))
         print("PASS: synthetic standalone/attached OCI, exact snapshot, mixed delivery, bad receipt, lost response and real process-crash recovery.")
-        print("PASS: failed gate/tamper refusal, content mismatch, required discovery and portable mixed record inspection with source workspace removed.")
+        print("PASS: failed gate/tamper refusal, content mismatch, required discovery and separate compact receipts inspected/rendered with source workspace removed.")
         print("Retained synthetic evidence:", work)
         print("No real registry/vendor compatibility, producer authentication, security-analysis or future-retention claim is made.")
     finally:

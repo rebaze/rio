@@ -7,7 +7,9 @@ No harness-specific skill, plugin, account or agent instruction filename is requ
 
 The outcome is a small, reviewable configuration that covers the intended deliverables, preserves
 existing decisions, and has been checked against available inputs. Rio reads local CycloneDX JSON
-SBOMs; it does not build software, generate SBOMs, discover Git/CI facts, or upload results.
+SBOMs, applies configured metadata and checks, delivers to configured targets, and automatically
+writes one compact receipt per invocation. It does not build software, generate SBOMs, or discover
+Git/CI facts. Standalone `normalize` supports intentional offline stage-by-stage use.
 
 ## 1. Inspect before asking
 
@@ -22,7 +24,7 @@ Establish these facts from project evidence, keeping unknowns explicit:
 
 | Decision | Evidence to look for |
 |---|---|
-| Which deliverables belong in this bundle? | Release documentation, packaging jobs, explicit user intent |
+| Which deliverables belong in this run? | Release documentation, packaging jobs, explicit user intent |
 | How is each SBOM produced? | Existing generator configuration and build/CI commands |
 | Where is each input? | Output paths relative to the manifest, plus representative generated files |
 | Do module markers express the desired selection policy? | Directory conventions and release policy, not only files left by a previous build |
@@ -30,7 +32,7 @@ Establish these facts from project evidence, keeping unknowns explicit:
 | Where should outputs go? | Existing output conventions, artifact collection and retention settings |
 
 A Maven reactor, package name or existing SBOM list can help explain a project, but none by itself
-establishes which deliverables the user wants in this bundle. Do not infer release membership by
+establishes which deliverables the user wants in this run. Do not infer release membership by
 finding only `**/bom.json`: that hides modules whose producer failed to write an SBOM.
 
 ## 2. Resolve only the remaining decisions
@@ -42,7 +44,7 @@ Give a recommendation when the project supports one; do not guess a release poli
 Examples of useful questions:
 
 - **Unclear membership:** “Do `api-server` and `preview-server` ship together, or is preview a
-  development-only module? Both have SBOMs, so file presence cannot decide bundle membership.”
+  development-only module? Both have SBOMs, so file presence cannot decide run membership.”
 - **Missing producer:** “Reporting is a required deliverable, but its build has no SBOM step.
   Is there an existing generator command we should use, or should I add generation to its build?”
 - **Conflicting output conventions:** “The release job collects `dist/evidence`, while the local
@@ -94,8 +96,8 @@ Keep these coordinate systems distinct:
 | CLI `--out` | Process working directory, unless absolute |
 
 New set selector fields reject absolute paths and literal parent traversal. The main manifest
-version stays `1`. Module discovery requires an installed Rio release containing **#71 / #72**;
-older releases reject `artifactSets`. Check the actual binary with the proposed manifest. If it
+version stays `1`. These examples require an installed **Rio v0.7.0+** release;
+older releases may reject `artifactSets` or use a different execution/output contract. Check the actual binary with the proposed manifest. If it
 rejects the key, report the version prerequisite and arrange an appropriate release upgrade;
 do not silently replace automatic discovery with today's list of existing SBOMs. The complete
 [onboarding demo](../tools/README.md#agent-integration-examples) requires that feature too.
@@ -132,14 +134,20 @@ From the target project root, use the intended manifest and a fresh validation d
 rio version
 rio plan --manifest rio.yaml
 run_dir=$(mktemp -d "${TMPDIR:-/tmp}/rio-validation.XXXXXXXX")
-rio plan --manifest rio.yaml --out "$run_dir/normalized" --json > "$run_dir/plan.json"
-rio normalize --manifest rio.yaml --out "$run_dir/normalized" --gate fail
+rio plan --manifest rio.yaml --out "$run_dir/output" --json > "$run_dir/plan.json"
+# Validate the configured pipeline locally without uploads.
+rio --manifest rio.yaml --out "$run_dir/output" --skip-delivery --json > "$run_dir/result.json"
+# Python 3.9+ (standard library) reads the exact returned paths.
+output_dir=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["runDirectory"])' "$run_dir/result.json")
+receipt=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["receipt"]["path"])' "$run_dir/result.json")
+rio record inspect --file "$receipt"
+# Generated SBOMs and index.json are in "$output_dir".
 ```
 
 Run and inspect these commands one at a time; stop and diagnose a failure. Compare the flat
 `artifacts` array in `plan.json` with the intended deliverables, input paths, output names and
 processing configuration. Generated entries include `selection` identifying their source set,
-module and marker. Check the normalized `index.json` for the same ordered membership and inspect
+module and marker. Check `index.json` in the returned `runDirectory` for the same ordered membership and inspect
 its gate results, findings and schema-validation status. Review normalized subjects and components
 against the originals, especially where existing transforms or overrides are involved.
 
@@ -150,9 +158,9 @@ gate passes, and a later invocation may see a changed filesystem.
 
 | Exit | Meaning and next action |
 |---|---|
-| `0` | Command succeeded. For normalization, use `--gate fail` to make a passing exit meaningful for the configured gate. |
-| `1` | Normalization wrote results but a gate failed under `--gate fail`. Inspect findings; do not collect it as a passing release bundle. |
-| `2` | Usage/configuration/input failure; normalization writes no new outputs. Fix the named input or declaration and retry. |
+| `0` | Execution succeeded. Root defaults to gate `fail`; a configured `warn` mode can permit failed checks. Inspect the receipt’s effective mode and results. Standalone `normalize` defaults to `warn` unless the manifest or explicit flag supplies a mode. |
+| `1` | Normalization wrote results but a gate failed under `--gate fail`. Inspect findings and the failed receipt; do not label it a passing release. |
+| `2` | Usage/configuration/input failure; no normalized SBOM or index is written; an established execution retains a failed receipt. Initial invalid CLI/configuration can prevent receipt creation. Fix the named input or declaration and retry. |
 | `3` | Internal or output-writing failure; inspect the diagnostic. Do not treat any partial outputs as a completed run. |
 
 When a selected module has no SBOM, retain its selection and report the missing producer/output.
@@ -171,25 +179,32 @@ Keep the order explicit:
 1. Provision the chosen Rio release and the project's existing build toolchain.
 2. Run the actual build/SBOM producer; stop on failure.
 3. Plan and check the selection.
-4. Normalize with the agreed gate policy; stop on failure.
-5. Collect the current run's index and normalized files using the existing CI artifact mechanism.
+4. Execute `rio` with the agreed gate policy; configured delivery runs in this same invocation.
+5. Retain the returned automatic receipt using the existing CI artifact mechanism. Preserve any
+   required SBOMs and local outputs from that invocation’s returned directory separately.
 
 The [copyable CI shell step](../tools/demo-agent-integration/ci.sh) accepts the installed Rio binary
-and the project's producer command as arguments. It creates a fresh directory, captures the plan,
-normalizes with `--gate fail --attest`, and archives that run only after success. Its
-[execution instructions](../tools/README.md#agent-integration-examples) explain how to adapt and
-collect the resulting bundle. Adapt `--attest` and the output location to the project's needs;
-statements are unsigned normalization records, not proof about a released executable.
+and the project's producer command as arguments. It requires Python 3.9+ and standard shell tools,
+captures the offline plan, runs the root pipeline with `--gate fail --json`, and inspects its
+automatic receipt after success. The JSON result names the exact run directory and receipt.
+On failure, preserve available receipts and diagnostics, without announcing a successful release.
+Its [execution instructions](../tools/README.md#agent-integration-examples) explain how to adapt it.
 
-**`index.json` defines current membership.** Reusing an output directory can leave files for removed
-artifacts. Do not upload everything from an old directory and call it the current bundle. Use a
-fresh directory, as the example does, or collect exactly the members of the current index.
+**Every execution owns `<out>/runs/<run-id>/`.** `--out` selects the root; `--receipt` overrides
+only the public receipt destination. Never glob across all historical runs to identify current
+membership. Use the returned `runDirectory` and its index, and the returned `receipt.path`.
+The receipt is an unsigned summary of the current invocation, not an archive of original inputs.
 
-Rio performs no network calls. Installation, dependency resolution, SBOM generation, p2 mapping
-helpers and uploads are separate steps and may need network access. Preserve existing CI job
-boundaries and permissions. A runnable local example does not establish that a remote CI job has
-executed successfully. Retain original inputs and auxiliary files separately when reproducibility
-is required; the example bundle does not automatically archive them.
+Root execution and explicit delivery/reconciliation may access configured receivers. `plan`,
+`normalize`, `record inspect` and `record report` remain offline. Use `--skip-delivery` for a
+local root validation; a real pipeline invocation runs configured targets without another command.
+Keep stage commands for intentional separate work: each creates its own scoped receipt, which
+must not imply earlier normalization was performed by a later delivery invocation.
+
+Preserve existing CI job boundaries and permissions. A runnable local example does not establish
+that a remote CI job has executed successfully. Retain original inputs and auxiliary files
+separately when reproducibility is required. Receipts identify byte digests and record assertions
+and observations; inspection does not authenticate a producer or prove receiver ingestion.
 
 ## 6. Hand back a concrete result
 

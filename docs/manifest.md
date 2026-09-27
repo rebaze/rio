@@ -1,16 +1,13 @@
 # Manifest reference
 
-[Quick start](../README.md#quick-start) · [Commands](cli.md) · [Agent integration](agent-integration.md)
+[Quick start](quick-start.md) · [Commands](cli.md) · [Agent integration](agent-integration.md)
 
 - [Explicit artifacts and defaults](#explicit-artifacts-and-defaults)
 - [Output version and gate](#output-version-and-gate)
 - [Module discovery](#discovering-module-artifacts)
 - [Transforms and supplied metadata](#processing-options)
 
-This reference follows `main`. Explicit artifact configuration is supported in v0.3.0;
-`artifactSets`, manifest `enrichment` and `context` were added afterwards. Use a release containing
-the feature you configure. Older binaries reject unknown keys; manifest `version: 1` alone does
-not imply support for every optional field.
+This reference describes Rio 0.7.0. `rio.yaml` defines input wiring, normalization/enrichment/context, effective gate policy and native targets for one root execution. Unknown keys are refused; manifest `version: 1` alone does not imply older binaries support every optional field. [Complete delivery-first configuration](quick-start.md).
 
 ## Explicit artifacts and defaults
 
@@ -40,15 +37,17 @@ artifacts:
     #   version: 3.2.0
 
 output:
+  directory: target/rio           # optional; manifest-relative output root
   specVersionFloor: "1.6"         # 1.5 or 1.6; defaults to 1.6
 
 gate:
+  mode: fail                     # root default; explicit --gate overrides it
   require: [name, version, purl]  # subset of these three; defaults to all three
 ```
 
 Each explicit artifact must resolve to exactly one regular SBOM file. Zero or multiple matches
 fail with exit 2. An incomplete search also fails: an unreadable directory could hide another
-match. Rio names the blocked path and writes no new output. It does not merge SBOMs.
+match. Rio names the blocked path and does not publish a successful normalized index/SBOM set. A failed execution receipt may still be written. It does not merge SBOMs.
 
 ## Output version and gate
 
@@ -61,8 +60,9 @@ checks every dependency component, including nested components. Required names a
 be nonblank; a required purl must be parseable as a package URL. Independently of this list, the
 SBOM subject (`metadata.component`) must always have a nonblank name and version.
 
-Gate failures are recorded under both CLI modes. `--gate warn` (the default) returns success;
-`--gate fail` returns exit 1 after writing the results. See [exit codes](cli.md#exit-codes).
+`gate.mode` accepts `fail` or `warn`. Explicit `--gate` wins over the manifest. Root defaults to `fail`; standalone `normalize` retains its historical `warn` default only when no manifest mode is supplied. Failed checks remain failed in either mode. Enforced failure blocks every selected root upload and returns exit 1; warn can continue while recording the effective exception. Standalone `deliver` still requires its separate `--allow-failed-gate` override. See [exit codes](cli.md#exit-codes).
+
+`output.directory` selects the output root relative to the manifest. Explicit `--out` is caller-relative and takes precedence. If both are omitted, the caller-relative default is `target/rio`. Every execution creates `runs/<run-id>/` under that root, with its own receipt and generated outputs. `--receipt PATH` changes only the public receipt destination. No enable flag or collection step is required.
 
 ## Discovering module artifacts
 
@@ -89,7 +89,7 @@ artifactSets:                      # optional; sets-only or mixed manifests work
 
 Adding `services/orders-server/pom.xml` and its `target/bom.json` adds an `orders-server` artifact
 without editing YAML. `services/web-client/pom.xml` is outside this selector. A selected server
-without an SBOM makes both `plan` and `normalize` fail with exit 2; normalize writes no new output.
+without an SBOM makes both `plan` and `normalize` fail with exit 2; normalization publishes no generated SBOM/index; it may retain a failed receipt.
 Each module gets a separate normalized SBOM, gate result, index entry and optional statement.
 SBOM contents are never combined.
 
@@ -179,3 +179,11 @@ The per-artifact `checks` extension makes `gate.require`, unconditional subject 
 nested-component evaluation counts and the command's warn/fail mode inspectable offline.
 An explicit empty `require: []` means component checks were not evaluated. See
 [selection and check evidence](output.md#selected-scope-and-effective-checks).
+
+## Delivery and selection
+
+`delivery.targets` configures Dependency-Track or OCI receivers in this same manifest. Each target has a type, destination settings and optional `exclude` artifact IDs / per-artifact `overrides`. [Complete native schemas and examples](delivery.md). Credentials are named environment references, not embedded values; CA paths are manifest-relative.
+
+Root runs configured targets after successful local stages. `--artifact` and `--target` narrow scope; omitted selectors mean all eligible members/targets. Excluded SBOM globs are not resolved by an artifact filter. Target exclusions and artifact-set exclusion rules remain visible in the receipt. `--skip-delivery` performs local work only. No targets means delivery is not configured, rather than a failed upload.
+
+`rio plan` previews the same effective settings and routing offline without building transforms or opening context/SBOM contents. A project selected from the normalized subject stays explicitly unresolved until execution. Optional stage commands remain available, each with its own scoped receipt.
