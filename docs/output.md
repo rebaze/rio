@@ -126,7 +126,10 @@ A repair's `resolution.kind` distinguishes `input-qualifier`, `component-propert
 the chosen keys or table entry. Mapping `sha256` hashes the exact bytes loaded for that transform,
 even if the file later changes. Optional `metadata.confidence` and `metadata.evidence` preserve
 upstream categorical assertions such as `manifest-proven`; they are not translated into numbers.
-Missing upstream metadata stays absent. Manifest and context changes bind their source digests.
+Missing upstream metadata stays absent. Other supplied JSON values in those assertion fields
+remain as recorded; a numeric value is an upstream assertion, not a probability assigned or verified
+by Rio. Mapping tables with duplicate object names or invalid Unicode refuse before normalization
+outputs are written, keeping retained source selectors unambiguous. Manifest and context changes bind their source digests.
 
 `bookkeeping` separately records Rio's added tools, repair assertions and run properties.
 `unmapped` retains per-component pointers and reasons. `skipped` aggregates reasons with an explicit
@@ -360,3 +363,25 @@ bounded by source bytes. Exceeding a limit refuses; no evidence is truncated or 
 
 The record remains unsigned and excludes full SBOM/input/mapping files, raw manifests, authenticated
 worker identity and credentials. Hashes show correspondence and consistency, not authenticity.
+
+
+## Human-readable report
+
+`rio record report --file record.json --output report.html` renders validated v1 or v2 evidence
+without its source workspace. Terminal inspection and HTML share one view model. Known facts stay
+useful in older records, while missing or unsupported normalization extensions are labelled instead
+of being interpreted as zero changes or passing checks.
+
+The report separates selection scope, substantive changes and Rio bookkeeping, effective field
+requirements, schema and graph findings, expected routing, original acknowledgments, observation
+history, exceptions and source digests. Applied/unmapped/skipped repair counters keep their existing
+semantics; applied and unmapped can overlap. Component-change denominators describe top-level
+components, while requirement evaluation explicitly includes nested components. Repeated attempts
+are all retained rather than choosing the most favorable outcome.
+
+The HTML contains only escaped supplied text and embedded styling, with system fonts, internal
+section navigation and native disclosure elements. It has no scripts or network dependencies; URLs
+are text. The exact input-record SHA-256 identifies the JSON that was rendered. Neither that hash,
+record consistency nor an accepted receipt establishes authenticity or Dependency-Track ingestion.
+Keep the JSON as the primary machine-readable artifact. Reports use a new path, never overwrite an
+existing file and refuse output beyond 128 MiB rather than truncating it.

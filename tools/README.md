@@ -1085,3 +1085,5 @@ uses two artifacts/two targets, an exclusion and a lost response, then explicitl
 portable v2 snapshots after receiver shutdown and source deletion. Both use Python 3.9+ and an
 installed release binary; no Go toolchain is needed. The existing [record demo](demo-record/README.md)
 also verifies explicit v2 collection with expected scope not recorded while retaining its v1 cases.
+The record, batch and TLS demos render offline HTML after source removal; the batch demo retains
+accepted, partial and combined-history reports for comparison.

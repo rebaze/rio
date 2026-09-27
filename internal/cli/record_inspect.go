@@ -27,6 +27,7 @@ func newRecordInspectCommand(g *globalOptions, stdout, stderr io.Writer) *cobra.
 		if e != nil {
 			return recordFinish(r, nil, e, asJSON, g, stdout, stderr)
 		}
+		r.raw = raw
 		r.Outcome = "valid"
 		r.Counts = countsFor(d)
 		if asJSON {

@@ -127,6 +127,10 @@ def main():
         assert run("record", "inspect", "--file", output, cwd=retained)["outcome"] == "valid"
         human = run("record", "inspect", "--file", output, cwd=retained, as_json=False)
         assert "insecureSkipVerify=true" in human and "certificateVerification=disabled TLSObserved=true" in human
+        run("record", "report", "--file", output, "--output", retained / "report.html", cwd=retained)
+        html = (retained / "report.html").read_text()
+        assert KEY not in html and "certificateVerification=disabled TLSObserved=true" in html
+        assert "certificateVerification=enforced TLSObserved=true" in html
         print("PASS: synthetic HTTPS default refusal, CA verification, explicit bypass, saved policy and offline portable evidence")
         print("Synthetic evidence retained:", retained)
         print("record.json sha256:", hashlib.sha256(output.read_bytes()).hexdigest())

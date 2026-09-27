@@ -27,3 +27,7 @@ Records retain additive normalization evidence when the producing Rio includes i
 [normalization evidence demo](../demo-normalization-evidence/README.md) shows exact repair
 sources and change pointers. Older indexes explicitly lack these details; collecting them with
 a newer binary cannot reconstruct missing history.
+
+The client-evidence version of this demo requires an installed release containing `record report`
+(v0.6.0 planned). It renders self-contained HTML after removing the source workspace. No JavaScript,
+external fonts or network resources are needed to read it; retain the JSON for machine inspection.

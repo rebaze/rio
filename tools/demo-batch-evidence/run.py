@@ -101,6 +101,7 @@ def main():
         # Explicit fresh slot keeps the original batch's unattempted slot absent.
         run("deliver", "--artifact", "worker", "--target", "security", "--record",
             work / "worker-attempt", "--evidence", "worker.json", "--json")
+        shutil.copyfile(work / "worker.json", retained / "accepted.json")
         assert state["requests"] == 4
         # Kill only the owned child after the receiver proves its durable intent
         # preceded the request. No completion or final record can be promised.
@@ -148,6 +149,11 @@ def main():
         shutil.rmtree(work)  # Only this demonstration's own synthetic workspace.
         inspected = run("record", "inspect", "--file", final, "--json", cwd=retained)
         assert inspected["outcome"] == "valid"
+        for stem in ("handoff", "partial", "accepted"):
+            run("record", "report", "--file", retained / (stem + ".json"),
+                "--output", retained / (stem + ".html"), cwd=retained)
+            html = (retained / (stem + ".html")).read_text()
+            assert canary not in html and "<script" not in html.lower()
         assert hashlib.sha256((retained / "partial.json").read_bytes()).hexdigest() == before
         run("record", "inspect", "--file", retained / "partial.json", cwd=retained)
         handoff["deliveries"][0]["summary"]["acknowledgment"] = "forged"

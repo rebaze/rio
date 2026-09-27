@@ -24,3 +24,7 @@ Runtime secret canaries must be absent from CLI output, journals, recovery sourc
 The explicit HTTP policy is for this local synthetic receiver. These receipts demonstrate
 acknowledgment and uncertainty, not Dependency-Track processing or content verification.
 The optional HTML client report is covered by the complete client-record demo.
+
+The client-evidence version of this demo requires an installed release containing `record report`
+(v0.6.0 planned). It renders self-contained HTML after removing the source workspace. No JavaScript,
+external fonts or network resources are needed to read it; retain the JSON for machine inspection.

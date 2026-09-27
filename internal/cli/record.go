@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/delivery/record"
 	"github.com/rebaze/rio/internal/evidence"
+	evidencereport "github.com/rebaze/rio/internal/evidence/report"
 	"github.com/spf13/cobra"
 )
 
@@ -21,6 +21,7 @@ type recordCounts struct {
 	Deliveries int `json:"deliveries"`
 }
 type recordResult struct {
+	raw            []byte
 	SchemaVersion  int                `json:"schemaVersion"`
 	Operation      string             `json:"operation"`
 	Outcome        string             `json:"outcome"`
@@ -86,6 +87,7 @@ func newRecordCommand(g *globalOptions, stdout, stderr io.Writer) *cobra.Command
 		} else {
 			pub, e = recordPublish(output, indexPath, journals, raw, validateSnapshot, recordPolicy)
 		}
+		r.raw = raw
 		r.OutputMayExist = pub.OutputMayExist
 		r.Output = pub.Output
 		if e == nil {
@@ -99,7 +101,7 @@ func newRecordCommand(g *globalOptions, stdout, stderr io.Writer) *cobra.Command
 	cmd.Flags().StringArrayVar(&journals, "delivery-record", nil, "explicit delivery journal directory (repeatable)")
 	cmd.Flags().StringVar(&output, "output", "record.json", "new evidence file; existing parent required")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit one versioned result object")
-	cmd.AddCommand(newRecordInspectCommand(g, stdout, stderr))
+	cmd.AddCommand(newRecordInspectCommand(g, stdout, stderr), newRecordReportCommand(g, stdout, stderr))
 	return cmd
 }
 func countsFor(d evidence.Document) *recordCounts {
@@ -132,7 +134,13 @@ func recordFinish(r recordResult, d *evidence.Document, e error, asJSON bool, g 
 		}
 	} else if !g.quiet && e == nil && d != nil {
 		fmt.Fprintf(stderr, "%s: %s\n", r.Operation, r.Outcome)
-		renderRecord(*d, stderr)
+		if r.raw != nil {
+			if e := renderRecordBytes(r.raw, stderr); e != nil {
+				return internalErrorf("rendering record: %w", e)
+			}
+		} else if e := renderRecord(*d, stderr); e != nil {
+			return internalErrorf("rendering record: %w", e)
+		}
 	}
 	if e != nil {
 		if r.OutputMayExist {
@@ -142,51 +150,17 @@ func recordFinish(r recordResult, d *evidence.Document, e error, asJSON bool, g 
 	}
 	return nil
 }
-func renderRecord(d evidence.Document, w io.Writer) {
-	c := countsFor(d)
-	fmt.Fprintf(w, "record consistency: artifacts=%d selected deliveries=%d index sha256=%s\n", c.Artifacts, c.Deliveries, d.Normalization.IndexSHA256)
-	idx, _ := delivery.ParseIndex(d.Normalization.Index)
-	for _, a := range idx.Artifacts {
-		fmt.Fprintf(w, "artifact=%s gate=%s schemaValidated=%t\n", a.ID, a.Gate, a.SchemaValidated)
-		if a.Context != nil {
-			b, _ := json.Marshal(a.Context)
-			fmt.Fprintf(w, "artifact=%s supplied context=%s\n", a.ID, b)
-		}
+func renderRecord(d evidence.Document, w io.Writer) error {
+	raw, err := evidence.Marshal(d)
+	if err != nil {
+		return err
 	}
-	for _, x := range d.Deliveries {
-		fmt.Fprintf(w, "attempt=%s artifact=%s destination=%s target=%s acknowledgment=%s\n", x.AttemptID, x.ArtifactID, x.Intent.Destination.DestinationName, x.Intent.Destination.Identity, x.Summary.Acknowledgment)
-		if entry, e := adapter(x.Intent.Destination.Type); e == nil && entry.HumanTransportPolicy != nil {
-			if policy := entry.HumanTransportPolicy(x.Intent.Destination); policy != "" {
-				fmt.Fprintln(w, strings.TrimSpace(policy))
-			}
-			if o := x.Summary.LastObservation; o != nil && entry.HumanObservation != nil {
-				if facts := entry.HumanObservation(o.Observation); facts != "" {
-					fmt.Fprintln(w, facts)
-				}
-			}
-		}
-		if o := x.Summary.LatestActivity; o != nil {
-			fmt.Fprintf(w, "latest activity=%s sequence=%d observedAt=%s\n", o.Observation.Value, o.Sequence, o.ObservedAt)
-		}
-		if o := x.Summary.LatestVerification; o != nil {
-			fmt.Fprintf(w, "latest verification=%s sequence=%d observedAt=%s\n", o.Observation.Value, o.Sequence, o.ObservedAt)
-			if entry, e := adapter(x.Intent.Destination.Type); e == nil && entry.HumanObservation != nil {
-				fmt.Fprintln(w, entry.HumanObservation(o.Observation))
-			}
-		}
-		for _, ref := range x.Intent.ExpectedReferences {
-			fmt.Fprintf(w, "expected %s: %s\n", ref.Kind, ref.Value)
-		}
-		if o := x.Summary.LastObservation; o != nil && o.Observation.Kind == "unavailable" {
-			fmt.Fprintf(w, "last observation=unavailable sequence=%d observedAt=%s\n", o.Sequence, o.ObservedAt)
-		}
+	return renderRecordBytes(raw, w)
+}
+func renderRecordBytes(raw []byte, w io.Writer) error {
+	model, err := evidencereport.Load(raw, validateSnapshot, recordPolicy)
+	if err != nil {
+		return err
 	}
-	fmt.Fprintf(w, "artifacts without selected deliveries=%v; missing selected retry ancestry=%v\n", d.Coverage.ArtifactIDsWithoutSelectedDeliveries, d.Coverage.RetryAttemptIDsNotIncluded)
-	fmt.Fprintln(w, "SBOM bytes: not checked or included; normalization inputs/statements/signatures: not included; worker identity: not recorded; authenticated producer identity: not established")
-	if c.Deliveries == 0 {
-		fmt.Fprintln(w, "No delivery evidence selected; this does not establish that no delivery occurred.")
-	}
-	for _, n := range d.Coverage.CollectionNotes {
-		fmt.Fprintf(w, "collector assertion: attempt=%s orphan temporary files=%d (historical presence not independently checked)\n", n.AttemptID, n.Count)
-	}
+	return evidencereport.Text(model, w)
 }

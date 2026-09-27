@@ -24,3 +24,7 @@ certificate and tests redirects, broken TLS, and lost HTTP responses.
 The run prints the retained synthetic evidence directory and record digest. See
 [the native delivery guide](../README.md#native-verified-delivery) for policy and
 recovery semantics. Release availability is stated in the main README.
+
+The client-evidence version of this demo requires an installed release containing `record report`
+(v0.6.0 planned). It renders self-contained HTML after removing the source workspace. No JavaScript,
+external fonts or network resources are needed to read it; retain the JSON for machine inspection.

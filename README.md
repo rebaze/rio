@@ -167,9 +167,10 @@ target entries under `delivery.targets`; plain `rio deliver` sends every indexed
 To collect the selected delivery batch automatically, use fresh paths:
 
 ```sh
-rio normalize --gate fail
-rio deliver --evidence target/rio/record.json
+rio normalize --gate fail &&
+  rio deliver --evidence target/rio/record.json
 rio record inspect --file target/rio/record.json
+rio record report --file target/rio/record.json --output target/rio/report.html
 ```
 
 Only proceed to delivery when normalization succeeds. The v2 record retains scope, changes, effective
@@ -184,7 +185,8 @@ rio record --delivery-record JOURNAL_PATH --output target/rio/record.json
 rio record inspect --file target/rio/record.json
 ```
 
-The recipient can inspect `record.json` without your workspace or credentials.
+The recipient can inspect `record.json` without your workspace or credentials, or read the optional
+self-contained HTML report. Keep the JSON alongside the report for machine inspection.
 [What the record establishes](docs/output.md#consolidated-recordjson-v1).
 
 ## When to use Rio
