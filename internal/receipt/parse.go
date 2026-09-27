@@ -18,6 +18,9 @@ func Parse(raw []byte) (Document, error) {
 	if len(raw) > MaxBytes || !utf8.Valid(raw) {
 		return d, invalid("byte limit or UTF-8")
 	}
+	if e := boundJSON(raw); e != nil {
+		return d, e
+	}
 	if err := delivery.DecodeJSON(raw, &d, true); err != nil {
 		return d, invalid("schema (expected rio-run-receipt version 1)")
 	}
@@ -50,6 +53,9 @@ func Marshal(d Document) ([]byte, error) {
 	}
 	if b.Len() > MaxBytes {
 		return nil, invalid("byte limit")
+	}
+	if e := boundJSON(b.Bytes()); e != nil {
+		return nil, e
 	}
 	return b.Bytes(), nil
 }
@@ -114,7 +120,7 @@ func Validate(d Document) error {
 			if !refs || !ok || a.Output == nil || b.SHA256 != "" || b.Size != 0 || b.Path != "" || b.Transformation != "" && b.Transformation != "identity" {
 				return invalid("artifactOutput reference")
 			}
-		} else if !delivery.ValidDigest(b.SHA256) || b.Size < 0 {
+		} else if !delivery.ValidDigest(b.SHA256) || b.Size < 0 || b.Size == 0 && b.SHA256 != delivery.Digest(nil) {
 			return invalid("byte identity")
 		}
 		return nil
@@ -255,5 +261,5 @@ func Validate(d Document) error {
 			}
 		}
 	}
-	return nil
+	return validateRelations(d, artifacts)
 }

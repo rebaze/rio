@@ -40,6 +40,9 @@ func rootReceipt(t *testing.T, args ...string) (int, receipt.Document, string) {
 	t.Helper()
 	var out, errout bytes.Buffer
 	code := Main(append(args, "--json"), &out, &errout)
+	if code != 0 {
+		t.Logf("invocation exit=%d: %s", code, errout.String())
+	}
 	var result struct {
 		Receipt struct {
 			Path string `json:"path"`

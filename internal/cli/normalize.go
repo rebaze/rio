@@ -43,6 +43,7 @@ func newNormalizeCommand(opts *globalOptions, stdout, stderr io.Writer) *cobra.C
 
 // artifact is one manifest artifact carried through the five steps of §5.
 type artifact struct {
+	prepared   bool
 	selection  *index.Selection
 	spec       manifest.Artifact
 	transforms []transform.Transform
@@ -161,6 +162,7 @@ func prepare(man *manifest.Manifest, input resolvedArtifact) (*artifact, error) 
 		}
 	}
 
+	a.prepared = true
 	return a, nil
 }
 

@@ -152,6 +152,17 @@ func describeRouting(c delivery.Config, inputs []resolvedArtifact, o pipelineOpt
 			r.Pairs = append(r.Pairs, pair)
 		}
 	}
+	position := map[string]int{}
+	for i, input := range inputs {
+		position[input.Spec.ID] = i
+	}
+	sort.SliceStable(r.Pairs, func(i, j int) bool {
+		a, b := r.Pairs[i], r.Pairs[j]
+		if position[a.ArtifactID] != position[b.ArtifactID] {
+			return position[a.ArtifactID] < position[b.ArtifactID]
+		}
+		return a.Target < b.Target
+	})
 	if o.skip {
 		r.Mode = "skipped"
 	}

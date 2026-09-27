@@ -136,6 +136,7 @@ func compactDestination(d delivery.Description) (receipt.Target, map[string]stri
 func (r *invocation) hooks() runner.BatchHooks {
 	return runner.BatchHooks{
 		Before: func(i int) error {
+			r.doc.Run.Stages["delivery"] = "incomplete"
 			// A crash after this checkpoint cannot prove the request did not occur.
 			// Recovery checks the assigned journal, never replays the upload.
 			v := &r.doc.Deliveries[i]

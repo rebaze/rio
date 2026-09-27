@@ -39,9 +39,20 @@ func (r *invocation) finish(workErr error) (receipt.Publication, error) {
 	return pub, workErr
 }
 func startDeliveryInvocation(g *globalOptions, o deliveryOptions, config delivery.Config, plan delivery.BatchPlan, path string) (*invocation, error) {
+	protected := []string{o.index, o.record, o.retry}
+	for _, job := range plan.Jobs {
+		protected = append(protected, job.Record)
+	}
+	if e := receipt.CheckDestination(path, protected); e != nil {
+		return nil, e
+	}
 	s, e := receipt.Start(g.out, path, "deliver", Version())
 	if e != nil {
 		return nil, usageErrorf("no receipt created: %v", e)
+	}
+	if e = receipt.CheckDestination(s.Path, protected); e != nil {
+		s.Close()
+		return nil, e
 	}
 	r := &invocation{store: s, doc: s.Initial}
 	if e = r.consumePlan(plan, o.index); e != nil {

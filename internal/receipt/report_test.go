@@ -84,3 +84,29 @@ func TestReportRejectsLegacyAndBrokenReceipts(t *testing.T) {
 		}
 	}
 }
+
+func TestDerivedPublicationsRefuseInternalState(t *testing.T) {
+	s, e := Start(t.TempDir(), "", "pipeline", "0.7.0")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	raw, _ := Marshal(fixture())
+	html, e := HTML(raw)
+	if e != nil {
+		t.Fatal(e)
+	}
+	reportPath := filepath.Join(s.Dir, ".internal", "report.html")
+	if _, e = PublishReport(reportPath, html); e == nil {
+		t.Fatal("report wrote into internal state")
+	}
+	recoveredPath := filepath.Join(s.Dir, ".internal", "recovered.json")
+	if _, e = PublishRecovered(recoveredPath, fixture()); e == nil {
+		t.Fatal("recovery wrote into internal state")
+	}
+	for _, p := range []string{reportPath, recoveredPath} {
+		if _, e = os.Stat(p); !os.IsNotExist(e) {
+			t.Fatal("refused publication changed internal state", p)
+		}
+	}
+}

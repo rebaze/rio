@@ -3,6 +3,10 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -140,5 +144,55 @@ func TestStandaloneDeliveryUsesManifestOutputRoot(t *testing.T) {
 	actual, _ := filepath.EvalSymlinks(result.RunDirectory)
 	if code != ExitUsage || !strings.HasPrefix(actual, filepath.Join(expected, "receipts", "runs")+string(filepath.Separator)) {
 		t.Fatalf("manifest output ignored code=%d out=%s err=%s", code, out.String(), stderr.String())
+	}
+}
+
+func TestPlanPairOrderMatchesExecution(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"token":"11111111-1111-4111-8111-111111111111"}`)
+	}))
+	defer srv.Close()
+	dir := pipelineFixture(t, srv.URL+"/security")
+	t.Chdir(dir)
+	t.Setenv("DTRACK_API_KEY", "synthetic")
+	f, _ := os.OpenFile("rio.yaml", os.O_APPEND|os.O_WRONLY, 0600)
+	fmt.Fprintf(f, "    archive:\n      type: dependency-track\n      url: %s/archive\n      allowHTTP: true\n", srv.URL)
+	f.Close()
+	var out, stderr bytes.Buffer
+	if code := Main([]string{"plan", "--json"}, &out, &stderr); code != 0 {
+		t.Fatal(code, stderr.String())
+	}
+	var p struct {
+		Delivery planRouting `json:"delivery"`
+	}
+	json.Unmarshal(out.Bytes(), &p)
+	code, d, _ := rootReceipt(t)
+	if code != 0 {
+		t.Fatal(code)
+	}
+	for i, pair := range p.Delivery.Pairs {
+		if pair.ArtifactID != d.Deliveries[i].ArtifactID || pair.Target != d.Deliveries[i].Target {
+			t.Fatalf("plan/execution order diverged at %d: %#v %#v", i, pair, d.Deliveries[i])
+		}
+	}
+}
+
+func TestMissingInputRetainsPlannedScopeAndAccuratePhase(t *testing.T) {
+	dir := pipelineFixture(t, "https://receiver.example.org")
+	t.Chdir(dir)
+	os.Remove("api.cdx.json")
+	code, d, _ := rootReceipt(t)
+	if code != ExitUsage || len(d.Artifacts) != 2 || len(d.Deliveries) != 2 || len(d.Targets) != 1 || d.Run.Stages["intake"] != "failed" || d.Run.Stages["normalize"] != "not-attempted" {
+		t.Fatalf("lost scope/phases: %d %#v", code, d)
+	}
+}
+func TestConsumedInvalidInputDoesNotClaimNormalizationWasAttempted(t *testing.T) {
+	dir := pipelineFixture(t, "")
+	t.Chdir(dir)
+	os.WriteFile("api.cdx.json", []byte("bad"), 0600)
+	code, d, _ := rootReceipt(t)
+	if code != ExitUsage || d.Run.Stages["intake"] != "failed" || d.Run.Stages["normalize"] != "not-attempted" || d.Artifacts[0].Input == nil {
+		t.Fatalf("incorrect phases %d %#v", code, d)
 	}
 }

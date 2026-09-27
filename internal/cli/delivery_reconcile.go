@@ -30,9 +30,16 @@ func newDeliveryReconcileCommand(g *globalOptions, stdout, stderr io.Writer) *co
 		effective.out = effectiveOutput(cmd, g, man)
 		g = &effective
 		o.planned = &plannedBatch{config: config}
+		if e = receipt.CheckDestination(receiptPath, []string{o.record}); e != nil {
+			return deliveryFinish(runner.NewResult("reconcile", o.record), e, o, g, stdout, stderr)
+		}
 		s, e := receipt.Start(g.out, receiptPath, "reconcile", Version())
 		if e != nil {
 			return usageErrorf("no receipt created: %v", e)
+		}
+		if e = receipt.CheckDestination(s.Path, []string{o.record}); e != nil {
+			s.Close()
+			return deliveryFinish(runner.NewResult("reconcile", o.record), e, o, g, stdout, stderr)
 		}
 		o.receipt = &invocation{store: s, doc: s.Initial}
 		o.receipt.captureOverrides(cmd)

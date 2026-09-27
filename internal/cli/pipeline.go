@@ -79,10 +79,45 @@ func runPipeline(cmd *cobra.Command, g *globalOptions, o pipelineOptions, stdout
 			fmt.Fprintf(stdout, "run %s: %s\nreceipt: %s\n", s.ID, r.doc.Run.Outcome, s.Path)
 		}
 	}()
+	r.doc.Run.Stages["intake"] = "incomplete"
+	if o.operation == "normalize" {
+		r.doc.Run.Stages["delivery"] = "not-applicable"
+	}
+	// Capture known declarations before resolving inputs. A missing SBOM must
+	// not erase configured destination coverage from the failure receipt.
+	var config delivery.Config
+	wanted := map[string]bool{}
+	for _, id := range o.artifacts {
+		wanted[id] = true
+	}
+	var declared []resolvedArtifact
+	for _, a := range man.Artifacts {
+		if len(wanted) == 0 || wanted[a.ID] {
+			declared = append(declared, resolvedArtifact{Spec: a})
+			r.doc.Artifacts = append(r.doc.Artifacts, receipt.Artifact{ID: a.ID, State: "not-attempted"})
+		}
+	}
+	if o.operation != "normalize" {
+		config, e = delivery.ParseConfig(man.Delivery, man.Dir, man.SHA256)
+		if e != nil {
+			return e
+		}
+		routing, excluded, e := describeRouting(config, declared, o)
+		if e != nil {
+			return e
+		}
+		r.applyRouting(routing, excluded)
+	}
+	if e = s.Checkpoint(r.doc); e != nil {
+		return internalErrorf("checkpoint: %v", e)
+	}
 	resolved, e := resolveArtifacts(man, o.artifacts)
 	if e != nil {
 		r.doc.Run.Stages["intake"] = "failed"
 		r.doc.Exceptions = append(r.doc.Exceptions, "input_resolution_failed")
+		if len(man.ArtifactSets) > 0 {
+			r.doc.Exceptions = append(r.doc.Exceptions, "artifact-set-membership-unresolved")
+		}
 		return e
 	}
 	inputs, excluded, e := selectInputs(resolved, o.artifacts)
@@ -90,13 +125,10 @@ func runPipeline(cmd *cobra.Command, g *globalOptions, o pipelineOptions, stdout
 		r.doc.Run.Stages["intake"] = "failed"
 		return e
 	}
+	r.doc.Artifacts = nil
+	r.doc.Deliveries = nil
 	r.doc.Exclusions = append(excluded, declaredExclusions(man)...)
-	var config delivery.Config
 	if o.operation != "normalize" {
-		config, e = delivery.ParseConfig(man.Delivery, man.Dir, man.SHA256)
-		if e != nil {
-			return e
-		}
 		routing, exclusions, e := describeRouting(config, inputs, o)
 		if e != nil {
 			return e
@@ -119,9 +151,22 @@ func runPipeline(cmd *cobra.Command, g *globalOptions, o pipelineOptions, stdout
 			}
 			r.doc.Artifacts[i].State = "failed"
 			r.doc.Artifacts[i].ErrorCode = "normalization_failed"
-			r.doc.Run.Stages["normalize"] = "failed"
+			if a == nil || !a.prepared {
+				r.doc.Artifacts[i].ErrorCode = "input_failed"
+				r.doc.Run.Stages["intake"] = "failed"
+				if i > 0 {
+					r.doc.Run.Stages["normalize"] = "incomplete"
+				}
+			} else {
+				r.doc.Run.Stages["normalize"] = "failed"
+				if i == len(inputs)-1 {
+					r.doc.Run.Stages["intake"] = "completed"
+				}
+			}
 			return e
 		}
+		r.doc.Run.Stages["normalize"] = "incomplete"
+		r.doc.Run.Stages["checks"] = "incomplete"
 		artifacts = append(artifacts, a)
 		r.doc.Artifacts[i] = compactArtifact(a)
 	}
@@ -208,7 +253,14 @@ func compactArtifact(a *artifact) receipt.Artifact {
 			// A newly added native projection repeats the logical assertion. Keep
 			// native replacements/removals when they carry distinct prior facts.
 			if strings.HasPrefix(c.Target, "context:") {
-				changes.Metadata = append(changes.Metadata, metadataChange(c.Field, c.Before, c.After, "context-file"))
+				source := "context-file"
+				for _, field := range a.context.Defaulted {
+					if field == c.Field {
+						source = "context-default"
+						break
+					}
+				}
+				changes.Metadata = append(changes.Metadata, metadataChange(c.Field, c.Before, c.After, source))
 			} else if c.Before != nil {
 				changes.Metadata = append(changes.Metadata, metadataChange(c.Target, c.Before, c.After, "context-file"))
 			}

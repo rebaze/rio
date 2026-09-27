@@ -35,6 +35,9 @@ func recoverInvocation(dir string) (receipt.Document, error) {
 		return d, nil
 	}
 	d.Run.FinishedAt = ""
+	if len(d.Deliveries) > 0 {
+		d.Run.Stages["delivery"] = "incomplete"
+	}
 	if len(d.Deliveries) == 0 {
 		return d, nil
 	}
@@ -56,7 +59,8 @@ func recoverInvocation(dir string) (receipt.Document, error) {
 		if a.AttemptID == "" || a.AttemptID != v.AttemptID {
 			return d, delivery.Fail("invalid_recovery", "attempt binding")
 		}
-		s, e := record.RecoverySnapshot(a.Journal, min(budget, receipt.MaxBytes))
+		capture, e := record.RecoveryCapture(a.Journal, min(budget, receipt.MaxBytes))
+		s := capture.Snapshot
 		if e != nil {
 			if len(v.Responses) == 0 {
 				recoveryGap(v, "journal_unavailable")
@@ -65,8 +69,8 @@ func recoverInvocation(dir string) (receipt.Document, error) {
 			}
 			continue
 		}
-		for _, event := range s.Events {
-			budget -= int64(len(event.Data)) + 256
+		for _, raw := range capture.RawEvents {
+			budget -= int64(len(raw))
 		}
 		if budget < 0 {
 			return d, delivery.Fail("size_limit", "recovery journal budget")

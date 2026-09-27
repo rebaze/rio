@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/rebaze/rio/internal/delivery"
+	"github.com/rebaze/rio/internal/delivery/record"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -164,5 +165,57 @@ func TestStandaloneDeliveryReceiptRetainsFilteredScope(t *testing.T) {
 	}
 	if len(d.Targets) != 2 || len(d.Exclusions) != 3 || d.Run.Overrides["artifact"] != "[app]" || d.Run.Overrides["target"] != "[security]" {
 		t.Fatalf("scope omitted: %#v", d)
+	}
+}
+
+func TestReceiptDestinationCannotCorruptPriorJournal(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"token":"11111111-1111-4111-8111-111111111111"}`)
+	}))
+	defer srv.Close()
+	dir := batchFixture(t, srv.URL)
+	t.Chdir(dir)
+	t.Setenv("DTRACK_API_KEY", "synthetic")
+	code, _, _ := runBatch(t, "deliver", "--artifact", "app", "--record", "prior")
+	if code != 0 {
+		t.Fatal(code)
+	}
+	before, e := record.Read("prior")
+	if e != nil {
+		t.Fatal(e)
+	}
+	code, _, _ = runBatch(t, "deliver", "--artifact", "app", "--record", "retry", "--retry-of", "prior", "--receipt", filepath.Join("prior", "receipt.json"))
+	after, e := record.Read("prior")
+	if code != ExitUsage || calls != 1 || e != nil || before.SHA256 != after.SHA256 {
+		t.Fatalf("receipt damaged prior journal: code=%d requests=%d error=%v", code, calls, e)
+	}
+	if _, e = os.Stat(filepath.Join("prior", "receipt.json")); !os.IsNotExist(e) {
+		t.Fatal("published inside journal")
+	}
+	code, _, _ = runBatch(t, "deliver", "--artifact", "app", "--record", "fresh", "--out", "prior")
+	after, e = record.Read("prior")
+	if code != ExitUsage || e != nil || after.SHA256 != before.SHA256 || calls != 1 {
+		t.Fatal("output root damaged prior journal", code, e, calls)
+	}
+}
+func TestReceiptDestinationCannotOccupyFutureJournalSlot(t *testing.T) {
+	dir := batchFixture(t, "https://receiver.example.org")
+	t.Chdir(dir)
+	t.Setenv("DTRACK_API_KEY", "synthetic")
+	_, plan, e := batchPreflight("rio.yaml", deliveryOptions{index: "target/rio/index.json", artifacts: []string{"app"}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	slot := plan.Jobs[0].Record
+	os.MkdirAll(filepath.Dir(slot), 0700)
+	code, _, _ := runBatch(t, "deliver", "--artifact", "app", "--receipt", slot)
+	if code != ExitUsage {
+		t.Fatal(code)
+	}
+	if _, e = os.Stat(slot); !os.IsNotExist(e) {
+		t.Fatal("receipt occupied a reserved attempt namespace")
 	}
 }

@@ -48,6 +48,7 @@ func (r *invocation) prepareReconcile(s record.Snapshot, journal string) error {
 func (r *invocation) reconcileHooks() runner.ReconcileHooks {
 	return runner.ReconcileHooks{
 		Before: func() error {
+			r.doc.Run.Stages["delivery"] = "incomplete"
 			v := &r.doc.Deliveries[0]
 			v.State = "evidence-gap"
 			v.RequestMayHaveOccurred = true

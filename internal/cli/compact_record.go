@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"strings"
 
 	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/receipt"
@@ -93,21 +92,6 @@ func newRecordRecoverCommand(g *globalOptions, stdout, stderr io.Writer) *cobra.
 	return cmd
 }
 func protectRecoverySources(run, output string) error {
-	canonical := func(path string) (string, error) {
-		abs, e := filepath.Abs(path)
-		if e != nil {
-			return "", e
-		}
-		parent, e := filepath.EvalSymlinks(filepath.Dir(abs))
-		if e != nil {
-			return "", e
-		}
-		return filepath.Join(parent, filepath.Base(abs)), nil
-	}
-	dest, e := canonical(output)
-	if e != nil {
-		return e
-	}
 	sources := []string{run}
 	raw, e := delivery.ReadBounded(filepath.Join(run, ".internal", "attempts.json"), receipt.MaxBytes)
 	if e == nil {
@@ -124,17 +108,5 @@ func protectRecoverySources(run, output string) error {
 			sources = append(sources, one.Journal)
 		}
 	}
-	for _, source := range sources {
-		src, e := canonical(source)
-		if e != nil {
-			continue
-		}
-		for _, namespace := range []string{src, src + ".lock"} {
-			rel, e := filepath.Rel(namespace, dest)
-			if e == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-				return fmt.Errorf("recovery output overlaps source namespace; choose a new path outside the run and journals")
-			}
-		}
-	}
-	return nil
+	return receipt.CheckDestination(output, sources)
 }

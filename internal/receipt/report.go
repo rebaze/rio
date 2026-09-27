@@ -120,6 +120,9 @@ func Text(raw []byte, w io.Writer) error {
 
 // PublishReport writes a derived view, never an execution receipt or a source.
 func PublishReport(path string, html []byte) (Publication, error) {
+	if e := CheckDestination(path, nil); e != nil {
+		return Publication{}, e
+	}
 	if len(html) > 32<<20 {
 		return Publication{}, invalid("HTML byte limit")
 	}

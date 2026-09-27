@@ -135,7 +135,7 @@ func TestReceiptRecoveryAfterHardKillNeverReplays(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if r.Run.Outcome != "incomplete" || r.Run.FinishedAt != "" || calls.Load() != 1 || len(r.Deliveries) != 2 || r.Deliveries[0].State != "unknown" || !r.Deliveries[0].RequestMayHaveOccurred || len(r.Deliveries[0].Responses) != 0 || r.Deliveries[1].State != "evidence-gap" {
+	if r.Run.Outcome != "incomplete" || r.Run.Stages["delivery"] != "incomplete" || r.Run.FinishedAt != "" || calls.Load() != 1 || len(r.Deliveries) != 2 || r.Deliveries[0].State != "unknown" || !r.Deliveries[0].RequestMayHaveOccurred || len(r.Deliveries[0].Responses) != 0 || r.Deliveries[1].State != "evidence-gap" {
 		t.Fatalf("fabricated/replayed: %#v calls=%d", r, calls.Load())
 	}
 	if _, e = os.Stat(filepath.Join(dirs[0], "record.json")); !os.IsNotExist(e) {

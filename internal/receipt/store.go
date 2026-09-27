@@ -40,6 +40,16 @@ func Start(out, path, operation, version string) (*Store, error) {
 	if e != nil {
 		return nil, e
 	}
+	// Validate the prospective run namespace before creating any directories:
+	// even an output root inside an existing journal must remain untouched.
+	if e = CheckDestination(filepath.Join(root, "runs", id, "record.json"), nil); e != nil {
+		return nil, e
+	}
+	if path != "" {
+		if e = CheckDestination(path, nil); e != nil {
+			return nil, e
+		}
+	}
 	if e = os.MkdirAll(filepath.Join(root, "runs"), 0700); e != nil {
 		return nil, e
 	}
@@ -62,6 +72,9 @@ func Start(out, path, operation, version string) (*Store, error) {
 		return nil, fmt.Errorf("receipt parent must exist: %w", e)
 	}
 	path = filepath.Join(parent, filepath.Base(path))
+	if e = CheckDestination(path, nil); e != nil {
+		return nil, e
+	}
 	if e = absent(path); e != nil {
 		return nil, e
 	}
@@ -217,6 +230,9 @@ func (s *Store) WriteRecovery(raw []byte) error {
 // PublishRecovered publishes a fresh immutable snapshot of the original run.
 // Unlike normal completion, an explicitly recovered snapshot may be incomplete.
 func PublishRecovered(path string, d Document) (Publication, error) {
+	if e := CheckDestination(path, nil); e != nil {
+		return Publication{}, e
+	}
 	raw, e := Marshal(d)
 	if e != nil {
 		return Publication{}, e

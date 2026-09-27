@@ -23,7 +23,7 @@ th { background: #eef2ef; } .muted, footer { color: #50636b; } .notice { border-
 </style>
 </head>
 <body><main>
-<header><p class="eyebrow">Rio · {{.Run.Operation}} receipt</p><h1>Consumed → enriched → delivered</h1>
+<header><p class="eyebrow">Rio · {{.Run.Operation}} receipt</p><h1>Consumed → enriched → delivered → acknowledged</h1>
 <p><span class="status">{{.Run.Outcome}}</span> · {{len .Artifacts}} artifacts · {{len .Deliveries}} delivery pairs</p>
 <p class="muted">{{.Run.StartedAt}}{{if .Run.FinishedAt}} → {{.Run.FinishedAt}}{{end}}<br>Run <code>{{.Run.ID}}</code> · Rio {{.RioVersion}}</p>
 <p class="notice">Unsigned recorded assertions and observations. Execution success does not prove receiver ingestion or retained content. Input/output hashes identify bytes; they do not authenticate the producer.</p></header>
@@ -37,8 +37,8 @@ th { background: #eef2ef; } .muted, footer { color: #50636b; } .notice { border-
 {{range .Metadata}}<tr><td><code>{{.Field}}</code><br>{{.Operation}}</td><td><code>{{value .Before}}</code></td><td><code>{{value .After}}</code></td><td>{{.Assertion}} / {{.Source}}</td></tr>{{end}}
 </tbody></table>{{end}}
 {{range .Bulk}}<p><code>{{.Operation}}</code> · {{.Scope}} · evaluated {{.Evaluated}}, applied {{.Applied}}, unmapped {{.Unmapped}}, skipped {{.Skipped}}. Counters may overlap.</p>{{range $reason,$count := .Reasons}}<p>{{$reason}}: {{$count}}</p>{{end}}{{end}}{{end}}
-{{with .Checks}}<p>Gate <strong>{{.Gate}}</strong> ({{.Mode}}) · Schema {{.Schema}} · Findings {{.Findings}}</p>
-<p class="muted">Subject requirements: {{range .SubjectRequirements}}{{.}} {{end}} · Component requirements: {{range .ComponentRequirements}}{{.}} {{end}}<br>{{.ComponentScope}} · {{.ComponentEvaluation}} · {{.ComponentsEvaluated}} components · {{.GraphFindings}} graph findings</p>{{end}}
+{{with .Checks}}<p>Gate <strong>{{.Gate}}</strong> (mode: {{.Mode}}) · Schema {{.Schema}} · Findings {{.Findings}}</p>
+<p class="muted">Subject requirements: {{range .SubjectRequirements}}{{.}} {{end}} · Component requirements: {{range .ComponentRequirements}}{{.}} {{end}}<br>{{.ComponentScope}} · {{.ComponentEvaluation}} · components evaluated: {{.ComponentsEvaluated}} · {{.GraphFindings}} graph findings</p>{{end}}
 {{if .ErrorCode}}<p class="notice">{{.ErrorCode}}</p>{{end}}</section>{{end}}
 <h2>Destinations and acknowledgments</h2>
 {{range .Deliveries}}<section class="card"><h3>{{.ArtifactID}} → {{.Target}} <span class="status">{{.State}}</span></h3>
