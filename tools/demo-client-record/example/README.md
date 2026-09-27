@@ -17,5 +17,5 @@ rio record report --file tools/demo-client-record/example/record.json --output /
 ```
 
 Use a fresh report output path. The JSON SHA-256 is
-`607cd2fcf4d55fe9925e70ad7cbaa6f3b6b6d14c21dc6f21f72096a031dc94d1`.
+`47cbae7aa032112399c7b125ab22ecf39100006f15af0c6e91888a41a569a6c9`.
 These are consistency checks on unsigned evidence, not authenticity or ingestion proof.
