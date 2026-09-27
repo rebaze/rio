@@ -6,8 +6,6 @@ import (
 	"fmt"
 
 	"github.com/rebaze/rio/internal/delivery"
-	"github.com/rebaze/rio/internal/delivery/dtrack"
-	"github.com/rebaze/rio/internal/delivery/oci"
 	"github.com/rebaze/rio/internal/delivery/record"
 	"github.com/rebaze/rio/internal/delivery/runner"
 	"github.com/rebaze/rio/internal/receipt"
@@ -67,26 +65,8 @@ func (r *invocation) reconcileHooks() runner.ReconcileHooks {
 			for _, ref := range o.References {
 				response.References = append(response.References, receipt.Reference{Kind: ref.Kind, Value: ref.Value})
 			}
-			v.Responses = append(v.Responses, response)
-			if r.doc.Targets[v.Target].Type == "oci" {
-				facts, e := oci.ReadTLS(o)
-				if e != nil {
-					return e
-				}
-				if facts != nil {
-					observed := facts.Observed
-					v.Transport.TLSObserved = &observed
-				}
-			}
-			if r.doc.Targets[v.Target].Type == "dependency-track" {
-				facts, e := dtrack.ReadTLS(o)
-				if e != nil {
-					return e
-				}
-				if facts != nil {
-					observed := facts.Observed
-					v.Transport.TLSObserved = &observed
-				}
+			if e := appendObservation(v, r.doc.Targets[v.Target].Type, o, response); e != nil {
+				return e
 			}
 			return r.store.Checkpoint(r.doc)
 		},

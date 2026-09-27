@@ -64,7 +64,7 @@ INTRO_VOICE = (
 OUTRO_VOICE = (
     "We now have an inspectable handoff: which SBOM bytes, which source and build claims, "
     "where they came from, and what changed. "
-    "Stale bindings, missing required fields, and unapproved updates stop before outputs. "
+    "Stale bindings, missing required fields, and unapproved updates stop before SBOM outputs, with a failed receipt. "
     "These are producer assertions, not authenticated build provenance or proof about compiled artifact bytes. "
     "The same examples ship with the pull request. Use the demo runner with a Rio release containing this feature."
 )
@@ -145,30 +145,30 @@ add(C3, "Restore the producer's input", "mv context.saved.json context.json",
 
 C4 = "04 · Normalize and inspect"
 add(C4, "Run the real normalizer",
-    "rio normalize --manifest rio.yaml --out normalized --gate fail --attest",
+    "rio normalize --manifest rio.yaml --out normalized --gate fail --attest --json > normalized-result.json && \\\n  normalized_dir=$(jq -er '.runDirectory' normalized-result.json) && \\\n  jq '{outcome, runDirectory}' normalized-result.json",
     "Two artifacts should pass.\n--attest writes unsigned normalization statements.",
     "Now we run normalization for both artifacts. The gate must pass. The attest flag also writes unsigned statements about the normalized SBOMs; it does not sign or authenticate them.")
 add(C4, "Look at native SBOM references",
-    "jq '.metadata.component.externalReferences' normalized/console.cdx.json",
+    "jq '.metadata.component.externalReferences' \"$normalized_dir/console.cdx.json\"",
     "VCS and build-system links belong to the subject.\nThird-party dependencies do not inherit them.",
     "The source and build links are now on the product being described. Rio does not copy this repository or build identity onto all of the third-party dependencies.")
 add(C4, "See clean versus unknown",
-    "jq '.artifacts[] | {id, workspace: .context.effective.source.workspace, defaulted: .context.defaulted}' normalized/index.json",
+    "jq '.artifacts[] | {id, workspace: .context.effective.source.workspace, defaulted: .context.defaulted}' \"$normalized_dir/index.json\"",
     "Console: explicitly supplied clean.\nAgent: unknown, with the default recorded.",
     "The distinction is explicit in the record. Console has a supplied clean claim. Agent is unknown, and the defaulted list explains why. Missing information has not become an invented fact.")
 add(C4, "Inspect the source of the assertions",
-    "jq '.artifacts[0].context | {file, selector, assertion}' normalized/index.json",
+    "jq '.artifacts[0].context | {file, selector, assertion}' \"$normalized_dir/index.json\"",
     'Raw context digest + entry selector.\n"producer" means supplied, not independently verified.',
     "The record identifies the exact context file bytes and the selected entry. The assertion label is producer. This is traceability and consistency, not proof that a binary was built from that source.")
 add(C4, "Preserve original metadata",
-    "jq '.metadata | {timestamp, tools: .tools.components}' normalized/console.cdx.json",
+    "jq '.metadata | {timestamp, tools: .tools.components}' \"$normalized_dir/console.cdx.json\"",
     "Original timestamp and tool remain.\nRio adds its own normalizer entry.",
     "The original timestamp and tool remain. Rio adds its normalizer entry. Supplied generator claims stay separately labelled in context.")
 add(C4, "Extract the index context",
-    "jq -S '.artifacts[0].context' normalized/index.json > index-context.json",
+    "jq -S '.artifacts[0].context' \"$normalized_dir/index.json\" > index-context.json",
     "Sort JSON keys for a direct comparison.", hold=1.5)
 add(C4, "Extract the statement context",
-    "jq -S '.predicate.artifact.context' normalized/console.intoto.json > statement-context.json",
+    "jq -S '.predicate.artifact.context' \"$normalized_dir/console.intoto.json\" > statement-context.json",
     "The statement should carry the same context record.", hold=1.5)
 add(C4, "Check that the records agree",
     'cmp index-context.json statement-context.json && echo "Context records match"',
@@ -177,25 +177,25 @@ add(C4, "Check that the records agree",
 
 C5 = "05 · Check repeatability"
 add(C5, "Repeat with the same inputs",
-    "rio normalize --manifest rio.yaml --out repeated --gate fail --attest",
+    "rio normalize --manifest rio.yaml --out repeated --gate fail --attest --json > repeated-result.json && \\\n  repeated_dir=$(jq -er '.runDirectory' repeated-result.json) && \\\n  jq '{outcome, runDirectory}' repeated-result.json",
     "A new output directory; the same input bytes and policy.", hold=3)
 add(C5, "Compare all three output files",
-    'cmp normalized/index.json repeated/index.json && \\\n  cmp normalized/console.cdx.json repeated/console.cdx.json && \\\n  cmp normalized/agent.cdx.json repeated/agent.cdx.json && \\\n  echo "Index and both SBOMs are byte-identical"',
+    'cmp \"$normalized_dir/index.json\" \"$repeated_dir/index.json\" && \\\n  cmp \"$normalized_dir/console.cdx.json\" \"$repeated_dir/console.cdx.json\" && \\\n  cmp \"$normalized_dir/agent.cdx.json\" \"$repeated_dir/agent.cdx.json\" && \\\n  echo "Index and both SBOMs are byte-identical"',
     "The index and both SBOMs match byte for byte.",
     "We compare the index and both normalized SBOMs. These three files are byte-identical. Rio did not insert the current clock or discover new environment facts.")
 
 C6 = "06 · Refuse stale context"
 add(C6, "Select the stale-digest fixture", "cat stale.yaml",
     "This manifest points to context-stale.json.\nIts SBOM digest is deliberately wrong.", hold=3)
-add(C6, "Try to normalize with stale context", "rio normalize --manifest stale.yaml --out stale-refused",
-    "Expected: refusal before output.\nA matching artifact name is not enough.",
+add(C6, "Try to normalize with stale context", "rio normalize --manifest stale.yaml --out stale-refused --json > stale-result.json",
+    "Expected: a failed receipt without SBOM outputs.\nA matching artifact name is not enough.",
     "This context contains the wrong SBOM digest. Rio refuses it. The artifact name alone cannot establish that the supplied context belongs to these bytes.",
     expect=2)
 add(C6, "Read the actual exit status", "echo $?",
     "Exit 2 means invalid input or configuration.\nThis is not a completed gate failure.", hold=2)
-add(C6, "Confirm that output was not written",
-    'test ! -e stale-refused && echo "No output directory was written"',
-    "The failed input did not produce a new run record.", hold=3)
+add(C6, "Confirm that SBOM outputs were not written",
+    'stale_dir=$(jq -er \'.runDirectory\' stale-result.json) && \\\n  test -z "$(find "$stale_dir" -type f \\( -name index.json -o -name \'*.cdx.json\' -o -name \'*.intoto.json\' \\) -print)" && \\\n  echo "Failed receipt retained; no normalized outputs"',
+    "The failed input retains a receipt without normalized outputs.", hold=3)
 
 C7 = "07 · Require the fields you need"
 add(C7, "Inspect the required-field policy", "cat missing.yaml",
@@ -217,17 +217,17 @@ add(C8, "Inspect the policy difference", "diff -u conflict.yaml replace.yaml",
     "The replacement manifest adds source.revision.\nThe other two permissions handle workspace and old build ID.",
     "The diff shows the authorization. We add source dot revision to the replacement list. Workspace change and build ID removal are also explicit. This is a scoped decision, not an overwrite-everything switch.",
     expect=1)
-add(C8, "Apply the authorized snapshot", "rio normalize --manifest replace.yaml --out replaced",
+add(C8, "Apply the authorized snapshot", "rio normalize --manifest replace.yaml --out replaced --json > replaced-result.json && \\\n  replaced_dir=$(jq -er '.runDirectory' replaced-result.json) && \\\n  jq '{outcome, runDirectory}' replaced-result.json",
     "Expected: success with an inspectable change history.", hold=3)
 add(C8, "Inspect the new source state",
-    "jq '.artifacts[0].context | {source: .effective.source, defaulted}' replaced/index.json",
+    "jq '.artifacts[0].context | {source: .effective.source, defaulted}' \"$replaced_dir/index.json\"",
     "The revision changed.\nOmitted workspace is unknown, not inherited clean.",
     "The revision is updated. Because the new producer input omitted workspace state, it is unknown. The old clean claim does not silently carry forward.")
 add(C8, "Inspect removal of the old build ID",
-    "jq '.artifacts[0].context.changes[] | select(.field == \"build.id\") | {field, before, after, override}' replaced/index.json",
+    "jq '.artifacts[0].context.changes[] | select(.field == \"build.id\") | {field, before, after, override}' \"$replaced_dir/index.json\"",
     "before: old-run\nafter: null\noverride: true",
     "The old build ID is removed. The audit keeps its previous value, the null replacement, and the explicit override flag. Missing new data is not filled from stale old context.")
-add(C8, "Run the shipped replacement check", "sh ./check-replacement.sh replaced/index.json",
+add(C8, "Run the shipped replacement check", "sh ./check-replacement.sh \"$replaced_dir/index.json\"",
     "Exit 0 verifies the specific effective revision, workspace and removal.", hold=3)
 
 C9 = "09 · Produce context in a real CI job"

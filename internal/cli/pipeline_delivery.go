@@ -17,8 +17,16 @@ func (r *invocation) describeDeliveries(plan delivery.BatchPlan) error {
 	if r.doc.Targets == nil {
 		r.doc.Targets = map[string]receipt.Target{}
 	}
+	previous := r.doc.Deliveries
 	r.doc.Deliveries = nil
-	for _, j := range plan.Jobs {
+	for i, j := range plan.Jobs {
+		if j.Description.Type == "" {
+			if i >= len(previous) || previous[i].ArtifactID != j.ArtifactID || previous[i].Target != j.Target {
+				return fmt.Errorf("missing delivery scope")
+			}
+			r.doc.Deliveries = append(r.doc.Deliveries, previous[i])
+			continue
+		}
 		v := receipt.Delivery{ArtifactID: j.ArtifactID, Target: j.Target, State: "unattempted"}
 		target, project, transport, e := compactDestination(j.Description)
 		if e != nil {
@@ -42,6 +50,10 @@ func (r *invocation) describeDeliveries(plan delivery.BatchPlan) error {
 		}
 
 		r.doc.Deliveries = append(r.doc.Deliveries, v)
+	}
+	if _, e := receipt.Marshal(r.doc); e != nil {
+		r.doc.Deliveries = previous
+		return e
 	}
 	return nil
 }
@@ -163,26 +175,8 @@ func (r *invocation) hooks() runner.BatchHooks {
 				for _, ref := range o.References {
 					response.References = append(response.References, receipt.Reference{Kind: ref.Kind, Value: ref.Value})
 				}
-				v.Responses = append(v.Responses, response)
-				if one.Destination != nil && one.Destination.Type == "oci" {
-					facts, e := oci.ReadTLS(o)
-					if e != nil {
-						return e
-					}
-					if facts != nil {
-						observed := facts.Observed
-						v.Transport.TLSObserved = &observed
-					}
-				}
-				if one.Destination != nil && one.Destination.Type == "dependency-track" {
-					facts, e := dtrack.ReadTLS(o)
-					if e != nil {
-						return e
-					}
-					if facts != nil {
-						observed := facts.Observed
-						v.Transport.TLSObserved = &observed
-					}
+				if e := appendObservation(v, r.doc.Targets[v.Target].Type, o, response); e != nil {
+					return e
 				}
 			}
 			return r.store.Checkpoint(r.doc)

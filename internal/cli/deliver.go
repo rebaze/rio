@@ -29,23 +29,39 @@ func newDeliverCommand(g *globalOptions, stdout, stderr io.Writer) *cobra.Comman
 		effective := *g
 		effective.out = effectiveOutput(cmd, g, man)
 		g = &effective
-		plan, e := delivery.PlanBatch(config, o.index, delivery.PlanOptions{Artifacts: o.artifacts, Targets: o.targets, AllowFailedGate: o.allowFailed}, providers(config.Directory))
-		if e != nil {
+		var inv *invocation
+		plan, e := delivery.PlanBatch(config, o.index, delivery.PlanOptions{Artifacts: o.artifacts, Targets: o.targets, AllowFailedGate: o.allowFailed,
+			BeforeInputs: func(scope delivery.BatchPlan) error {
+				var err error
+				inv, err = startDeliveryInvocation(g, o, config, scope, receiptPath)
+				if err == nil {
+					inv.captureOverrides(cmd)
+				}
+				return err
+			},
+		}, providers(config.Directory))
+		if inv == nil {
 			return batchFinish(runner.NewBatch("deliver", plan), e, o, g, stdout, stderr)
 		}
-		inv, e := startDeliveryInvocation(g, o, config, plan, receiptPath)
-		if e != nil {
-			return batchFinish(runner.NewBatch("deliver", plan), e, o, g, stdout, stderr)
-		}
-		inv.captureOverrides(cmd)
 		o.receipt = inv
-		o.planned = &plannedBatch{config: config, plan: plan}
-		r, e := runDeliverBatch(cmd, g, o)
-		inv.doc.Run.Stages["delivery"] = "completed"
+		r := runner.NewBatch("deliver", plan)
+		if captureErr := inv.consumePlan(plan, o.index); captureErr != nil {
+			e = captureErr
+		}
+		if captureErr := inv.describeDeliveries(plan); captureErr != nil {
+			e = captureErr
+		}
 		if e != nil {
-			inv.doc.Run.Stages["delivery"] = "failed"
-			if r.Outcome == "partial" {
-				inv.doc.Run.Stages["delivery"] = "partial"
+			inv.doc.Run.Stages["intake"] = "failed"
+		} else {
+			o.planned = &plannedBatch{config: config, plan: plan}
+			r, e = runDeliverBatch(cmd, g, o)
+			inv.doc.Run.Stages["delivery"] = "completed"
+			if e != nil {
+				inv.doc.Run.Stages["delivery"] = "failed"
+				if r.Outcome == "partial" {
+					inv.doc.Run.Stages["delivery"] = "partial"
+				}
 			}
 		}
 		publication, finalErr := inv.finish(e)

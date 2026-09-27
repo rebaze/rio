@@ -11,12 +11,12 @@ Rio consumes your SBOMs, adds configured product/build metadata, checks quality,
 ```text
 Consumed → enriched → delivered → acknowledged
 
-api.cdx.json     1d2b04c0df45… → 1064c7fbd2ee…  (2307 output bytes)
-worker.cdx.json  721bd8311e64… → 20730f8fd97e…  (2316 output bytes)
+api.cdx.json     1d2b04c0df45… → 55e46a63a8b3…  (2307 output bytes)
+worker.cdx.json  721bd8311e64… → 085265392b20…  (2316 output bytes)
 
 Added to both: build.url = https://ci.example.org/runs/42
                build.id  = 42
-Destination:   https://127.0.0.1:63845
+Destination:   https://127.0.0.1:53946
 Projects:      api / 1.0.0, worker / 1.0.0
 TLS:           observed; certificate verification enforced
 
@@ -24,7 +24,7 @@ api:     HTTP 200, accepted; token 11111111-1111-4111-8111-111111111111
 worker:  HTTP 200, accepted; token 22222222-2222-4222-8222-222222222222
 ```
 
-**[Complete JSON receipt — 5,729 bytes](tools/demo-client-record/example/record.json)** · **[Download offline HTML](https://raw.githubusercontent.com/rebaze/rio/main/tools/demo-client-record/example/report.html)** · **[Download the runnable example](https://raw.githubusercontent.com/rebaze/rio/main/tools/demo-client-record/example/example.zip)**
+**[Complete JSON receipt — 5,791 bytes](tools/demo-client-record/example/record.json)** · **[Download offline HTML](https://raw.githubusercontent.com/rebaze/rio/main/tools/demo-client-record/example/report.html)** · **[Download the runnable example](https://raw.githubusercontent.com/rebaze/rio/main/tools/demo-client-record/example/example.zip)**
 
 The URL identifies the **destination server**, not a product website. This capture used a local synthetic receiver; your receipt contains your configured Dependency-Track instance or OCI registry. It retains full input/output digests, byte sizes, exact metadata changes, effective checks, projects, transport facts, response times and receiver references. HTTP acceptance is distinct from ingestion or content verification.
 

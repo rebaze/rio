@@ -133,6 +133,7 @@ type Transport struct {
 	CertificateVerification string `json:"certificateVerification"`
 }
 type Response struct {
+	TLSObserved *bool       `json:"tlsObserved,omitempty"`
 	AttemptedAt string      `json:"attemptedAt,omitempty"`
 	Kind        string      `json:"kind"`
 	Value       string      `json:"value"`

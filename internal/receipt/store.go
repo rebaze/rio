@@ -30,7 +30,7 @@ type Publication struct {
 	Size   int    `json:"size"`
 }
 
-func Start(out, path, operation, version string) (*Store, error) {
+func Start(out, path, operation, version string, protected ...string) (*Store, error) {
 	idBytes := make([]byte, 16)
 	if _, e := rand.Read(idBytes); e != nil {
 		return nil, e
@@ -42,11 +42,11 @@ func Start(out, path, operation, version string) (*Store, error) {
 	}
 	// Validate the prospective run namespace before creating any directories:
 	// even an output root inside an existing journal must remain untouched.
-	if e = CheckDestination(filepath.Join(root, "runs", id, "record.json"), nil); e != nil {
+	if e = CheckDestination(filepath.Join(root, "runs", id, "record.json"), protected); e != nil {
 		return nil, e
 	}
 	if path != "" {
-		if e = CheckDestination(path, nil); e != nil {
+		if e = CheckDestination(path, protected); e != nil {
 			return nil, e
 		}
 	}
@@ -72,7 +72,7 @@ func Start(out, path, operation, version string) (*Store, error) {
 		return nil, fmt.Errorf("receipt parent must exist: %w", e)
 	}
 	path = filepath.Join(parent, filepath.Base(path))
-	if e = CheckDestination(path, nil); e != nil {
+	if e = CheckDestination(path, protected); e != nil {
 		return nil, e
 	}
 	if e = absent(path); e != nil {

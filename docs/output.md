@@ -2,7 +2,7 @@
 
 [Generated JSON](../tools/demo-client-record/example/record.json) · [Offline HTML](../tools/demo-client-record/example/report.html) · [CLI](cli.md)
 
-One execution produces one indented JSON document with `kind: "rio-run-receipt"` and `schemaVersion: 1`. The standard two-SBOM/build-URL-and-ID/verified-TLS example is **5,729 bytes**, below the 8,192-byte regression budget. That budget is a standard-fixture check, not a universal real-run cap.
+One execution produces one indented JSON document with `kind: "rio-run-receipt"` and `schemaVersion: 1`. The standard two-SBOM/build-URL-and-ID/verified-TLS example is **5,791 bytes**, below the 8,192-byte regression budget. That budget is a standard-fixture check, not a universal real-run cap.
 
 ## Field guide
 
@@ -42,7 +42,7 @@ Checks retain effective component/subject requirements, traversal scope, policy 
 
 Pair states distinguish `accepted`, `rejected`, `unknown`, `unattempted`, `error`, `evidence-gap`, and reconciliation's `observed`/`unavailable`. `requestMayHaveOccurred` remains conservative when a response or journal is missing. `intended` is the prepared byte identity; `submitted` contains distinct complete body writes actually observed during this adapter attempt. Absence of `submitted` does not prove zero bytes reached a receiver. Already-present OCI content can be accepted without any new body writes.
 
-Transport records HTTP/HTTPS, certificate-verification policy and an optional TLS observation. Missing observation is not false; HTTP verification is not applicable. Response records preserve known status/time, acknowledgment/activity/content facts and allowlisted receiver references. DTrack retains its event token; OCI retains its applicable manifest/blob/tag/subject references. No arbitrary response bodies, API keys, environment dumps, private keys, source archives or complete SBOM inventories are embedded.
+Transport records HTTP/HTTPS, certificate-verification policy and whether TLS was observed during any response in this invocation. Each response also retains its own optional TLS observation, so a later connection failure does not erase an earlier HTTPS response. Missing observation is not false; HTTP verification is not applicable. Response records preserve known status/time, acknowledgment/activity/content facts and allowlisted receiver references. DTrack retains its event token; OCI retains its applicable manifest/blob/tag/subject references. No arbitrary response bodies, API keys, environment dumps, private keys, source archives or complete SBOM inventories are embedded.
 
 An accepted acknowledgment, observed processing activity and verified content are separate capabilities. A DTrack event token does not establish ingestion. Hashes identify bytes but neither authenticate the producer nor prove future retention. The receipt is unsigned. Inspection validates shape, reference bindings and consistency; it cannot detect every coherently forged unsigned receipt or replay absent originals.
 

@@ -3,10 +3,10 @@
   "schemaVersion": 1,
   "rioVersion": "0.7.0",
   "run": {
-    "id": "run-3ef683923a51f480f2be6453194a17e1",
+    "id": "run-a05bc355d0d5c8a397f3c009779fa991",
     "operation": "pipeline",
-    "startedAt": "2026-09-27T22:49:18.481871Z",
-    "finishedAt": "2026-09-27T22:49:18.698744Z",
+    "startedAt": "2026-09-27T23:54:36.858416Z",
+    "finishedAt": "2026-09-27T23:54:37.114483Z",
     "outcome": "success",
     "stages": {
       "checks": "passed",
@@ -26,7 +26,7 @@
       },
       "output": {
         "path": "api.cdx.json",
-        "sha256": "1064c7fbd2eeb8ccb8cffdb557e184a91c70ec6d220bac5d3a4c4a63af241119",
+        "sha256": "55e46a63a8b30ad6082b6c35dd43f0e5bc65d5cdd5ecd91126c09d0327f3d3e4",
         "size": 2307
       },
       "changes": {
@@ -78,7 +78,7 @@
       },
       "output": {
         "path": "worker.cdx.json",
-        "sha256": "20730f8fd97e2521322c588b3ae57ac9208d047f76e17d88f7173e67c4768c3e",
+        "sha256": "085265392b200e569cdda25bf92f83f48b0c0f178139699c71e5074c53d19229",
         "size": 2316
       },
       "changes": {
@@ -124,7 +124,7 @@
   "targets": {
     "security": {
       "type": "dependency-track",
-      "url": "https://127.0.0.1:63845"
+      "url": "https://127.0.0.1:53946"
     }
   },
   "deliveries": [
@@ -135,7 +135,7 @@
         "name": "api",
         "version": "1.0.0"
       },
-      "attemptId": "12434629bfd7e5ecf2ba3626edc3b210",
+      "attemptId": "fb6fb2d3574883c0384f895097662dc9",
       "state": "accepted",
       "intended": [
         {
@@ -151,7 +151,7 @@
           "role": "sbom"
         }
       ],
-      "attemptedAt": "2026-09-27T22:49:18.615194Z",
+      "attemptedAt": "2026-09-27T23:54:37.002093Z",
       "requestMayHaveOccurred": true,
       "transport": {
         "scheme": "https",
@@ -160,10 +160,11 @@
       },
       "responses": [
         {
+          "tlsObserved": true,
           "kind": "acknowledgment",
           "value": "accepted",
           "httpStatus": 200,
-          "observedAt": "2026-09-27T22:49:18.632159Z",
+          "observedAt": "2026-09-27T23:54:37.014772Z",
           "code": "accepted",
           "references": [
             {
@@ -181,7 +182,7 @@
         "name": "worker",
         "version": "1.0.0"
       },
-      "attemptId": "32fdb129e4b0f3d3b440f53ea54528c1",
+      "attemptId": "de6cfed6324be03b32e23eb9b77ace59",
       "state": "accepted",
       "intended": [
         {
@@ -197,7 +198,7 @@
           "role": "sbom"
         }
       ],
-      "attemptedAt": "2026-09-27T22:49:18.673189Z",
+      "attemptedAt": "2026-09-27T23:54:37.071721Z",
       "requestMayHaveOccurred": true,
       "transport": {
         "scheme": "https",
@@ -206,10 +207,11 @@
       },
       "responses": [
         {
+          "tlsObserved": true,
           "kind": "acknowledgment",
           "value": "accepted",
           "httpStatus": 200,
-          "observedAt": "2026-09-27T22:49:18.678618Z",
+          "observedAt": "2026-09-27T23:54:37.075776Z",
           "code": "accepted",
           "references": [
             {

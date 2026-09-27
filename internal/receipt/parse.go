@@ -244,6 +244,14 @@ func Validate(d Document) error {
 			if r.Kind == "" || r.Value == "" || r.HTTPStatus != 0 && (r.HTTPStatus < 100 || r.HTTPStatus > 599) || r.ObservedAt != "" && !timestamp(r.ObservedAt) {
 				return invalid("response")
 			}
+			if r.TLSObserved != nil {
+				if scheme != "https" || v.Transport.TLSObserved == nil || *r.TLSObserved && !*v.Transport.TLSObserved {
+					return invalid("response TLS contradicts transport")
+				}
+				if r.HTTPStatus > 0 && !*r.TLSObserved {
+					return invalid("HTTPS response without TLS")
+				}
+			}
 			if r.HTTPStatus > 0 && scheme == "https" && v.Transport.TLSObserved != nil && !*v.Transport.TLSObserved {
 				return invalid("HTTPS response without TLS")
 			}

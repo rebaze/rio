@@ -173,6 +173,13 @@ func runPipeline(cmd *cobra.Command, g *globalOptions, o pipelineOptions, stdout
 	r.doc.Run.Stages["intake"] = "completed"
 	r.doc.Run.Stages["normalize"] = "completed"
 	r.doc.Run.Stages["checks"] = "passed"
+	gateFailed := false
+	for _, a := range artifacts {
+		if !a.gate.OK() {
+			gateFailed = true
+			r.doc.Run.Stages["checks"] = "failed"
+		}
+	}
 	if e = writeAll(man, artifacts, s.Dir, o.attest); e != nil {
 		r.doc.Run.Stages["normalize"] = "failed"
 		return e
@@ -189,12 +196,6 @@ func runPipeline(cmd *cobra.Command, g *globalOptions, o pipelineOptions, stdout
 			progress = io.Discard
 		}
 		return report(artifacts, mode, g.quiet, progress, stderr)
-	}
-	gateFailed := false
-	for _, a := range artifacts {
-		if !a.gate.OK() {
-			gateFailed = true
-		}
 	}
 	if gateFailed {
 		r.doc.Run.Stages["checks"] = "failed"

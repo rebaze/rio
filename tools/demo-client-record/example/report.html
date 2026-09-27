@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
-<title>Rio receipt · run-3ef683923a51f480f2be6453194a17e1</title>
+<title>Rio receipt · run-a05bc355d0d5c8a397f3c009779fa991</title>
 <style>
 :root { color-scheme: light; font-family: system-ui, sans-serif; color: #172b3a; background: #f5f6f3; }
 body { margin: 0; padding: 3rem 1.5rem; } main { max-width: 1100px; margin: auto; }
@@ -25,13 +25,14 @@ th { background: #eef2ef; } .muted, footer { color: #50636b; } .notice { border-
 <body><main>
 <header><p class="eyebrow">Rio · pipeline receipt</p><h1>Consumed → enriched → delivered → acknowledged</h1>
 <p><span class="status">success</span> · 2 artifacts · 2 delivery pairs</p>
-<p class="muted">2026-09-27T22:49:18.481871Z → 2026-09-27T22:49:18.698744Z<br>Run <code>run-3ef683923a51f480f2be6453194a17e1</code> · Rio 0.7.0</p>
+<p class="muted">2026-09-27T23:54:36.858416Z → 2026-09-27T23:54:37.114483Z<br>Run <code>run-a05bc355d0d5c8a397f3c009779fa991</code> · Rio 0.7.0</p>
+
 <p class="notice">Unsigned recorded assertions and observations. Execution success does not prove receiver ingestion or retained content. Input/output hashes identify bytes; they do not authenticate the producer.</p></header>
 <h2>Consumed SBOMs and meaningful changes</h2>
 <section class="card"><h3>api <span class="status">completed</span></h3>
 
 <dl><dt>Consumed</dt><dd><code>api.cdx.json</code></dd><dt>Input SHA-256</dt><dd><code>1d2b04c0df452a4c2c34d84a6c195bb2805c3f208cf8f6c0bbe90ec54970dc01</code> · 376 bytes</dd>
-<dt>Output SHA-256</dt><dd><code>1064c7fbd2eeb8ccb8cffdb557e184a91c70ec6d220bac5d3a4c4a63af241119</code> · 2307 bytes</dd></dl>
+<dt>Output SHA-256</dt><dd><code>55e46a63a8b30ad6082b6c35dd43f0e5bc65d5cdd5ecd91126c09d0327f3d3e4</code> · 2307 bytes</dd></dl>
 
 <table><thead><tr><th>Metadata</th><th>Before</th><th>After</th><th>Assertion / source</th></tr></thead><tbody>
 <tr><td><code>build.id</code><br>add</td><td><code>absent</code></td><td><code>42</code></td><td>producer / context-file</td></tr><tr><td><code>build.url</code><br>add</td><td><code>absent</code></td><td><code>https://ci.example.org/runs/42</code></td><td>producer / context-file</td></tr>
@@ -42,7 +43,7 @@ th { background: #eef2ef; } .muted, footer { color: #50636b; } .notice { border-
 </section><section class="card"><h3>worker <span class="status">completed</span></h3>
 
 <dl><dt>Consumed</dt><dd><code>worker.cdx.json</code></dd><dt>Input SHA-256</dt><dd><code>721bd8311e643571b9e6fef197a8ffb41e8ff1cbde641d1c03bdd0cba2e012ef</code> · 379 bytes</dd>
-<dt>Output SHA-256</dt><dd><code>20730f8fd97e2521322c588b3ae57ac9208d047f76e17d88f7173e67c4768c3e</code> · 2316 bytes</dd></dl>
+<dt>Output SHA-256</dt><dd><code>085265392b200e569cdda25bf92f83f48b0c0f178139699c71e5074c53d19229</code> · 2316 bytes</dd></dl>
 
 <table><thead><tr><th>Metadata</th><th>Before</th><th>After</th><th>Assertion / source</th></tr></thead><tbody>
 <tr><td><code>build.id</code><br>add</td><td><code>absent</code></td><td><code>42</code></td><td>producer / context-file</td></tr><tr><td><code>build.url</code><br>add</td><td><code>absent</code></td><td><code>https://ci.example.org/runs/42</code></td><td>producer / context-file</td></tr>
@@ -53,32 +54,34 @@ th { background: #eef2ef; } .muted, footer { color: #50636b; } .notice { border-
 </section>
 <h2>Destinations and acknowledgments</h2>
 <section class="card"><h3>api → security <span class="status">accepted</span></h3>
-<dl><dt>Receiver URL</dt><dd><code>https://127.0.0.1:63845</code> (dependency-track)</dd>
+<dl><dt>Receiver URL</dt><dd><code>https://127.0.0.1:53946</code> (dependency-track)</dd>
 
 <dt>Project name</dt><dd><code>api</code></dd><dt>Project version</dt><dd><code>1.0.0</code></dd>
 <dt>Transport</dt><dd>https · TLS observed · Certificate verification enforced</dd>
-<dt>Attempt</dt><dd><code>12434629bfd7e5ecf2ba3626edc3b210</code> · 2026-09-27T22:49:18.615194Z</dd>
+<dt>Attempt</dt><dd><code>fb6fb2d3574883c0384f895097662dc9</code> · 2026-09-27T23:54:37.002093Z</dd>
+
 <dt>Request may have occurred</dt><dd>true</dd>
 <dt>Intended bytes</dt><dd>Output of <code>api</code> · sbom · application/vnd.cyclonedx&#43;json</dd>
 
 <dt>Submitted bytes</dt><dd>Output of <code>api</code> · sbom · application/vnd.cyclonedx&#43;json</dd>
-<dt>acknowledgment</dt><dd><strong>accepted</strong> · HTTP 200 · accepted · 2026-09-27T22:49:18.632159Z</dd>
+<dt>acknowledgment</dt><dd><strong>accepted</strong> · HTTP 200 · accepted · TLS observed · 2026-09-27T23:54:37.014772Z</dd>
 <dt>dependency-track:event-token</dt><dd><code>11111111-1111-4111-8111-111111111111</code></dd></dl>
 </section><section class="card"><h3>worker → security <span class="status">accepted</span></h3>
-<dl><dt>Receiver URL</dt><dd><code>https://127.0.0.1:63845</code> (dependency-track)</dd>
+<dl><dt>Receiver URL</dt><dd><code>https://127.0.0.1:53946</code> (dependency-track)</dd>
 
 <dt>Project name</dt><dd><code>worker</code></dd><dt>Project version</dt><dd><code>1.0.0</code></dd>
 <dt>Transport</dt><dd>https · TLS observed · Certificate verification enforced</dd>
-<dt>Attempt</dt><dd><code>32fdb129e4b0f3d3b440f53ea54528c1</code> · 2026-09-27T22:49:18.673189Z</dd>
+<dt>Attempt</dt><dd><code>de6cfed6324be03b32e23eb9b77ace59</code> · 2026-09-27T23:54:37.071721Z</dd>
+
 <dt>Request may have occurred</dt><dd>true</dd>
 <dt>Intended bytes</dt><dd>Output of <code>worker</code> · sbom · application/vnd.cyclonedx&#43;json</dd>
 
 <dt>Submitted bytes</dt><dd>Output of <code>worker</code> · sbom · application/vnd.cyclonedx&#43;json</dd>
-<dt>acknowledgment</dt><dd><strong>accepted</strong> · HTTP 200 · accepted · 2026-09-27T22:49:18.678618Z</dd>
+<dt>acknowledgment</dt><dd><strong>accepted</strong> · HTTP 200 · accepted · TLS observed · 2026-09-27T23:54:37.075776Z</dd>
 <dt>dependency-track:event-token</dt><dd><code>22222222-2222-4222-8222-222222222222</code></dd></dl>
 </section>
 
 
-<footer><h2>Receipt identity and limits</h2><p>Exact JSON SHA-256: <code>0d4aa0149db7198087bc0863b7c3b9d8bcf3af7a126d4bc81c912e4e30a5dcea</code><br>5729 bytes · <code>rio-run-receipt</code> version 1</p>
+<footer><h2>Receipt identity and limits</h2><p>Exact JSON SHA-256: <code>535d14130f66d8585958f3242f6fc8c685b13b46379b39ea6f45cd79abc1609d</code><br>5791 bytes · <code>rio-run-receipt</code> version 1</p>
 <p>Inspection validates schema, references and internal consistency. It cannot replay absent source documents or detect every coherently forged unsigned receipt. Paths and URLs are references, not promises of future accessibility. This standalone view loads no remote resources.</p></footer>
 </main></body></html>

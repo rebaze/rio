@@ -65,6 +65,9 @@ func validReceiverReference(target Target, v Delivery, ref Reference) bool {
 	}
 }
 func validateRelations(d Document, artifacts map[string]Artifact) error {
+	if err := validateCheckPolicy(d); err != nil {
+		return err
+	}
 	start, _ := time.Parse(time.RFC3339Nano, d.Run.StartedAt)
 	finish, _ := time.Parse(time.RFC3339Nano, d.Run.FinishedAt)
 	within := func(s string) bool {
@@ -142,6 +145,61 @@ func validateRelations(d Document, artifacts map[string]Artifact) error {
 		}
 		if oneOf(v.State, "accepted", "rejected") && !ack {
 			return invalid("delivery state contradicts acknowledgment")
+		}
+	}
+	return nil
+}
+
+// Checks from this invocation enforce one selected-run policy. Standalone
+// delivery instead consumes historical checks under its explicit refusal
+// override, while reconciliation does not repeat or enforce earlier checks.
+func validateCheckPolicy(d Document) error {
+	local := oneOf(d.Run.Operation, "pipeline", "normalize")
+	blocked, warnFailure := false, false
+	localMode := ""
+	for _, a := range d.Artifacts {
+		c := a.Checks
+		if c == nil || a.State == "excluded" {
+			continue
+		}
+		if (c.Gate == "fail" || c.Schema == "fail") && d.Run.Stages["checks"] == "passed" {
+			return invalid("passed checks stage contains failed checks")
+		}
+		if local {
+			if c.Mode == "pre-existing" {
+				return invalid("local checks described as pre-existing")
+			}
+			if mode, explicit := d.Run.Overrides["gate"]; explicit && mode != c.Mode {
+				return invalid("checks contradict explicit gate policy")
+			}
+			if localMode != "" && c.Mode != localMode {
+				return invalid("conflicting gate policies within invocation")
+			}
+			localMode = c.Mode
+			if c.Schema == "fail" || c.Gate == "fail" && c.Mode == "fail" {
+				blocked = true
+			}
+			warnFailure = warnFailure || c.Gate == "fail" && c.Mode == "warn"
+		} else if d.Run.Operation == "deliver" {
+			if c.Mode != "pre-existing" {
+				return invalid("standalone delivery claims current checks")
+			}
+			if c.Gate == "fail" && d.Run.Overrides["allow-failed-gate"] != "true" {
+				blocked = true
+			}
+		}
+	}
+	if local && d.Run.Outcome == "success" && d.Run.Stages["checks"] == "failed" && !warnFailure {
+		return invalid("successful invocation has failed checks without warn policy")
+	}
+	if blocked {
+		if d.Run.Outcome == "success" {
+			return invalid("successful invocation has enforced check failure")
+		}
+		for _, v := range d.Deliveries {
+			if v.RequestMayHaveOccurred || v.AttemptedAt != "" || len(v.Responses) > 0 || len(v.Submitted) > 0 {
+				return invalid("delivery attempted despite enforced check failure")
+			}
 		}
 	}
 	return nil

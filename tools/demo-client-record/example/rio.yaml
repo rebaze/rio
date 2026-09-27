@@ -28,7 +28,7 @@
     "targets": {
       "security": {
         "type": "dependency-track",
-        "url": "https://127.0.0.1:63845",
+        "url": "https://127.0.0.1:53946",
         "apiKeyEnv": "RIO_DEMO_DELIVERY_KEY",
         "caFile": "demo-ca.pem"
       }

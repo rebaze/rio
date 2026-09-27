@@ -39,14 +39,14 @@ func (r *invocation) finish(workErr error) (receipt.Publication, error) {
 	return pub, workErr
 }
 func startDeliveryInvocation(g *globalOptions, o deliveryOptions, config delivery.Config, plan delivery.BatchPlan, path string) (*invocation, error) {
-	protected := []string{o.index, o.record, o.retry}
+	protected := []string{o.index, o.record, o.retry, filepath.Join(filepath.Dir(o.index), "deliveries")}
 	for _, job := range plan.Jobs {
 		protected = append(protected, job.Record)
 	}
 	if e := receipt.CheckDestination(path, protected); e != nil {
 		return nil, e
 	}
-	s, e := receipt.Start(g.out, path, "deliver", Version())
+	s, e := receipt.Start(g.out, path, "deliver", Version(), protected...)
 	if e != nil {
 		return nil, usageErrorf("no receipt created: %v", e)
 	}
@@ -82,10 +82,7 @@ func startDeliveryInvocation(g *globalOptions, o deliveryOptions, config deliver
 		return nil, e
 	}
 	r.applyRouting(routing, excluded)
-	if e = r.describeDeliveries(plan); e != nil {
-		s.Close()
-		return nil, e
-	}
+	r.doc.Run.Stages["intake"] = "incomplete"
 	if e = s.Checkpoint(r.doc); e != nil {
 		s.Close()
 		return nil, e
@@ -100,6 +97,7 @@ func (r *invocation) consumePlan(plan delivery.BatchPlan, indexPath string) erro
 	if e != nil {
 		return e
 	}
+	r.doc.Artifacts = nil
 	seen := map[string]bool{}
 	for _, j := range plan.Jobs {
 		if seen[j.ArtifactID] {
@@ -108,6 +106,12 @@ func (r *invocation) consumePlan(plan delivery.BatchPlan, indexPath string) erro
 		seen[j.ArtifactID] = true
 		payloads := j.Verified.Payloads()
 		if len(payloads) == 0 {
+			a := receipt.Artifact{ID: j.ArtifactID, State: "not-attempted", PreExisting: true}
+			if j.Error != nil {
+				a.State = "failed"
+				a.ErrorCode = j.Error.Code
+			}
+			r.doc.Artifacts = append(r.doc.Artifacts, a)
 			continue
 		}
 		ref := payloads[0].Ref()
@@ -146,7 +150,10 @@ func (r *invocation) consumePlan(plan delivery.BatchPlan, indexPath string) erro
 	r.doc.Run.Stages["normalize"] = "pre-existing"
 	r.doc.Run.Stages["checks"] = "pre-existing"
 	if plan.Scope.AllowFailedGate {
-		r.doc.Run.Overrides = map[string]string{"allow-failed-gate": "true"}
+		if r.doc.Run.Overrides == nil {
+			r.doc.Run.Overrides = map[string]string{}
+		}
+		r.doc.Run.Overrides["allow-failed-gate"] = "true"
 	}
 	return nil
 }

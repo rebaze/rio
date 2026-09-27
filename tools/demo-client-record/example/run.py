@@ -155,6 +155,7 @@ def main():
                 assert attempt["transport"] == {"scheme": "https", "tlsObserved": True, "certificateVerification": "enforced"}
                 assert attempt["submitted"][0]["artifactOutput"] == attempt["artifactId"]
                 response = attempt["responses"][0]
+                assert response["tlsObserved"] is True
                 if args.partial and i == 1:
                     assert attempt["state"] == "unknown" and attempt["requestMayHaveOccurred"]
                     assert not response.get("httpStatus") and not response.get("references")

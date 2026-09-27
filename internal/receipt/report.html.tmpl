@@ -26,10 +26,11 @@ th { background: #eef2ef; } .muted, footer { color: #50636b; } .notice { border-
 <header><p class="eyebrow">Rio · {{.Run.Operation}} receipt</p><h1>Consumed → enriched → delivered → acknowledged</h1>
 <p><span class="status">{{.Run.Outcome}}</span> · {{len .Artifacts}} artifacts · {{len .Deliveries}} delivery pairs</p>
 <p class="muted">{{.Run.StartedAt}}{{if .Run.FinishedAt}} → {{.Run.FinishedAt}}{{end}}<br>Run <code>{{.Run.ID}}</code> · Rio {{.RioVersion}}</p>
+{{with .Run.Prior}}<p class="muted">Prior reference: {{if .RunID}}run <code>{{.RunID}}</code> · {{end}}{{if .AttemptID}}attempt <code>{{.AttemptID}}</code> · {{end}}SHA-256 <code>{{.SHA256}}</code></p>{{end}}
 <p class="notice">Unsigned recorded assertions and observations. Execution success does not prove receiver ingestion or retained content. Input/output hashes identify bytes; they do not authenticate the producer.</p></header>
 <h2>Consumed SBOMs and meaningful changes</h2>
 {{range .Artifacts}}<section class="card"><h3>{{.ID}} <span class="status">{{.State}}</span></h3>
-{{if .PreExisting}}<p class="notice">Consumed already-normalized bytes. Earlier normalization is pre-existing work, not work performed by this invocation.</p>{{end}}
+{{if .PreExisting}}<p class="notice">{{if .Input}}Consumed already-normalized bytes.{{else}}No SBOM bytes were consumed by this invocation.{{end}} Earlier normalization is pre-existing work, not work performed by this invocation.</p>{{end}}
 <dl>{{with .Input}}<dt>Consumed</dt><dd><code>{{.Path}}</code></dd><dt>Input SHA-256</dt><dd><code>{{.SHA256}}</code> · {{.Size}} bytes</dd>{{end}}
 {{with .Output}}<dt>Output SHA-256</dt><dd><code>{{.SHA256}}</code> · {{.Size}} bytes</dd>{{end}}</dl>
 {{with .Changes}}{{with .SpecVersion}}<p>Specification {{.From}} → {{.To}}</p>{{end}}
@@ -47,11 +48,12 @@ th { background: #eef2ef; } .muted, footer { color: #50636b; } .notice { border-
 {{range $key,$value := .Project}}<dt>Project {{$key}}</dt><dd><code>{{$value}}</code></dd>{{end}}
 <dt>Transport</dt><dd>{{.Transport.Scheme}} · TLS {{tls .Transport.TLSObserved}} · Certificate verification {{.Transport.CertificateVerification}}</dd>
 {{if .AttemptID}}<dt>Attempt</dt><dd><code>{{.AttemptID}}</code>{{if .AttemptedAt}} · {{.AttemptedAt}}{{end}}</dd>{{end}}
+{{with .Prior}}<dt>Prior reference</dt><dd>{{if .RunID}}Run <code>{{.RunID}}</code> · {{end}}{{if .AttemptID}}Attempt <code>{{.AttemptID}}</code> · {{end}}SHA-256 <code>{{.SHA256}}</code></dd>{{end}}
 <dt>Request may have occurred</dt><dd>{{.RequestMayHaveOccurred}}</dd>
 {{range .Intended}}<dt>Intended bytes</dt><dd>{{if .ArtifactOutput}}Output of <code>{{.ArtifactOutput}}</code> · {{.Role}} · {{.MediaType}}{{else}}<code>{{.SHA256}}</code> · {{.Size}} bytes · {{.MediaType}}{{end}}</dd>{{end}}
 {{if and .RequestMayHaveOccurred (not .Submitted)}}<dt>Submitted bytes</dt><dd>No complete body write recorded. Intended bytes are not proof of a completed upload.</dd>{{end}}
 {{range .Submitted}}<dt>Submitted bytes</dt><dd>{{if .ArtifactOutput}}Output of <code>{{.ArtifactOutput}}</code> · {{.Role}} · {{.MediaType}}{{else}}<code>{{.SHA256}}</code> · {{.Size}} bytes · {{.MediaType}}{{end}}</dd>{{end}}
-{{range .Responses}}<dt>{{.Kind}}</dt><dd><strong>{{.Value}}</strong>{{if .HTTPStatus}} · HTTP {{.HTTPStatus}}{{end}} · {{.Code}}{{if .ObservedAt}} · {{.ObservedAt}}{{end}}</dd>
+{{range .Responses}}<dt>{{.Kind}}</dt><dd><strong>{{.Value}}</strong>{{if .HTTPStatus}} · HTTP {{.HTTPStatus}}{{end}} · {{.Code}} · TLS {{tls .TLSObserved}}{{if .ObservedAt}} · {{.ObservedAt}}{{end}}</dd>
 {{range .References}}<dt>{{.Kind}}</dt><dd><code>{{.Value}}</code></dd>{{end}}{{end}}</dl>
 {{if .ErrorCode}}<p class="notice">{{.ErrorCode}}</p>{{end}}</section>{{else}}<p>Delivery stage: {{index .Run.Stages "delivery"}}.</p>{{end}}
 {{if .Exclusions}}<h2>Excluded scope</h2>{{range .Exclusions}}<p>{{.ArtifactID}} {{.Target}} · {{.Reason}} {{.Scope}} <code>{{.Rule}}</code></p>{{end}}{{end}}

@@ -170,15 +170,21 @@ func appendRecoveredObservation(v *receipt.Delivery, kind string, o delivery.Obs
 	for _, ref := range o.References {
 		response.References = append(response.References, receipt.Reference{Kind: ref.Kind, Value: ref.Value})
 	}
-	v.Responses = append(v.Responses, response)
+	return appendObservation(v, kind, o, response)
+}
+
+// appendObservation preserves per-response TLS facts and summarizes whether any
+// response in this invocation observed TLS. A later connection failure cannot
+// erase an earlier successful connection.
+func appendObservation(v *receipt.Delivery, kind string, o delivery.Observation, response receipt.Response) error {
+	var observed *bool
 	if kind == "oci" {
 		facts, e := oci.ReadTLS(o)
 		if e != nil {
 			return e
 		}
 		if facts != nil {
-			observed := facts.Observed
-			v.Transport.TLSObserved = &observed
+			observed = &facts.Observed
 		}
 	}
 	if kind == "dependency-track" {
@@ -187,10 +193,15 @@ func appendRecoveredObservation(v *receipt.Delivery, kind string, o delivery.Obs
 			return e
 		}
 		if facts != nil {
-			observed := facts.Observed
-			v.Transport.TLSObserved = &observed
+			observed = &facts.Observed
 		}
 	}
+	response.TLSObserved = observed
+	if observed != nil {
+		anyObserved := *observed || v.Transport.TLSObserved != nil && *v.Transport.TLSObserved
+		v.Transport.TLSObserved = &anyObserved
+	}
+	v.Responses = append(v.Responses, response)
 	return nil
 }
 func recoverReconcile(d receipt.Document, raw []byte) (receipt.Document, error) {
