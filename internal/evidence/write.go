@@ -194,7 +194,7 @@ func preflightOutput(path, indexPath string, journals []string) (string, error) 
 		}
 	}
 	for _, path := range journals {
-		root, e := canonicalParent(path)
+		root, e := journalProtectionRoot(path)
 		if e != nil {
 			return "", e
 		}
@@ -208,6 +208,21 @@ func preflightOutput(path, indexPath string, journals []string) (string, error) 
 
 	}
 	return out, nil
+}
+
+// A missing journal parent is itself a reserved directory namespace: publishing
+// a file there would prevent later journal creation. Protect the first missing
+// ancestor, whose parent exists, without creating any missing directories.
+func journalProtectionRoot(path string) (string, error) {
+	for current := filepath.Clean(path); ; current = filepath.Dir(current) {
+		_, err := os.Stat(filepath.Dir(current))
+		if err == nil {
+			return canonicalParent(current)
+		}
+		if !os.IsNotExist(err) || filepath.Dir(current) == current {
+			return "", delivery.Fail("read_failed", "journal parent")
+		}
+	}
 }
 
 // Materialize the reserved sibling namespace under its normal exclusive lock so

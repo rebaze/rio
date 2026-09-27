@@ -320,11 +320,9 @@ jobs:
           python tools/demo-delivery/integration/setup.py start "$RUNNER_TEMP/rio-dtrack"
       - name: Real adapter contracts and installed-binary client handoff
         shell: bash
-        env:
-          CGO_ENABLED: "0"
         run: |
           set -euo pipefail
-          go build -trimpath -o "$RUNNER_TEMP/rio-integration" ./cmd/rio
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/rio-integration" ./cmd/rio
           python tools/demo-delivery/integration/exercise.py "$RUNNER_TEMP/rio-dtrack" "$RUNNER_TEMP/rio-integration" --adapter-tests
       - name: Retain only sanitized real-server evidence
         if: always()

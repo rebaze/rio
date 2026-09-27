@@ -109,9 +109,8 @@ func CollectV2(indexPath string, batchPaths, journalPaths []string, version stri
 		snapshot record.Snapshot
 	}
 	mismatches := []mismatch{}
-	selectCapture := func(path string, c record.Capture) {
+	selectCapture := func(c record.Capture) {
 		captures = append(captures, c)
-		paths = append(paths, path)
 		selectedIDs[c.Snapshot.Events[0].AttemptID] = true
 	}
 	capture := func(path string, optional bool) (record.Capture, bool, error) {
@@ -149,6 +148,7 @@ func CollectV2(indexPath string, batchPaths, journalPaths []string, version stri
 		return c, true, nil
 	}
 	for _, p := range pairs {
+		paths = append(paths, p.path)
 		c, present, err := capture(p.path, true)
 		if err != nil {
 			return Document{}, err
@@ -161,15 +161,16 @@ func CollectV2(indexPath string, batchPaths, journalPaths []string, version stri
 			if err = batchrecord.CheckPairJournal(p.pair, c.Snapshot); err != nil {
 				return Document{}, err
 			}
-			selectCapture(p.path, c)
+			selectCapture(c)
 		}
 	}
 	for _, path := range journalPaths {
+		paths = append(paths, path)
 		c, _, err := capture(path, false)
 		if err != nil {
 			return Document{}, err
 		}
-		selectCapture(path, c)
+		selectCapture(c)
 	}
 	for _, m := range mismatches {
 		// A slot not used by an older batch can later contain a new attempt. Retain

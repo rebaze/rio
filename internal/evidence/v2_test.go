@@ -260,3 +260,53 @@ func TestV2LaterBatchCanUseAnOriginallyUnattemptedSlot(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestV2PublicationProtectsMissingJournalNamespaces(t *testing.T) {
+	for _, hint := range []string{"missing-journal", "absent/parents/missing-journal"} {
+		t.Run(hint, func(t *testing.T) {
+			_, bp, desc := batchFixture(t)
+			desc.Pairs[1].JournalPathHint = hint
+			source, err := batchrecord.MarshalDescriptor(desc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = os.WriteFile(bp, source, 0600); err != nil {
+				t.Fatal(err)
+			}
+			d, err := CollectV2("", []string{bp}, nil, "test", validateFixture)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := Marshal(d)
+			if err != nil {
+				t.Fatal(err)
+			}
+			root := filepath.Dir(bp)
+			// Before parent creation, publication must also protect the directory
+			// entry needed to create the missing journal later.
+			if strings.Contains(hint, "/") {
+				if _, err = PublishV2(filepath.Join(root, "absent"), d, raw, validateFixture); err == nil {
+					t.Fatal("published over missing journal parent")
+				}
+			}
+			if _, err = PublishV2(filepath.Join(root, "recovered.json"), d, raw, validateFixture); err != nil {
+				t.Fatal("unrelated recovery failed", err)
+			}
+			journal := filepath.Join(root, filepath.FromSlash(hint))
+			if err = os.MkdirAll(filepath.Dir(journal), 0700); err != nil {
+				t.Fatal(err)
+			}
+			for _, destination := range []string{journal, journal + ".lock"} {
+				if _, err = PublishV2(destination, d, raw, validateFixture); err == nil {
+					t.Fatalf("published over missing journal namespace %s", destination)
+				}
+				if _, err = os.Lstat(destination); !os.IsNotExist(err) {
+					t.Fatalf("collision check created destination: %v", err)
+				}
+			}
+			if _, err = CollectV2("", []string{bp}, nil, "test", validateFixture); err != nil {
+				t.Fatal("recovery sources damaged", err)
+			}
+		})
+	}
+}
