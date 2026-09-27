@@ -1,8 +1,10 @@
 # A complete client evidence handoff
 
-**See the output first:** [complete record.json](example/record.json) ·
+**Start with the simple delivery story:** [full record.json](example/record.json) ·
 [HTML report](example/report.html) (download and open locally) ·
-[report preview](example/report-preview.png). These are actual Rio v0.6.0 outputs from the synthetic demo.
+[reproduce the two-SBOM pipeline/delivery example](example/README.md).
+It records the consumed SBOMs, added build URL/ID, destination URL, TLS facts and server receipts.
+The broader walkthrough below also exercises specialized repairs and failure cases.
 
 Requires Python 3.9+ and an installed Rio release containing client evidence (v0.6.0 or newer).
 No Go toolchain, container or production credentials are needed:
