@@ -1079,6 +1079,11 @@ Xray/Lifecycle ingestion, and unavailable vendor evidence is never replaced by s
 
 ## Client evidence demos
 
+See the result before running anything: [full record.json](demo-client-record/example/record.json),
+[downloadable offline HTML](demo-client-record/example/report.html), and
+[report preview](demo-client-record/example/report-preview.png), generated with released Rio v0.6.0.
+
+
 The [normalization evidence demo](demo-normalization-evidence/README.md) checks change pointers,
 repair sources and effective requirements. The [batch evidence demo](demo-batch-evidence/README.md)
 uses two artifacts/two targets, an exclusion and a lost response, then explicitly retries and collects

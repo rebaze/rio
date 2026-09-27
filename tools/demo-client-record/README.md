@@ -1,5 +1,9 @@
 # A complete client evidence handoff
 
+**See the output first:** [complete record.json](example/record.json) ·
+[HTML report](example/report.html) (download and open locally) ·
+[report preview](example/report-preview.png). These are actual Rio v0.6.0 outputs from the synthetic demo.
+
 Requires Python 3.9+ and an installed Rio release containing client evidence (v0.6.0 or newer).
 No Go toolchain, container or production credentials are needed:
 
