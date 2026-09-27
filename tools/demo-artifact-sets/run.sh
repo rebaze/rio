@@ -1,5 +1,5 @@
 #!/bin/sh
-# Synthetic example. Requires only an installed Rio containing #71 and standard utilities.
+# Synthetic example. Requires only an installed Rio v0.6.0+ and standard utilities.
 set -eu
 if [ "$#" -gt 1 ]; then
   printf 'Usage: %s [rio-command-or-path]\n' "$0" >&2
@@ -7,7 +7,7 @@ if [ "$#" -gt 1 ]; then
 fi
 rio_command=${1:-${RIO_BIN:-rio}}
 if ! rio_bin=$(command -v "$rio_command"); then
-  printf 'Cannot find rio: %s. Install a release containing #71 or set RIO_BIN.\n' "$rio_command" >&2
+  printf 'Cannot find rio: %s. Install a release v0.6.0 or newer or set RIO_BIN.\n' "$rio_command" >&2
   exit 2
 fi
 case "$rio_bin" in
@@ -101,3 +101,12 @@ refuse normalize overlap.yaml overlap-normalize
 cmp -s rio.yaml original-manifest.yaml
 printf '\nPASS: discovery, automatic inclusion, missing-SBOM refusal, removal, exclusion and overlap refusal.\n'
 printf 'All runs used fresh output directories. Reused directories can retain old files; index.json defines current membership.\n'
+
+printf '\n7. Retain and inspect selection scope and requirements offline\n'
+"$rio_bin" record --index excluded/index.json --output scope-record.json
+"$rio_bin" record inspect --file scope-record.json --json > scope-inspection.json
+# Read the validated JSON result, not current filesystem membership.
+grep -Fq '"normalizationScope"' scope-inspection.json
+grep -Fq '"componentScope":"all components including nested"' scope-inspection.json
+grep -Fq '"mode":"fail"' scope-inspection.json
+printf 'PASS: scope-record.json retains configured exclusions, resolved membership and effective checks.\n'

@@ -76,6 +76,12 @@ class ChangesTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(detect(path)["go"], "true")
 
+    def test_client_evidence_demo_files_run_binary_checks(self):
+        for name in ("normalization-evidence", "batch-evidence", "client-record"):
+            for leaf in ("run.py", "rio.yaml", "fixtures/bom.json", "README.md"):
+                with self.subTest(name=name, leaf=leaf):
+                    self.assertEqual(detect("tools/demo-" + name + "/" + leaf)["go"], "true")
+
     def test_record_demo_files_run_binary_checks(self):
         paths = [str(p.relative_to(ROOT)) for p in (ROOT / "tools/demo-record").rglob("*") if p.is_file()]
         paths.append("tools/demo-record/future-fixture.json")

@@ -91,25 +91,53 @@ purl is left byte-identical, because stripping the qualifier off
 `pkg:maven/p2.eclipse.plugin/com.google.guava@30.1.0.v1` would make it indistinguishable from a
 well-formed Maven coordinate, and a lenient consumer would act on a groupId that does not exist.
 
-The same repair is also recorded on the component itself, as an `evidence.identity` entry:
+New repairs also add a confidence-free `evidence.identity` conclusion on CycloneDX 1.6:
 
 ```json
 "evidence": {
   "identity": [
-    { "field": "purl",
-      "confidence": 0.9,
-      "methods": [
-        { "technique": "other", "confidence": 0.9,
-          "value": "rio repair-purl/p2: pkg:p2/com.google.gson@2.8.9.v20220111-1409" }
-      ] }
+    { "field": "purl", "concludedValue": "pkg:maven/com.google.code.gson/gson@2.8.9" }
   ]
 }
 ```
 
-The `value` names the rule and the original purl, so a consumer holding only the normalized document
-can still see what the identity used to be. If a component already carries `evidence.identity`, rio
-appends to it and never overwrites an existing entry. The current implementation assigns `0.9`
-to every repair; this is a fixed value, not a measured probability or independent verification.
+The metadata repair property retains the original purl and rule. Input identity evidence is
+preserved, including any confidence the producer supplied. Rio no longer assigns its former
+fixed `0.9`: a mapping category is an assertion, not a measured probability. The embedded
+schemas require numeric confidence in method entries, so new assertions omit methods.
+CycloneDX 1.5 supports a single identity object: Rio adds `{ "field": "purl" }` only when
+none exists, and preserves an existing object. Detailed source evidence remains in the index.
+
+### Normalization change evidence
+
+New indexes keep index schema version 1 and add `artifacts[].normalization`, an independently
+versioned extension (`version: 1`). Old indexes without it have **changes not recorded**, not
+zero changes. Unknown extension versions must be labeled unsupported, not treated as complete.
+
+`changes` lists stable JSON Pointer targets, `add`/`replace`/`remove` operations, rules, before
+and after values, and available resolution sources. The enclosing artifact's input/output digests
+bind the relationship. Changes cover uplift, purl rewrites, preserved p2 qualifiers, legacy subject
+replacement, enrichment and supplied context. Component membership and repair counters retain
+their existing meanings: one purl rewrite can change both coordinates and version but counts once.
+Transform scope is top-level components; nested components are not implied repaired.
+
+A repair's `resolution.kind` distinguishes `input-qualifier`, `component-property`,
+`built-in-entry`, `external-table-entry`, and qualifier-only `input-version`. Its selector identifies
+the chosen keys or table entry. Mapping `sha256` hashes the exact bytes loaded for that transform,
+even if the file later changes. Optional `metadata.confidence` and `metadata.evidence` preserve
+upstream categorical assertions such as `manifest-proven`; they are not translated into numbers.
+Missing upstream metadata stays absent. Other supplied JSON values in those assertion fields
+remain as recorded; a numeric value is an upstream assertion, not a probability assigned or verified
+by Rio. Mapping tables with duplicate object names or invalid Unicode refuse before normalization
+outputs are written, keeping retained source selectors unambiguous. Manifest and context changes bind their source digests.
+
+`bookkeeping` separately records Rio's added tools, repair assertions and run properties.
+`unmapped` retains per-component pointers and reasons. `skipped` aggregates reasons with an explicit
+scope and count. Collection copies these retained facts without rereading or reprocessing SBOMs.
+The JSON is a consistency record, not proof of authenticity or a complete input archive.
+
+Run the [installed-binary ledger demonstration](../tools/demo-normalization-evidence/README.md)
+for a synthetic override, qualifier-only miss, unchanged input and offline portable record.
 
 Where an Eclipse build qualifier was dropped from a version, the component carries it as a
 `rebaze:normalize:p2-qualifier` property, for example `v20230708-0916`. This preserves the version
@@ -142,7 +170,7 @@ this contract for each `index.artifacts[i]`:
 The references in the table mean the actual JSON values from the same run's `index.json`.
 `predicate.artifact` preserves every field: `id`, `input`, `output`, `specVersion`,
 `schemaValidated`, `components`, `transforms`, `gate`, `gateFindings`, `integrityFindings`, and
-`enrichment`, `context` and `selection` when present. Arrays retain the index's order and empty-array representation; absent optional
+`enrichment`, `context`, `selection`, `normalization` and `checks` when present. Arrays retain the index's order and empty-array representation; absent optional
 fields stay absent. There is no additional `schemaVersion` field in the statement or predicate;
 the two type URIs identify their versions.
 
@@ -247,7 +275,7 @@ reading or adding environment/credential values.
 
 ### Record limits and publication
 
-Limits are 16 MiB raw index, 1 MiB per event, 10,000 events per journal and across the entire selected
+For record v1, limits are 16 MiB raw index, 1 MiB per event, 10,000 events per journal and across the entire selected
 set, 256 selected journals, 32 MiB total raw sources, 128 MiB serialized record, and 20,000 directory
 entries per captured journal including ignored temps. Typed streaming validation applies before retaining nested event data; no additional collection-entry
 limit narrows the existing event byte/schema contract.
@@ -268,3 +296,92 @@ without hard-link support fail safely. Ordinary exits remove owned temp/lock ent
 failure is an execution failure. A final file is never deleted merely because later sync/readback
 fails. Windows has no directory fsync through `os.File`; do not infer universal power-loss
 protection. Inspect a possibly published file before retrying at a new path.
+
+### Selected scope and effective checks
+
+`normalizationScope` is another optional version-1 extension. It binds the manifest digest,
+effective spec floor, explicit artifact IDs, artifact-set module selectors and declared exclusions,
+resolved membership, SBOM selectors, and transform options with defaults filled in. It does not
+inventory modules outside those selectors or include delivery configuration, credentials or raw
+manifest bytes. Per-artifact `selection` keeps its existing meaning and shape.
+
+`artifacts[].checks` records `mode` (`warn` or `fail`), unconditional subject name/version checks,
+selected component requirements, and the number evaluated and failed for each requirement.
+Component traversal includes nested components; `componentCount` is its denominator. This is
+separate from the index's existing top-level component count used by repair transforms.
+An explicit empty `gate.require: []` yields no component evaluations and `not-evaluated`, while
+subject checks still run. A requirement with no components to inspect is also `not-evaluated`.
+
+Schema validation is recorded separately as `pass` or `not-available` (for a newer unsupported
+CycloneDX version). The graph check is specifically dangling dependency references, with its own
+finding count; it is not a complete graph verification. Warn mode does not turn failed requirements
+into passing ones. Old indexes without extensions remain valid, with effective checks not recorded.
+Known malformed extensions refuse delivery/collection; unknown versions are retained as opaque
+unsupported evidence and must not be interpreted as current-version facts.
+
+
+## Consolidated record.json v2
+
+V1 remains the default for explicit journal collection. `--schema-version 2` and `deliver --evidence`
+write a separate v2 envelope; the v1 envelope gains no new root fields. Readers accept both versions,
+and v1-only readers refuse v2. V2 retains the v1 source/event and readable-fact meanings, adding
+`expectedScope` (`recorded` or `not-recorded`) and `batches`. Historical explicit journals can use v2
+without inventing expected routing.
+
+A batch view retains its descriptor and optional completion, source IDs, selected-pair coverage,
+and disjoint exclusion groups. An exclusion group identifies an exact artifact/target Cartesian
+subset, with a derived count; it avoids expanding huge filtered inventories. Filters and configured
+exclusions are distinct. Selected pairs retain a preassigned attempt ID that binds their exact
+prepared source, target policy, payloads and journal. Coverage separates captured/missing evidence,
+original acknowledgment, and the runner's recorded state. Later reconciliation never upgrades the
+original acknowledgment or rewrites a batch completion. All selected attempts remain visible.
+
+The source kinds `delivery-batch` and `delivery-batch-result` retain exact bytes and digests, alongside
+`normalization-index` and `delivery-event`. The inspector reconstructs all views from those bytes,
+checks exact source links and retry compatibility, and rejects altered projections and contradictions.
+If a previously unused journal slot later holds a different attempt, include its compatible batch or
+explicit journal too; it is never attributed to the older descriptor's preassigned attempt.
+
+Before the first request, evidence delivery reserves fresh output/source paths and durably writes:
+
+- `<output>.index.json`: exact captured normalization index bytes.
+- `<output>.batch.json`: immutable selected scope, invocation filters, configured target names and
+  exclusions, separate normalization/delivery manifest digests, prepared intents and journal hints.
+- `<output>.batch-result.json`: written on ordinary return, including unattempted pairs and safe error
+  codes. It is a runner assertion, not a receiver receipt. A crash may leave it absent.
+
+The JSON named by `--evidence` is the portable recipient deliverable. These sibling files and journals
+are local recovery sources. A killed process cannot promise final JSON; a later offline collection
+creates a fresh snapshot from captured sources. Stale locks are never silently broken. Files and
+journals are not overwritten, and record publication failure never triggers another upload.
+
+V2 permits 1,024 selected journal paths (including missing bound attempts), 1,024 selected pairs per
+batch and 256 batch descriptors. All batches and retries share the 10,000-event, 32 MiB raw-source and
+128 MiB serialized-record budgets. Each descriptor/completion is limited to 16 MiB and counts against
+the source budget. The existing 16 MiB index and 1 MiB event limits remain. Inventories are additionally
+bounded by source bytes. Exceeding a limit refuses; no evidence is truncated or silently omitted.
+
+The record remains unsigned and excludes full SBOM/input/mapping files, raw manifests, authenticated
+worker identity and credentials. Hashes show correspondence and consistency, not authenticity.
+
+
+## Human-readable report
+
+`rio record report --file record.json --output report.html` renders validated v1 or v2 evidence
+without its source workspace. Terminal inspection and HTML share one view model. Known facts stay
+useful in older records, while missing or unsupported normalization extensions are labelled instead
+of being interpreted as zero changes or passing checks.
+
+The report separates selection scope, substantive changes and Rio bookkeeping, effective field
+requirements, schema and graph findings, expected routing, original acknowledgments, observation
+history, exceptions and source digests. Applied/unmapped/skipped repair counters keep their existing
+semantics; applied and unmapped can overlap. Component-change denominators describe top-level
+components, while requirement evaluation explicitly includes nested components. Repeated attempts
+are all retained rather than choosing the most favorable outcome.
+
+The HTML contains only escaped supplied text and embedded styling, with system fonts, internal
+section navigation and native disclosure elements. It has no scripts or network dependencies; URLs
+are text. The exact input-record SHA-256 identifies the JSON that was rendered. Neither that hash,
+record consistency nor an accepted receipt establishes authenticity or Dependency-Track ingestion.
+Keep the JSON as the primary machine-readable artifact. Reports use a new path, never overwrite an
+existing file and refuse output beyond 128 MiB rather than truncating it.

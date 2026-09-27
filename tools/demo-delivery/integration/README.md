@@ -65,3 +65,48 @@ Neither file includes API keys, private certificate material, raw authentication
 production identifiers. The endpoint, database, teams and projects were dedicated synthetic test
 infrastructure. The [installed-binary HTTPS demo](../../demo-dtrack-tls/README.md) reproduces the
 verification-policy and portable-record behavior with a clearly labeled local synthetic receiver.
+
+## Repeatable owned setup and client handoff
+
+The setup harness uses pinned `dependencytrack/apiserver:5.1.1` and PostgreSQL 18 images, an
+exclusive Compose project, owned volumes/network, loopback-only API binding and generated ephemeral
+secrets. It follows the [5.1 quickstart datasource configuration](https://dependencytrack.org/docker-compose.yml)
+and the [versioned API implementation](https://github.com/DependencyTrack/dependency-track/tree/5.1.1/apiserver/src/main/java/org/dependencytrack/resources/v1).
+The legacy `ALPINE_DATABASE_*` configuration is not used for this 5.1 fixture. Scheduled feed tasks
+are disabled to keep the test bounded; BOM processing workflows still run. No vulnerability-feed or
+analysis coverage is claimed.
+
+```sh
+# Choose a NEW private directory under an existing parent.
+python3 tools/demo-delivery/integration/setup.py create /absolute/private/rio-dtrack
+python3 tools/demo-delivery/integration/setup.py start /absolute/private/rio-dtrack
+python3 tools/demo-delivery/integration/exercise.py /absolute/private/rio-dtrack /absolute/path/to/rio --adapter-tests
+# Also run after failures; ownership is checked before any removal.
+python3 tools/demo-delivery/integration/setup.py stop /absolute/private/rio-dtrack
+```
+
+Requires a local Docker socket, Docker Compose, Python 3.9+ and an installed Rio. `--adapter-tests`
+also requires Go and runs the existing real adapter suite over both HTTP and the local HTTPS gateway.
+Omit that flag to exercise only the installed binary, including published-release verification.
+The fixture directory is mode 0700, secret files are mode 0600, and private credentials are never
+printed or passed as command arguments. Existing fixture paths refuse creation. Startup readiness
+is bounded; a transient closed connection is retried as an observation, never treated as a login
+failure requiring password mutation. Starting an existing owned fixture reconciles the same
+containers; it does not replace a running instance. Stopped fixtures require a new directory.
+
+The harness creates dedicated upload/read and denied-upload teams, keys and synthetic projects.
+It rotates only the new server's initial admin password. The endpoint and ownership records are
+checked before testing or teardown; production/non-loopback API URLs and foreign resources refuse.
+Cleanup removes only the matching Compose project's labelled containers, network and volumes.
+
+`exercise.py` checks default TLS refusal before application upload, three CA-verified artifact/target
+pairs, explicit bypass to a separate project, actual receipt/activity handling and separate harness
+inventory observations. It stops the gateway and real receiver, removes only its source workspace,
+and inspects/renders the retained JSON offline. Earlier snapshots remain unchanged. Expected
+component PURLs observed by the harness do not establish byte-for-byte retention or add a native
+Dependency-Track content-verification capability.
+
+Only `exercise-*/verification.json`, `adapter-*-observations.json`, sanitized adapter logs,
+`record-before.json`, `record-after.json` and `report.html` are suitable for retention/sharing.
+Never publish `private.json` or `test-env.json`. CI uploads only the allowlisted evidence files and
+runs teardown even after failure. Source-free HTML/JSON inspection needs no Go or Docker runtime.

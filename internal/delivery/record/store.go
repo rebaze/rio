@@ -1,6 +1,7 @@
 package record
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -132,6 +133,23 @@ func encodeEvent(event Event) ([]byte, error) {
 		return nil, err
 	}
 	return encoded, nil
+}
+
+// CreateWithAttemptID binds an ID allocated before the batch descriptor was
+// committed. It uses the existing journal format and the ordinary durable path.
+func (r *Reservation) CreateWithAttemptID(i Intent, id string) (*Writer, error) {
+	if !idRE.MatchString(id) {
+		return nil, invalid()
+	}
+	if r.writer == nil {
+		return nil, delivery.Fail("record_closed", "reservation")
+	}
+	raw, err := hex.DecodeString(id)
+	if err != nil {
+		return nil, invalid()
+	}
+	r.writer.random = bytes.NewReader(raw)
+	return r.Create(i)
 }
 
 func (r *Reservation) Create(i Intent) (result *Writer, err error) {

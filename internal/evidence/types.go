@@ -22,15 +22,20 @@ type Validator func(record.Snapshot) error
 type RetryValidator func(record.Intent, record.Intent) error
 
 type Document struct {
-	validator      Validator
-	retryValidator RetryValidator
-	SchemaVersion  int              `json:"schemaVersion"`
-	Kind           string           `json:"kind"`
-	Tool           index.Tool       `json:"tool"`
-	Normalization  Normalization    `json:"normalization"`
-	Deliveries     []Delivery       `json:"deliveries"`
-	Coverage       Coverage         `json:"coverage"`
-	Evidence       []SourceDocument `json:"evidence"`
+	Batches         []BatchView `json:"-"`
+	ExpectedScope   string      `json:"-"`
+	sourceIndexPath string
+	sourcePaths     []string
+	journalPaths    []string
+	validator       Validator
+	retryValidator  RetryValidator
+	SchemaVersion   int              `json:"schemaVersion"`
+	Kind            string           `json:"kind"`
+	Tool            index.Tool       `json:"tool"`
+	Normalization   Normalization    `json:"normalization"`
+	Deliveries      []Delivery       `json:"deliveries"`
+	Coverage        Coverage         `json:"coverage"`
+	Evidence        []SourceDocument `json:"evidence"`
 }
 type SourceDocument struct {
 	ID        string `json:"id"`

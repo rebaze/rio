@@ -152,6 +152,11 @@ def main():
         run("record", "--output", retained / "record-failed-gate.json", cwd=failed)
         failed_record = json.loads((retained / "record-failed-gate.json").read_text())
         assert failed_record["normalization"]["index"]["artifacts"][0]["gate"] == "fail"
+        # Explicit v2 collection keeps historical journals useful without inventing
+        # expected batch scope. V1 remains the default above.
+        run("record", "--schema-version", "2", "--delivery-record", "acknowledged",
+            "--delivery-record", "ambiguous", "--delivery-record", "retry",
+            "--output", retained / "record-v2.json")
         # Transfer only this file, then remove every original index/journal/SBOM.
         moved = retained / "recipient"
         moved.mkdir()
@@ -159,6 +164,11 @@ def main():
         shutil.copyfile(retained / "record-after.json", standalone)
         shutil.rmtree(work)
         count = state["requests"]
+        v2 = run("record", "inspect", "--file", retained / "record-v2.json", cwd=moved)
+        assert v2["record"]["schemaVersion"] == 2 and v2["record"]["expectedScope"] == "not-recorded"
+        run("record", "report", "--file", standalone, "--output", moved / "report.html", cwd=moved)
+        run("record", "report", "--file", retained / "record-v2.json",
+            "--output", retained / "report-v2.html", cwd=moved)
         valid = run("record", "inspect", "--file", standalone, cwd=moved)
         assert valid["outcome"] == "valid" and state["requests"] == count
         assert valid["record"]["normalization"]["sbomBytesVerification"] == "not-performed"
@@ -174,8 +184,9 @@ def main():
             assert result["outcome"] == "error" and not result["outputMayExist"]
         # Inspect human output as well: this reports consistency, never ingestion.
         run("record", "inspect", "--file", standalone, as_json=False, cwd=moved)
-        for path in retained.rglob("*.json"):
-            assert env["RIO_SYNTHETIC_KEY"] not in path.read_text()
+        for path in retained.rglob("*"):
+            if path.is_file() and path.suffix in (".json", ".html"):
+                assert env["RIO_SYNTHETIC_KEY"] not in path.read_text()
         (retained / "walkthrough.json").write_text(json.dumps({"syntheticReceiver": True, "commands": commands, "networkRequests": count, "collectionAndInspectionNetworkRequests": 0}, indent=2) + "\n")
         print("PASS: synthetic receipts/activity; offline snapshots and relocated inspection; corruption refused")
         print("No ingestion/authenticity/full-retention claim. Retained evidence:", retained)

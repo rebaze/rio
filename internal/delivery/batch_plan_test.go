@@ -133,3 +133,48 @@ func TestPairKeyIncludesEachImmutableIdentityField(t *testing.T) {
 		t.Fatal("transport reference rotation changed identity key")
 	}
 }
+
+func TestBatchPlanRetainsCapturedIndexAndRoutingScope(t *testing.T) {
+	ip, _ := verifiedFixture(t)
+	original, err := os.ReadFile(ip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var n yaml.Node
+	yaml.Unmarshal([]byte("targets:\n  a: {type: test, url: first}\n  b: {type: test, url: second, exclude: [application]}\n"), &n)
+	c, err := ParseConfig(*n.Content[0], filepath.Dir(ip), Digest([]byte("delivery manifest")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := PlanBatch(c, ip, PlanOptions{Targets: []string{"a"}}, map[string]Provider{"test": planProvider{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The public snapshot contract is optional on the old implementation, allowing
+	// this regression to fail behaviorally before the retention seam is added.
+	captured, ok := any(p).(interface{ IndexBytes() []byte })
+	if !ok {
+		t.Fatal("batch plan discards captured index bytes")
+	}
+	if err := os.WriteFile(ip, []byte(`{}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if string(captured.IndexBytes()) != string(original) {
+		t.Fatal("snapshot rereads the index")
+	}
+	b := captured.IndexBytes()
+	b[0] = '!'
+	if string(captured.IndexBytes()) != string(original) {
+		t.Fatal("snapshot exposes mutable backing bytes")
+	}
+	raw, _ := json.Marshal(p)
+	var doc map[string]any
+	json.Unmarshal(raw, &doc)
+	scope, ok := doc["scope"].(map[string]any)
+	if !ok {
+		t.Fatalf("routing scope absent: %s", raw)
+	}
+	if len(scope["targets"].([]any)) != 2 || scope["targetFilter"].([]any)[0] != "a" {
+		t.Fatalf("configured/filtered targets lost: %v", scope)
+	}
+}

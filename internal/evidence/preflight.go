@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/rebaze/rio/internal/delivery"
+	"github.com/rebaze/rio/internal/delivery/batchrecord"
 	"github.com/rebaze/rio/internal/delivery/record"
 )
 
@@ -19,8 +20,18 @@ import (
 func preflightRecord(raw []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
-	scan := recordScanner{dec: dec}
-	if e := scan.value(reflect.TypeFor[Document](), "", 0); e != nil {
+	var header struct {
+		SchemaVersion int `json:"schemaVersion"`
+	}
+	_ = json.Unmarshal(raw, &header)
+	root := reflect.TypeFor[Document]()
+	scan := recordScanner{dec: dec, maxJournals: MaxJournals, maxSources: MaxEvents + 1}
+	if header.SchemaVersion == 2 {
+		root = reflect.TypeFor[documentV2]()
+		scan.maxJournals = MaxJournalsV2
+		scan.maxSources = MaxEvents + 1 + 2*batchrecord.MaxBatches
+	}
+	if e := scan.value(root, "", 0); e != nil {
 		return e
 	}
 	if _, e := dec.Token(); e != io.EOF {
@@ -30,8 +41,9 @@ func preflightRecord(raw []byte) error {
 }
 
 type recordScanner struct {
-	dec          *json.Decoder
-	events, refs int
+	dec                     *json.Decoder
+	events, refs            int
+	maxJournals, maxSources int
 }
 
 var deliveriesType = reflect.TypeFor[[]Delivery]()
@@ -113,13 +125,17 @@ func (s *recordScanner) value(t reflect.Type, scope string, depth int) error {
 			limit := -1
 			switch t {
 			case deliveriesType:
-				limit = MaxJournals
+				limit = s.maxJournals
 			case sourcesType:
-				limit = MaxEvents + 1
+				limit = s.maxSources
 			case eventsType:
 				limit = MaxEvents
 			case notesType:
-				limit = MaxJournals
+				limit = s.maxJournals
+			case reflect.TypeFor[[]BatchView]():
+				limit = batchrecord.MaxBatches
+			case reflect.TypeFor[[]PairCoverage](), reflect.TypeFor[[]batchrecord.Pair](), reflect.TypeFor[[]batchrecord.CompletionItem]():
+				limit = batchrecord.MaxPairs
 			}
 			for s.dec.More() {
 

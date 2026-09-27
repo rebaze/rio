@@ -171,3 +171,11 @@ Sets accept the same transforms, enrichment and context settings for each genera
 Their auxiliary paths stay manifest-relative. The legacy `subject: {name, version}` override is
 supported only on explicit artifacts. See the [output reference](output.md) for the resulting
 records, changes and optional statements.
+
+Normalization records the effective artifact-set selectors, exclusions, membership, transform
+options and output floor in the index's optional `normalizationScope` extension. Its manifest digest
+binds those settings to the run. It describes only the selected scope, not every module in the repo.
+The per-artifact `checks` extension makes `gate.require`, unconditional subject checks, actual
+nested-component evaluation counts and the command's warn/fail mode inspectable offline.
+An explicit empty `require: []` means component checks were not evaluated. See
+[selection and check evidence](output.md#selected-scope-and-effective-checks).

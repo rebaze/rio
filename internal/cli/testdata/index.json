@@ -1,5 +1,33 @@
 {
   "schemaVersion": 1,
+  "normalizationScope": {
+    "version": 1,
+    "manifestSHA256": "1f39e445ddb09088d6206f19f709a945567f42f6f80a9bd61304f792ff1f2b0c",
+    "specVersionFloor": "1.6",
+    "explicitArtifacts": [
+      "rcp-client"
+    ],
+    "artifactSets": [],
+    "artifacts": [
+      {
+        "id": "rcp-client",
+        "declaredSBOM": "in/tycho-rcp.cdx.json",
+        "input": "in/tycho-rcp.cdx.json",
+        "transforms": [
+          {
+            "name": "repair-purl",
+            "options": {
+              "classifier": "osgi.bundle",
+              "ecosystem": "p2",
+              "groupPrefix": "p2.",
+              "syntheticNamespace": "p2.eclipse.plugin",
+              "table": ""
+            }
+          }
+        ]
+      }
+    ]
+  },
   "tool": {
     "name": "rio",
     "version": "0.1.0-test"
@@ -11,13 +39,545 @@
   "artifacts": [
     {
       "id": "rcp-client",
+      "checks": {
+        "version": 1,
+        "mode": "warn",
+        "componentScope": "all components including nested",
+        "componentCount": 12,
+        "componentRequirements": [
+          "name",
+          "version",
+          "purl"
+        ],
+        "componentEvaluation": "evaluated",
+        "evaluations": [
+          {
+            "scope": "subject",
+            "requirement": "name",
+            "evaluated": 1,
+            "failed": 0,
+            "outcome": "pass"
+          },
+          {
+            "scope": "subject",
+            "requirement": "version",
+            "evaluated": 1,
+            "failed": 0,
+            "outcome": "pass"
+          },
+          {
+            "scope": "components",
+            "requirement": "name",
+            "evaluated": 12,
+            "failed": 0,
+            "outcome": "pass"
+          },
+          {
+            "scope": "components",
+            "requirement": "version",
+            "evaluated": 12,
+            "failed": 0,
+            "outcome": "pass"
+          },
+          {
+            "scope": "components",
+            "requirement": "purl",
+            "evaluated": 12,
+            "failed": 0,
+            "outcome": "pass"
+          }
+        ],
+        "schemaValidation": "pass",
+        "graphCheck": "dangling-dependency-references",
+        "graphFindings": 1
+      },
+      "normalization": {
+        "version": 1,
+        "changes": [
+          {
+            "target": "/specVersion",
+            "operation": "replace",
+            "rule": "spec-uplift",
+            "before": "1.4",
+            "after": "1.6"
+          },
+          {
+            "target": "/components/2/purl",
+            "operation": "replace",
+            "rule": "repair-purl/p2",
+            "before": "pkg:p2/org.eclipse.core.databinding@1.13.100.v20230708-0916?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+            "after": "pkg:maven/org.eclipse.platform/org.eclipse.core.databinding@1.13.100",
+            "resolution": {
+              "kind": "built-in-entry",
+              "selector": "/entries/org.eclipse.core.databinding",
+              "sha256": "af86c16bc31cd69da8488b7fbc5595bd8a90b8930eade7f6f406ecce025ca639"
+            }
+          },
+          {
+            "target": "/components/3/purl",
+            "operation": "replace",
+            "rule": "repair-purl/p2",
+            "before": "pkg:p2/org.eclipse.core.databinding.beans@1.10.100.v20230708-0916?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+            "after": "pkg:maven/org.eclipse.platform/org.eclipse.core.databinding.beans@1.10.100",
+            "resolution": {
+              "kind": "built-in-entry",
+              "selector": "/entries/org.eclipse.core.databinding.beans",
+              "sha256": "af86c16bc31cd69da8488b7fbc5595bd8a90b8930eade7f6f406ecce025ca639"
+            }
+          },
+          {
+            "target": "/components/4/purl",
+            "operation": "replace",
+            "rule": "repair-purl/p2",
+            "before": "pkg:p2/org.eclipse.core.databinding.observable@1.13.100.v20230708-0916?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+            "after": "pkg:maven/org.eclipse.platform/org.eclipse.core.databinding.observable@1.13.100",
+            "resolution": {
+              "kind": "built-in-entry",
+              "selector": "/entries/org.eclipse.core.databinding.observable",
+              "sha256": "af86c16bc31cd69da8488b7fbc5595bd8a90b8930eade7f6f406ecce025ca639"
+            }
+          },
+          {
+            "target": "/components/5/purl",
+            "operation": "replace",
+            "rule": "repair-purl/p2",
+            "before": "pkg:p2/org.eclipse.core.databinding.property@1.10.100.v20230708-0916?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+            "after": "pkg:maven/org.eclipse.platform/org.eclipse.core.databinding.property@1.10.100",
+            "resolution": {
+              "kind": "built-in-entry",
+              "selector": "/entries/org.eclipse.core.databinding.property",
+              "sha256": "af86c16bc31cd69da8488b7fbc5595bd8a90b8930eade7f6f406ecce025ca639"
+            }
+          },
+          {
+            "target": "/components/6/purl",
+            "operation": "replace",
+            "rule": "repair-purl/p2",
+            "before": "pkg:p2/org.eclipse.equinox.common@3.18.200.v20231106-1826?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+            "after": "pkg:maven/org.eclipse.platform/org.eclipse.equinox.common@3.18.200",
+            "resolution": {
+              "kind": "built-in-entry",
+              "selector": "/entries/org.eclipse.equinox.common",
+              "sha256": "af86c16bc31cd69da8488b7fbc5595bd8a90b8930eade7f6f406ecce025ca639"
+            }
+          },
+          {
+            "target": "/components/7/purl",
+            "operation": "replace",
+            "rule": "repair-purl/p2",
+            "before": "pkg:p2/org.eclipse.osgi@3.18.600.v20231110-1900?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+            "after": "pkg:maven/org.eclipse.platform/org.eclipse.osgi@3.18.600",
+            "resolution": {
+              "kind": "built-in-entry",
+              "selector": "/entries/org.eclipse.osgi",
+              "sha256": "af86c16bc31cd69da8488b7fbc5595bd8a90b8930eade7f6f406ecce025ca639"
+            }
+          },
+          {
+            "target": "/components/8/purl",
+            "operation": "replace",
+            "rule": "repair-purl/p2",
+            "before": "pkg:p2/org.eclipse.equinox.launcher@1.6.600.v20231106-1826?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+            "after": "pkg:maven/org.eclipse.platform/org.eclipse.equinox.launcher@1.6.600",
+            "resolution": {
+              "kind": "built-in-entry",
+              "selector": "/entries/org.eclipse.equinox.launcher",
+              "sha256": "af86c16bc31cd69da8488b7fbc5595bd8a90b8930eade7f6f406ecce025ca639"
+            }
+          },
+          {
+            "target": "/components/9/purl",
+            "operation": "replace",
+            "rule": "repair-purl/p2",
+            "before": "pkg:p2/org.eclipse.equinox.launcher.gtk.linux.x86_64@1.2.800.v20231003-1442?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+            "after": "pkg:p2/org.eclipse.equinox.launcher.gtk.linux.x86_64@1.2.800?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+            "resolution": {
+              "kind": "input-version",
+              "selector": "purl.version"
+            }
+          },
+          {
+            "target": "/components/2/properties/0",
+            "operation": "add",
+            "rule": "repair-purl/p2/qualifier-preservation",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:p2-qualifier",
+              "value": "v20230708-0916"
+            }
+          },
+          {
+            "target": "/components/3/properties/0",
+            "operation": "add",
+            "rule": "repair-purl/p2/qualifier-preservation",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:p2-qualifier",
+              "value": "v20230708-0916"
+            }
+          },
+          {
+            "target": "/components/4/properties/0",
+            "operation": "add",
+            "rule": "repair-purl/p2/qualifier-preservation",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:p2-qualifier",
+              "value": "v20230708-0916"
+            }
+          },
+          {
+            "target": "/components/5/properties/0",
+            "operation": "add",
+            "rule": "repair-purl/p2/qualifier-preservation",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:p2-qualifier",
+              "value": "v20230708-0916"
+            }
+          },
+          {
+            "target": "/components/6/properties/0",
+            "operation": "add",
+            "rule": "repair-purl/p2/qualifier-preservation",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:p2-qualifier",
+              "value": "v20231106-1826"
+            }
+          },
+          {
+            "target": "/components/7/properties/0",
+            "operation": "add",
+            "rule": "repair-purl/p2/qualifier-preservation",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:p2-qualifier",
+              "value": "v20231110-1900"
+            }
+          },
+          {
+            "target": "/components/8/properties/0",
+            "operation": "add",
+            "rule": "repair-purl/p2/qualifier-preservation",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:p2-qualifier",
+              "value": "v20231106-1826"
+            }
+          },
+          {
+            "target": "/components/9/properties/0",
+            "operation": "add",
+            "rule": "repair-purl/p2/qualifier-preservation",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:p2-qualifier",
+              "value": "v20231003-1442"
+            }
+          }
+        ],
+        "bookkeeping": [
+          {
+            "target": "/components/2/evidence",
+            "operation": "add",
+            "rule": "repair-purl/p2",
+            "before": null,
+            "after": {
+              "identity": [
+                {
+                  "concludedValue": "pkg:maven/org.eclipse.platform/org.eclipse.core.databinding@1.13.100",
+                  "field": "purl"
+                }
+              ]
+            }
+          },
+          {
+            "target": "/components/3/evidence",
+            "operation": "add",
+            "rule": "repair-purl/p2",
+            "before": null,
+            "after": {
+              "identity": [
+                {
+                  "concludedValue": "pkg:maven/org.eclipse.platform/org.eclipse.core.databinding.beans@1.10.100",
+                  "field": "purl"
+                }
+              ]
+            }
+          },
+          {
+            "target": "/components/4/evidence",
+            "operation": "add",
+            "rule": "repair-purl/p2",
+            "before": null,
+            "after": {
+              "identity": [
+                {
+                  "concludedValue": "pkg:maven/org.eclipse.platform/org.eclipse.core.databinding.observable@1.13.100",
+                  "field": "purl"
+                }
+              ]
+            }
+          },
+          {
+            "target": "/components/5/evidence",
+            "operation": "add",
+            "rule": "repair-purl/p2",
+            "before": null,
+            "after": {
+              "identity": [
+                {
+                  "concludedValue": "pkg:maven/org.eclipse.platform/org.eclipse.core.databinding.property@1.10.100",
+                  "field": "purl"
+                }
+              ]
+            }
+          },
+          {
+            "target": "/components/6/evidence",
+            "operation": "add",
+            "rule": "repair-purl/p2",
+            "before": null,
+            "after": {
+              "identity": [
+                {
+                  "concludedValue": "pkg:maven/org.eclipse.platform/org.eclipse.equinox.common@3.18.200",
+                  "field": "purl"
+                }
+              ]
+            }
+          },
+          {
+            "target": "/components/7/evidence",
+            "operation": "add",
+            "rule": "repair-purl/p2",
+            "before": null,
+            "after": {
+              "identity": [
+                {
+                  "concludedValue": "pkg:maven/org.eclipse.platform/org.eclipse.osgi@3.18.600",
+                  "field": "purl"
+                }
+              ]
+            }
+          },
+          {
+            "target": "/components/8/evidence",
+            "operation": "add",
+            "rule": "repair-purl/p2",
+            "before": null,
+            "after": {
+              "identity": [
+                {
+                  "concludedValue": "pkg:maven/org.eclipse.platform/org.eclipse.equinox.launcher@1.6.600",
+                  "field": "purl"
+                }
+              ]
+            }
+          },
+          {
+            "target": "/components/9/evidence",
+            "operation": "add",
+            "rule": "repair-purl/p2",
+            "before": null,
+            "after": {
+              "identity": [
+                {
+                  "concludedValue": "pkg:p2/org.eclipse.equinox.launcher.gtk.linux.x86_64@1.2.800?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+                  "field": "purl"
+                }
+              ]
+            }
+          },
+          {
+            "target": "/metadata/properties/2",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:artifact-id",
+              "value": "rcp-client"
+            }
+          },
+          {
+            "target": "/metadata/properties/3",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:input-sha256",
+              "value": "f591443c43c61e429a01e6a1d8dcd5cebceed92c816280618947e01176324eaf"
+            }
+          },
+          {
+            "target": "/metadata/properties/4",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:manifest-sha256",
+              "value": "1f39e445ddb09088d6206f19f709a945567f42f6f80a9bd61304f792ff1f2b0c"
+            }
+          },
+          {
+            "target": "/metadata/properties/5",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:repair",
+              "value": "rule=repair-purl/p2 | from=pkg:p2/org.eclipse.core.databinding.beans@1.10.100.v20230708-0916?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F | to=pkg:maven/org.eclipse.platform/org.eclipse.core.databinding.beans@1.10.100"
+            }
+          },
+          {
+            "target": "/metadata/properties/6",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:repair",
+              "value": "rule=repair-purl/p2 | from=pkg:p2/org.eclipse.core.databinding.observable@1.13.100.v20230708-0916?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F | to=pkg:maven/org.eclipse.platform/org.eclipse.core.databinding.observable@1.13.100"
+            }
+          },
+          {
+            "target": "/metadata/properties/7",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:repair",
+              "value": "rule=repair-purl/p2 | from=pkg:p2/org.eclipse.core.databinding.property@1.10.100.v20230708-0916?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F | to=pkg:maven/org.eclipse.platform/org.eclipse.core.databinding.property@1.10.100"
+            }
+          },
+          {
+            "target": "/metadata/properties/8",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:repair",
+              "value": "rule=repair-purl/p2 | from=pkg:p2/org.eclipse.core.databinding@1.13.100.v20230708-0916?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F | to=pkg:maven/org.eclipse.platform/org.eclipse.core.databinding@1.13.100"
+            }
+          },
+          {
+            "target": "/metadata/properties/9",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:repair",
+              "value": "rule=repair-purl/p2 | from=pkg:p2/org.eclipse.equinox.common@3.18.200.v20231106-1826?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F | to=pkg:maven/org.eclipse.platform/org.eclipse.equinox.common@3.18.200"
+            }
+          },
+          {
+            "target": "/metadata/properties/10",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:repair",
+              "value": "rule=repair-purl/p2 | from=pkg:p2/org.eclipse.equinox.launcher.gtk.linux.x86_64@1.2.800.v20231003-1442?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F | to=pkg:p2/org.eclipse.equinox.launcher.gtk.linux.x86_64@1.2.800?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F"
+            }
+          },
+          {
+            "target": "/metadata/properties/11",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:repair",
+              "value": "rule=repair-purl/p2 | from=pkg:p2/org.eclipse.equinox.launcher@1.6.600.v20231106-1826?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F | to=pkg:maven/org.eclipse.platform/org.eclipse.equinox.launcher@1.6.600"
+            }
+          },
+          {
+            "target": "/metadata/properties/12",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:repair",
+              "value": "rule=repair-purl/p2 | from=pkg:p2/org.eclipse.osgi@3.18.600.v20231110-1900?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F | to=pkg:maven/org.eclipse.platform/org.eclipse.osgi@3.18.600"
+            }
+          },
+          {
+            "target": "/metadata/properties/13",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:spec-uplift",
+              "value": "from=1.4 to=1.6"
+            }
+          },
+          {
+            "target": "/metadata/properties/14",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:tool",
+              "value": "rio 0.1.0-test"
+            }
+          },
+          {
+            "target": "/metadata/properties/15",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:unmapped",
+              "value": "rule=repair-purl/p2 | purl=pkg:p2/org.eclipse.equinox.launcher.gtk.linux.x86_64@1.2.800.v20231003-1442?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F | reason=no mapping entry"
+            }
+          },
+          {
+            "target": "/metadata/tools/1",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rio",
+              "vendor": "rebaze",
+              "version": "0.1.0-test"
+            }
+          }
+        ],
+        "unmapped": [
+          {
+            "target": "/components/9",
+            "rule": "repair-purl/p2",
+            "purl": "pkg:p2/org.eclipse.equinox.launcher.gtk.linux.x86_64@1.2.800.v20231003-1442?classifier=osgi.bundle\u0026location=https%3A%2F%2Fdownload.eclipse.org%2Freleases%2F2023-12%2F",
+            "reason": "no mapping entry"
+          }
+        ],
+        "skipped": [
+          {
+            "rule": "repair-purl/p2",
+            "scope": "top-level components",
+            "reason": "group \"tycho-demo\" does not start with \"p2.\"",
+            "count": 1
+          },
+          {
+            "rule": "repair-purl/p2",
+            "scope": "top-level components",
+            "reason": "purl classifier is \"org.eclipse.update.feature\", not \"osgi.bundle\"",
+            "count": 2
+          },
+          {
+            "rule": "repair-purl/p2",
+            "scope": "top-level components",
+            "reason": "purl type is \"maven\", not \"p2\"",
+            "count": 1
+          }
+        ]
+      },
       "input": {
         "path": "in/tycho-rcp.cdx.json",
         "sha256": "f591443c43c61e429a01e6a1d8dcd5cebceed92c816280618947e01176324eaf"
       },
       "output": {
         "path": "rcp-client.cdx.json",
-        "sha256": "48cc5cf0db06128d47558bba6694e0907568cb300e8a4893f7aaedfc3cbcf874"
+        "sha256": "900e9b8f434dd447d4e67571b9d495d0105922aeff7a0798e6d1eb54e526681f"
       },
       "specVersion": {
         "input": "1.4",

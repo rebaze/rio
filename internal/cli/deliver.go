@@ -12,16 +12,31 @@ import (
 
 func newDeliverCommand(g *globalOptions, stdout, stderr io.Writer) *cobra.Command {
 	var o deliveryOptions
+	var evidencePath string
 	cmd := &cobra.Command{Use: "deliver", Short: "Deliver all indexed SBOMs to configured targets; accepted does not mean ingested", Args: cobra.NoArgs}
 	deliveryFlags(cmd, &o, true, true)
 	cmd.Flags().StringVar(&o.retry, "retry-of", "", "prior journal; authorize possible duplicate with an explicit fresh --record")
+	cmd.Flags().StringVar(&evidencePath, "evidence", "", "publish a new portable v2 record and immutable batch recovery sources")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		if cmd.Flags().Changed("evidence") {
+			c := &batchCapture{Output: evidencePath, AutoCollect: true}
+			if evidencePath == "" {
+				e := delivery.Fail("invalid_flag", "--evidence requires a new output path")
+				c.note(e)
+				return finishDeliveryEvidence(runner.NewBatch("deliver", delivery.BatchPlan{}), e, c, o, g, stdout, stderr)
+			}
+			r, e := executeDeliverBatch(cmd, g, o, c)
+			return finishDeliveryEvidence(r, e, c, o, g, stdout, stderr)
+		}
 		r, e := runDeliverBatch(cmd, g, o)
 		return batchFinish(r, e, o, g, stdout, stderr)
 	}
 	return cmd
 }
 func runDeliverBatch(cmd *cobra.Command, g *globalOptions, o deliveryOptions) (runner.BatchResult, error) {
+	return executeDeliverBatch(cmd, g, o, nil)
+}
+func executeDeliverBatch(cmd *cobra.Command, g *globalOptions, o deliveryOptions, capture *batchCapture) (result runner.BatchResult, err error) {
 	r := runner.NewBatch("deliver", delivery.BatchPlan{})
 	if e := rejectDeliveryInherited(cmd); e != nil {
 		return r, e
@@ -90,9 +105,52 @@ func runDeliverBatch(cmd *cobra.Command, g *globalOptions, o deliveryOptions) (r
 			return r, delivery.Fail("persistence_failed", "create automatic journal parent")
 		}
 	}
+	if capture != nil {
+		defer func() {
+			if capture.Reservation != nil {
+				if e := capture.Reservation.Close(); e != nil {
+					capture.note(e)
+					capture.Publication.Output = nil
+					result, err = runner.BatchFailure(result, e, 3)
+				}
+			}
+		}()
+		if e := capture.prepare(plan, prepared, o.index, paths); e != nil {
+			capture.note(e)
+			return r, e
+		}
+	}
 	reservations, e := record.ReserveAll(paths)
 	if e != nil {
 		return r, e
 	}
-	return runner.SubmitBatch(cmd.Context(), r, prepared, reservations)
+	if capture != nil {
+		if e := capture.Reservation.PublishSources(plan.IndexBytes(), capture.Raw); e != nil {
+			capture.note(e)
+			for _, res := range reservations {
+				if closeErr := res.Close(); closeErr != nil {
+					e = closeErr
+				}
+			}
+			return runner.BatchFailure(r, e, 3)
+		}
+	}
+	if capture != nil {
+		capture.SourcesReady = true
+	}
+	result, err = runner.SubmitBatch(cmd.Context(), r, prepared, reservations)
+	if capture != nil {
+		if e := capture.complete(result); e != nil {
+			capture.note(e)
+		}
+		if capture.AutoCollect {
+			if e := capture.collect(); e != nil {
+				capture.note(e)
+			}
+		}
+		if capture.EvidenceError != nil {
+			return runner.BatchFailure(result, capture.EvidenceError, 3)
+		}
+	}
+	return result, err
 }

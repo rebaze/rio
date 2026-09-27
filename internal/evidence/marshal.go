@@ -30,13 +30,17 @@ func jsonEqual(a, b []byte) bool { return delivery.JSONEqual(a, b) }
 // Marshal measures the complete encoding before the final buffer is allocated.
 // The budget includes base64, repeated readable projections and the final LF.
 func Marshal(d Document) ([]byte, error) {
-	if d.SchemaVersion != 1 || d.Kind != "rio-evidence-record" || d.Tool.Name != "rio" || d.Tool.Version == "" {
+	if (d.SchemaVersion != 1 && d.SchemaVersion != 2) || d.Kind != "rio-evidence-record" || d.Tool.Name != "rio" || d.Tool.Version == "" {
 		return nil, invalid()
 	}
-	if encodedSize(reflect.ValueOf(d))+1 > FileLimit {
+	if encodedSize(reflect.ValueOf(wireDocument(d)))+1 > FileLimit {
 		return nil, limitError()
 	}
-	if _, e := validateDocument(d, d.validator, d.retryValidator); e != nil {
+	validate := validateDocument
+	if d.SchemaVersion == 2 {
+		validate = validateDocumentV2
+	}
+	if _, e := validate(d, d.validator, d.retryValidator); e != nil {
 		return nil, e
 	}
 	return encodeDocument(d)
@@ -45,7 +49,7 @@ func encodeDocument(d Document) ([]byte, error) {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
-	if e := enc.Encode(d); e != nil {
+	if e := enc.Encode(wireDocument(d)); e != nil {
 		return nil, invalid()
 	}
 	if int64(b.Len()) > FileLimit {

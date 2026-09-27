@@ -1,0 +1,19 @@
+version: 1
+artifacts:
+  - id: app
+    sbom: fixtures/app.json
+  - id: worker
+    sbom: fixtures/worker.json
+delivery:
+  targets:
+    archive:
+      type: dependency-track
+      url: http://127.0.0.1:PORT/archive
+      allowHTTP: true
+      apiKeyEnv: RIO_DEMO_BATCH_KEY
+      exclude: [worker]
+    security:
+      type: dependency-track
+      url: http://127.0.0.1:PORT/security
+      allowHTTP: true
+      apiKeyEnv: RIO_DEMO_BATCH_KEY

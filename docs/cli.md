@@ -298,6 +298,71 @@ the document to the output file. Inspection includes it in the JSON result.
 No gate/delivery exits 1/4/5 arise merely from recorded facts. A valid consistency check does not
 authenticate the producer or verify external SBOM bytes/ingestion. Check earlier normalization and
 delivery exits yourself: collecting an old index does not prove a new normalization completed.
-Use a fresh output path after observations change; no automatic collection runs during normalize,
-deliver or reconcile. See [record schema and scope](output.md#consolidated-recordjson-v1) and the
+Use a fresh output path after observations change. Normalize and reconcile never collect automatically;
+`deliver --evidence PATH` explicitly opts into automatic v2 collection. See [record schema and scope](output.md#consolidated-recordjson-v1) and the
 [installed-binary walkthrough](../tools/README.md#consolidated-record-demo).
+
+
+### Portable client evidence
+
+With configured delivery targets, use fresh output paths:
+
+```sh
+rio normalize --gate fail &&
+  rio deliver --evidence target/rio/record.json
+rio record inspect --file target/rio/record.json
+```
+
+Only run delivery after normalization succeeds. A failed enforced gate still leaves normalization
+evidence: export it with `rio record` instead of delivering. Invalid normalization inputs do not
+create a new completed run; collecting a previous index cannot change that.
+
+`--evidence` is opt-in. `--record` still selects one attempt journal for one artifact/target pair.
+Automatic collection runs after ordinary accepted, rejected, partial or unknown delivery outcomes.
+Successful collection preserves the delivery exit (0, 4 or 5). Collection or persistence failure
+returns 3, retains the original delivery outcome and provides `requestMayHaveOccurred`, possible
+output presence, the batch path and an exact offline recovery command. Rio never retries an upload
+to repair a local evidence problem. Existing output/source files and locks refuse before requests.
+
+For `deliver --evidence --json`, the result is separately versioned as `schemaVersion: 3`, with
+`delivery` retaining the ordinary batch result, `evidence` carrying output/source paths, errors and
+recovery arguments, and top-level outcome and request uncertainty. Without `--evidence`, the current
+schema-2 batch result is unchanged. A final record is reported only after read-back validation.
+
+Standalone collection defaults to record v1. Select v2 explicitly; `--batch` requires it:
+
+```sh
+rio record --schema-version 2 --batch target/rio/record.json.batch.json --output record-after.json
+```
+
+Repeat `--batch` for compatible retries or additional batches sharing the exact index. Repeat
+`--delivery-record` to include other explicit journals. With batches and no explicit `--index`,
+collection uses the retained index snapshot; an explicitly supplied index must match exactly.
+The captured sources support offline recovery after the working index changes. Missing bound
+journals remain visible gaps; an ordinary-return completion may separately say unattempted.
+Neither missing evidence nor receiver acknowledgment establishes successful processing.
+
+
+### Offline HTML report
+
+```sh
+rio record report --file target/rio/record.json --output target/rio/report.html
+```
+
+Both paths are required. The command validates the entire v1 or v2 record, then renders the same
+scope, changes, checks, attempt history, exceptions and evidence boundaries used by terminal
+inspection. It reads only the selected JSON; referenced workspaces, targets and credentials are
+never opened. Existing output paths, including symlinks, refuse. The self-contained HTML uses
+escaped text, embedded CSS, system fonts and no JavaScript or external resources. URLs stay text.
+A restrictive content security policy also blocks external resource loads. HTML is limited to
+128 MiB; an oversized rendering refuses without truncation.
+
+The report includes SHA-256 of the **exact input JSON bytes**, including whitespace, and asks the
+recipient to retain that JSON for machine inspection. Rendering is a separate offline step, so
+presentation failure does not change delivery results or trigger another upload. No combined
+success badge conflates internal consistency, gate outcomes, acknowledgment or processing.
+
+`--json` returns an independent schema-1 `record-report` result: `outcome`, `inputSHA256`, optional
+`output` (`path`, HTML `sha256`, `size`), `outputMayExist`, and a safe `error` when present. Exit 0
+means written, 2 means invalid input/flags/limits or an existing output, and 3 means an execution or
+persistence failure. `--quiet` suppresses human output but not requested JSON or errors.

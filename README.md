@@ -164,14 +164,29 @@ You get normalized bytes, their digest, the receiver's acknowledgment, and an au
 To preview destinations before sending, run `rio delivery plan`. To use both destinations, put both
 target entries under `delivery.targets`; plain `rio deliver` sends every indexed artifact to each target.
 
-Replace `JOURNAL_PATH` with the path printed by `rio deliver` to produce one portable evidence file:
+To collect the selected delivery batch automatically, use fresh paths:
+
+```sh
+rio normalize --gate fail &&
+  rio deliver --evidence target/rio/record.json
+rio record inspect --file target/rio/record.json
+rio record report --file target/rio/record.json --output target/rio/report.html
+```
+
+Only proceed to delivery when normalization succeeds. The v2 record retains scope, changes, effective
+checks, all selected attempts and missing-evidence gaps. It also remains collectable offline after
+partial delivery. See the [client evidence workflow](docs/cli.md#portable-client-evidence) and
+[installed-binary examples](tools/README.md#client-evidence-demos), including a complete client handoff.
+
+To collect an explicitly selected journal using the v1 default, replace `JOURNAL_PATH` with its path:
 
 ```sh
 rio record --delivery-record JOURNAL_PATH --output target/rio/record.json
 rio record inspect --file target/rio/record.json
 ```
 
-The recipient can inspect `record.json` without your workspace or credentials.
+The recipient can inspect `record.json` without your workspace or credentials, or read the optional
+self-contained HTML report. Keep the JSON alongside the report for machine inspection.
 [What the record establishes](docs/output.md#consolidated-recordjson-v1).
 
 ## When to use Rio
@@ -361,7 +376,7 @@ external writers. See [OCI configuration, recovery, demos and tested registry sc
 
 ## One evidence record
 
-With a build containing `rio record` (not v0.4.0), collect current evidence from an index and explicitly
+Collect current evidence from an index and explicitly
 selected delivery attempts. Replace `JOURNAL_PATH` with the path printed by `rio deliver`:
 
 ```sh

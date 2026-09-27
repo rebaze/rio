@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+
+	"github.com/rebaze/rio/internal/index"
 )
 
 // DecodeJSON validates and binds one value directly into its declared type.
@@ -203,6 +205,33 @@ func (r *jsonReader) value(t reflect.Type, v reflect.Value, strict bool, depth i
 			child = v.Elem()
 		}
 		return r.value(t.Elem(), child, strict, depth)
+	}
+	// Only these independently versioned extensions may retain future wire
+	// shapes. Known versions still receive the bounded decoder's required-field,
+	// duplicate-key, null, and strict unknown-key validation.
+	if t == reflect.TypeFor[index.Normalization]() || t == reflect.TypeFor[index.NormalizationScope]() || t == reflect.TypeFor[index.EffectiveChecks]() {
+		if e := r.skip(depth); e != nil {
+			return e
+		}
+		var header struct {
+			Version int `json:"version"`
+		}
+		if e := DecodeJSON(r.raw[start:r.pos], &header, false); e != nil {
+			return e
+		}
+		if header.Version < 1 {
+			return Fail("invalid_json", "extension version")
+		}
+		if header.Version != 1 {
+			if v.IsValid() {
+				if e := json.Unmarshal(r.raw[start:r.pos], v.Addr().Interface()); e != nil {
+					return Fail("invalid_json", "extension")
+				}
+			}
+			return nil
+		}
+		r.pos = start
+		strict = true
 	}
 	switch t.Kind() {
 	case reflect.Struct:

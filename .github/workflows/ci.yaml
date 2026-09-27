@@ -63,7 +63,7 @@ jobs:
           # Fixtures, golden files and the embedded CycloneDX schemas are
           # inputs to the test suite, so a change to any of them has to run it.
           # Missing that is how a stale golden file reaches main.
-          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery|record|oci|dtrack-tls)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$)' <<<"$CHANGED" >/dev/null; then go=true; fi
+          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery|record|oci|dtrack-tls|normalization-evidence|batch-evidence|client-record)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$)' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.github/workflows/.*\.ya?ml$' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.goreleaser\.yaml$' <<<"$CHANGED" >/dev/null; then goreleaser=true; fi
           if grep -E '\.sh$' <<<"$CHANGED" >/dev/null; then shell=true; fi
@@ -188,6 +188,9 @@ jobs:
           python3 tools/feature-video/feature_video_test.py
           python3 tools/feature-video/tooling_test.py
           python3 tools/release-publish_test.py
+          python3 tools/release-notes_test.py
+          python3 tools/verify-release_test.py
+          python3 tools/demo-delivery/integration/setup_test.py
 
       - name: Install GoReleaser
         if: steps.changes.outputs.goreleaser == 'true'
@@ -220,16 +223,20 @@ jobs:
         with:
           python-version: "3.9"
       - name: Native delivery and evidence tests
-        run: go test ./internal/delivery/... ./internal/evidence ./internal/manifest ./internal/index ./internal/cli ./cmd/rio
+        run: go test ./internal/delivery/... ./internal/evidence/... ./internal/manifest ./internal/index ./internal/cli ./cmd/rio
       - name: Static build and installed-binary demo
         shell: bash
         env:
           CGO_ENABLED: "0"
         run: |
+          go env GOOS GOARCH
           go build -trimpath -o rio-demo.exe ./cmd/rio
           python tools/demo-delivery/run.py "$PWD/rio-demo.exe"
           python tools/demo-dtrack-tls/run.py "$PWD/rio-demo.exe"
           python tools/demo-record/run.py "$PWD/rio-demo.exe"
+          python tools/demo-normalization-evidence/run.py "$PWD/rio-demo.exe"
+          python tools/demo-batch-evidence/run.py "$PWD/rio-demo.exe"
+          python tools/demo-client-record/run.py "$PWD/rio-demo.exe"
           python tools/demo-oci/run.py "$PWD/rio-demo.exe"
 
 
@@ -292,3 +299,47 @@ jobs:
         env:
           RIO_OCI_FIXTURE_ROOT: ${{ runner.temp }}/rio-oci
         run: docker compose -p rio-oci-ci -f tools/demo-oci/integration/compose.yaml --profile zot down -v
+
+
+  dependency-track:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.9"
+      - name: Create and start only this job's disposable receiver
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/demo-delivery/integration/setup.py create "$RUNNER_TEMP/rio-dtrack"
+          python tools/demo-delivery/integration/setup.py start "$RUNNER_TEMP/rio-dtrack"
+      - name: Real adapter contracts and installed-binary client handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/rio-integration" ./cmd/rio
+          python tools/demo-delivery/integration/exercise.py "$RUNNER_TEMP/rio-dtrack" "$RUNNER_TEMP/rio-integration" --adapter-tests
+      - name: Retain only sanitized real-server evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dependency-track-evidence
+          path: |
+            ${{ runner.temp }}/rio-dtrack/exercise-*/verification.json
+            ${{ runner.temp }}/rio-dtrack/exercise-*/adapter-*-observations.json
+            ${{ runner.temp }}/rio-dtrack/exercise-*/adapter-*.log
+            ${{ runner.temp }}/rio-dtrack/exercise-*/record-*.json
+            ${{ runner.temp }}/rio-dtrack/exercise-*/report.html
+          if-no-files-found: warn
+      - name: Remove only this job's owned containers and volumes
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/rio-dtrack/state.json" ]; then
+            python tools/demo-delivery/integration/setup.py stop "$RUNNER_TEMP/rio-dtrack"
+          fi

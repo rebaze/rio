@@ -2,6 +2,7 @@ package evidence
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"strings"
 
 	"github.com/rebaze/rio/internal/delivery"
@@ -16,6 +17,19 @@ func Parse(raw []byte, validate Validator, retryPolicy ...RetryValidator) (Docum
 	}
 	if e := preflightRecord(raw); e != nil {
 		return Document{}, e
+	}
+	var header struct {
+		SchemaVersion int `json:"schemaVersion"`
+	}
+	if e := json.Unmarshal(raw, &header); e != nil {
+		return Document{}, invalid()
+	}
+	if header.SchemaVersion == 2 {
+		var wire documentV2
+		if e := delivery.DecodeJSON(raw, &wire, true); e != nil {
+			return Document{}, e
+		}
+		return validateDocumentV2(fromV2(wire), validate, retryPolicy...)
 	}
 	var d Document
 	if e := delivery.DecodeJSON(raw, &d, true); e != nil {

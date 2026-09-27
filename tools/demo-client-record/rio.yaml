@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "enrichment": {
+    "producer": {
+      "name": "Synthetic Release Team"
+    },
+    "dataLicense": "CC0-1.0",
+    "subject": {
+      "supplier": {
+        "name": "Example Distribution"
+      }
+    }
+  },
+  "artifactSets": [
+    {
+      "modules": "fixtures/services/*-server/pom.xml",
+      "sbom": "bom.json",
+      "idFrom": "module-directory",
+      "transforms": [
+        {
+          "repair-purl": {
+            "ecosystem": "p2"
+          }
+        }
+      ]
+    },
+    {
+      "modules": "fixtures/clients/*-client/pom.xml",
+      "sbom": "bom.json",
+      "idFrom": "module-directory",
+      "transforms": [
+        {
+          "repair-purl": {
+            "ecosystem": "p2"
+          }
+        }
+      ]
+    }
+  ],
+  "output": {
+    "specVersionFloor": "1.6"
+  },
+  "delivery": {
+    "targets": {
+      "archive": {
+        "type": "dependency-track",
+        "url": "https://127.0.0.1:8443",
+        "apiKeyEnv": "RIO_DEMO_CLIENT_KEY",
+        "caFile": "../demo-dtrack-tls/SYNTHETIC-ONLY-cert.pem",
+        "project": {
+          "name": "synthetic-archive",
+          "version": "1"
+        },
+        "exclude": [
+          "beta-client"
+        ]
+      },
+      "security": {
+        "type": "dependency-track",
+        "url": "https://127.0.0.1:8443",
+        "apiKeyEnv": "RIO_DEMO_CLIENT_KEY",
+        "caFile": "../demo-dtrack-tls/SYNTHETIC-ONLY-cert.pem"
+      }
+    }
+  }
+}

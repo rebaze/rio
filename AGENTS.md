@@ -89,3 +89,7 @@ CycloneDX source SBOM, verifies the attestations, and then publishes the Homebre
 - **NEVER delete tags** — tags are immutable, even if a release is broken
 - **NEVER re-create releases** on existing tags — instead, bump the version and create a new release
 - When fixing a broken release, increment the micro (patch) version by default (e.g. `v0.1.0` → `v0.1.1`) unless told otherwise
+
+For v0.6.0 and newer, commit authored notes at `docs/releases/<tag>.md` before tagging.
+The heading must identify the exact tag (`# Rio <tag>`) and the body must be nonempty;
+the release pipeline freezes these notes into its verified staged inventory before publication.
