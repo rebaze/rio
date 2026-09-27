@@ -11,7 +11,8 @@
 
 ## See what your client receives
 
-Two commands produce normalized SBOMs **and one portable record explaining the work**:
+With `rio.yaml` configured, produce normalized SBOMs, **one portable record explaining the work**,
+and its readable report:
 
 ```sh
 rio normalize --gate fail && rio deliver --evidence target/rio/record.json
