@@ -293,3 +293,25 @@ without hard-link support fail safely. Ordinary exits remove owned temp/lock ent
 failure is an execution failure. A final file is never deleted merely because later sync/readback
 fails. Windows has no directory fsync through `os.File`; do not infer universal power-loss
 protection. Inspect a possibly published file before retrying at a new path.
+
+### Selected scope and effective checks
+
+`normalizationScope` is another optional version-1 extension. It binds the manifest digest,
+effective spec floor, explicit artifact IDs, artifact-set module selectors and declared exclusions,
+resolved membership, SBOM selectors, and transform options with defaults filled in. It does not
+inventory modules outside those selectors or include delivery configuration, credentials or raw
+manifest bytes. Per-artifact `selection` keeps its existing meaning and shape.
+
+`artifacts[].checks` records `mode` (`warn` or `fail`), unconditional subject name/version checks,
+selected component requirements, and the number evaluated and failed for each requirement.
+Component traversal includes nested components; `componentCount` is its denominator. This is
+separate from the index's existing top-level component count used by repair transforms.
+An explicit empty `gate.require: []` yields no component evaluations and `not-evaluated`, while
+subject checks still run. A requirement with no components to inspect is also `not-evaluated`.
+
+Schema validation is recorded separately as `pass` or `not-available` (for a newer unsupported
+CycloneDX version). The graph check is specifically dangling dependency references, with its own
+finding count; it is not a complete graph verification. Warn mode does not turn failed requirements
+into passing ones. Old indexes without extensions remain valid, with effective checks not recorded.
+Known malformed extensions refuse delivery/collection; unknown versions are retained as opaque
+unsupported evidence and must not be interpreted as current-version facts.

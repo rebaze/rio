@@ -43,10 +43,11 @@ var ErrNilIndex = errors.New("no index to write")
 
 // Index is the whole of index.json.
 type Index struct {
-	SchemaVersion int        `json:"schemaVersion"`
-	Tool          Tool       `json:"tool"`
-	Manifest      FileRef    `json:"manifest"`
-	Artifacts     []Artifact `json:"artifacts"`
+	SchemaVersion      int                 `json:"schemaVersion"`
+	NormalizationScope *NormalizationScope `json:"normalizationScope,omitempty"`
+	Tool               Tool                `json:"tool"`
+	Manifest           FileRef             `json:"manifest"`
+	Artifacts          []Artifact          `json:"artifacts"`
 }
 
 // Tool identifies the rio build that produced the index.
@@ -109,6 +110,7 @@ type Selection struct {
 // (§4.2).
 type Artifact struct {
 	ID              string            `json:"id"`
+	Checks          *EffectiveChecks  `json:"checks,omitempty"`
 	Normalization   *Normalization    `json:"normalization,omitempty"`
 	Selection       *Selection        `json:"selection,omitempty"`
 	Input           FileRef           `json:"input"`
@@ -260,6 +262,9 @@ func (idx *Index) Validate() error {
 	if idx == nil {
 		return ErrNilIndex
 	}
+	if err := idx.NormalizationScope.Validate(idx); err != nil {
+		return err
+	}
 	seen := make(map[string]int, len(idx.Artifacts))
 	for i, a := range idx.Artifacts {
 		if a.ID == "" {
@@ -269,6 +274,9 @@ func (idx *Index) Validate() error {
 			return fmt.Errorf("artifacts[%d]: duplicate id %q, already used by artifacts[%d]", i, a.ID, first)
 		}
 		seen[a.ID] = i
+		if err := a.Checks.Validate(a); err != nil {
+			return fmt.Errorf("artifact %q: %w", a.ID, err)
+		}
 		if err := a.Normalization.Validate(); err != nil {
 			return fmt.Errorf("artifact %q: %w", a.ID, err)
 		}

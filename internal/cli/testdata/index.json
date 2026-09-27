@@ -1,5 +1,33 @@
 {
   "schemaVersion": 1,
+  "normalizationScope": {
+    "version": 1,
+    "manifestSHA256": "1f39e445ddb09088d6206f19f709a945567f42f6f80a9bd61304f792ff1f2b0c",
+    "specVersionFloor": "1.6",
+    "explicitArtifacts": [
+      "rcp-client"
+    ],
+    "artifactSets": [],
+    "artifacts": [
+      {
+        "id": "rcp-client",
+        "declaredSBOM": "in/tycho-rcp.cdx.json",
+        "input": "in/tycho-rcp.cdx.json",
+        "transforms": [
+          {
+            "name": "repair-purl",
+            "options": {
+              "classifier": "osgi.bundle",
+              "ecosystem": "p2",
+              "groupPrefix": "p2.",
+              "syntheticNamespace": "p2.eclipse.plugin",
+              "table": ""
+            }
+          }
+        ]
+      }
+    ]
+  },
   "tool": {
     "name": "rio",
     "version": "0.1.0-test"
@@ -11,6 +39,58 @@
   "artifacts": [
     {
       "id": "rcp-client",
+      "checks": {
+        "version": 1,
+        "mode": "warn",
+        "componentScope": "all components including nested",
+        "componentCount": 12,
+        "componentRequirements": [
+          "name",
+          "version",
+          "purl"
+        ],
+        "componentEvaluation": "evaluated",
+        "evaluations": [
+          {
+            "scope": "subject",
+            "requirement": "name",
+            "evaluated": 1,
+            "failed": 0,
+            "outcome": "pass"
+          },
+          {
+            "scope": "subject",
+            "requirement": "version",
+            "evaluated": 1,
+            "failed": 0,
+            "outcome": "pass"
+          },
+          {
+            "scope": "components",
+            "requirement": "name",
+            "evaluated": 12,
+            "failed": 0,
+            "outcome": "pass"
+          },
+          {
+            "scope": "components",
+            "requirement": "version",
+            "evaluated": 12,
+            "failed": 0,
+            "outcome": "pass"
+          },
+          {
+            "scope": "components",
+            "requirement": "purl",
+            "evaluated": 12,
+            "failed": 0,
+            "outcome": "pass"
+          }
+        ],
+        "schemaValidation": "pass",
+        "graphCheck": "dangling-dependency-references",
+        "graphFindings": 1
+      },
       "normalization": {
         "version": 1,
         "changes": [

@@ -72,6 +72,7 @@ type artifact struct {
 	enrichment       *sbom.EnrichmentRecord
 	contextResolved  *buildcontext.Resolved
 	context          *sbom.ContextRecord
+	checks           *index.EffectiveChecks
 	normalization    *index.Normalization
 	evidenceSnapshot map[string]any
 	output           []byte
@@ -128,6 +129,7 @@ func runNormalize(opts *globalOptions, gateMode string, attest bool, stdout, std
 		if err := process(man, a); err != nil {
 			return err
 		}
+		a.checks = effectiveChecks(man, a, gateMode)
 		artifacts = append(artifacts, a)
 	}
 
@@ -397,6 +399,12 @@ func writeAll(man *manifest.Manifest, artifacts []*artifact, outDir string, atte
 		SHA256: man.SHA256,
 	})
 
+	scope, err := normalizationScope(man, artifacts)
+	if err != nil {
+		return internalErrorf("describing normalization: %w", err)
+	}
+	idx.NormalizationScope = scope
+
 	for _, a := range artifacts {
 		name := a.spec.ID + ".cdx.json"
 		path := filepath.Join(outDir, name)
@@ -415,6 +423,7 @@ func writeAll(man *manifest.Manifest, artifacts []*artifact, outDir string, atte
 		idx.Artifacts = append(idx.Artifacts, index.Artifact{
 			ID:                a.spec.ID,
 			Normalization:     a.normalization,
+			Checks:            a.checks,
 			Selection:         a.selection,
 			Input:             index.FileRef{Path: a.inputRel, SHA256: a.inputSHA},
 			Output:            index.FileRef{Path: name, SHA256: sum},

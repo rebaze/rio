@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/rebaze/rio/internal/index"
+	"github.com/rebaze/rio/internal/manifest"
 	"github.com/rebaze/rio/internal/sbom"
 	"github.com/rebaze/rio/internal/transform"
 )
@@ -148,4 +149,48 @@ func (a *artifact) captureOutcomes(rule string, result transform.Result) {
 			}
 		}
 	}
+}
+
+func normalizationScope(man *manifest.Manifest, artifacts []*artifact) (*index.NormalizationScope, error) {
+	s := &index.NormalizationScope{Version: 1, ManifestSHA256: man.SHA256, SpecVersionFloor: man.Output.SpecVersionFloor, ExplicitArtifacts: []string{}, ArtifactSets: []index.ArtifactSetScope{}, Artifacts: []index.ArtifactScope{}}
+	for i, set := range man.ArtifactSets {
+		s.ArtifactSets = append(s.ArtifactSets, index.ArtifactSetScope{Source: fmt.Sprintf("artifactSets[%d]", i), Modules: set.Modules, Exclude: append([]string{}, set.Exclude...), IDFrom: set.IDFrom, SBOM: set.Template.SBOM, ArtifactIDs: []string{}})
+	}
+	for _, a := range artifacts {
+		row := index.ArtifactScope{ID: a.spec.ID, DeclaredSBOM: a.spec.SBOM, Input: a.inputRel, Selection: a.selection, Transforms: []index.TransformScope{}}
+		for _, t := range a.spec.Transforms {
+			options, err := transform.Describe(t.Name, t.Config)
+			if err != nil {
+				return nil, err
+			}
+			tr := index.TransformScope{Name: t.Name, Options: map[string]string{}}
+			for _, option := range options {
+				tr.Options[option.Key] = option.Value
+			}
+			row.Transforms = append(row.Transforms, tr)
+		}
+		s.Artifacts = append(s.Artifacts, row)
+		if a.selection == nil {
+			s.ExplicitArtifacts = append(s.ExplicitArtifacts, a.spec.ID)
+		} else {
+			for i := range s.ArtifactSets {
+				if s.ArtifactSets[i].Source == a.selection.Source {
+					s.ArtifactSets[i].ArtifactIDs = append(s.ArtifactSets[i].ArtifactIDs, a.spec.ID)
+				}
+			}
+		}
+	}
+	return s, nil
+}
+
+func effectiveChecks(man *manifest.Manifest, a *artifact, mode string) *index.EffectiveChecks {
+	schema := "not-available"
+	if a.schemaValidated {
+		schema = "pass"
+	}
+	state := "evaluated"
+	if len(man.Gate.Require) == 0 || a.gate.ComponentCount == 0 {
+		state = "not-evaluated"
+	}
+	return &index.EffectiveChecks{Version: 1, Mode: mode, ComponentScope: "all components including nested", ComponentCount: a.gate.ComponentCount, ComponentRequirements: append([]string{}, man.Gate.Require...), ComponentEvaluation: state, Evaluations: a.gate.Evaluations, SchemaValidation: schema, GraphCheck: "dangling-dependency-references", GraphFindings: len(a.integrity)}
 }

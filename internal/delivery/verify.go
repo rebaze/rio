@@ -151,5 +151,8 @@ func ParseIndex(b []byte) (index.Index, error) {
 			}
 		}
 	}
+	if err := idx.Validate(); err != nil {
+		return bad("invalid_index", "normalization extensions or base fields")
+	}
 	return idx, nil
 }

@@ -17,7 +17,7 @@ inputs and remain separate from its runtime.
 | [`demo-oci/`](demo-oci/) | demonstrates native standalone and attached OCI delivery | offline, with an installed rio release |
 | [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | offline, with an installed rio release |
 | [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, refusals and owned-claim replacement | offline, with an installed rio release |
-| [`demo-artifact-sets/`](#artifact-sets-demo) | discovers module SBOMs, adds/removes membership and refuses missing or overlapping inputs | offline, with an installed rio release |
+| [`demo-artifact-sets/`](#artifact-sets-demo) | discovers module SBOMs, refuses missing/overlapping inputs and retains offline scope/check evidence | offline, with an installed rio release |
 | [`demo-record/`](#consolidated-record-demo) | exports and inspects one offline evidence snapshot with explicit coverage | when retaining normalization and selected delivery facts |
 | [`demo-normalization-evidence/`](demo-normalization-evidence/) | explains repair sources, exact changes and offline retention | with an installed release containing normalization evidence |
 | [`demo-repair/`](#first-repair-sample) | shows optional p2 repair with an unchanged input and an audit record | when evaluating Eclipse/OSGi coordinate repair |

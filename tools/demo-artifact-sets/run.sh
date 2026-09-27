@@ -101,3 +101,12 @@ refuse normalize overlap.yaml overlap-normalize
 cmp -s rio.yaml original-manifest.yaml
 printf '\nPASS: discovery, automatic inclusion, missing-SBOM refusal, removal, exclusion and overlap refusal.\n'
 printf 'All runs used fresh output directories. Reused directories can retain old files; index.json defines current membership.\n'
+
+printf '\n7. Retain and inspect selection scope and requirements offline\n'
+"$rio_bin" record --index excluded/index.json --output scope-record.json
+"$rio_bin" record inspect --file scope-record.json --json > scope-inspection.json
+# Read the validated JSON result, not current filesystem membership.
+grep -Fq '"normalizationScope"' scope-inspection.json
+grep -Fq '"componentScope":"all components including nested"' scope-inspection.json
+grep -Fq '"mode":"fail"' scope-inspection.json
+printf 'PASS: scope-record.json retains configured exclusions, resolved membership and effective checks.\n'

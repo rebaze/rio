@@ -49,7 +49,7 @@ def main():
     shutil.rmtree(work)  # Only this demo's synthetic workspace.
     result = subprocess.run([binary, "record", "inspect", "--file", str(record_path)],
                             cwd=root, check=True, capture_output=True, text=True)
-    print(result.stdout)
+    print(result.stdout + result.stderr)
     print("PASS: exact source digest, categorical provenance, stable changes, deterministic output.")
     print("Source workspace removed; offline record retained:", record_path)
 
