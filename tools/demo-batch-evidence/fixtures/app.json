@@ -1,0 +1,1 @@
+{"bomFormat":"CycloneDX","specVersion":"1.6","version":1,"metadata":{"component":{"type":"application","name":"synthetic-app","version":"1.0"}},"components":[{"type":"library","name":"example","version":"1.0","purl":"pkg:generic/example@1.0"}]}

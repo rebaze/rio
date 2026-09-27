@@ -18,6 +18,7 @@ inputs and remain separate from its runtime.
 | [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | offline, with an installed rio release |
 | [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, refusals and owned-claim replacement | offline, with an installed rio release |
 | [`demo-artifact-sets/`](#artifact-sets-demo) | discovers module SBOMs, refuses missing/overlapping inputs and retains offline scope/check evidence | offline, with an installed rio release |
+| [`demo-batch-evidence/`](demo-batch-evidence/) | demonstrates partial delivery, batch scope, record v2, explicit retry and offline recovery | with an installed client-evidence release |
 | [`demo-record/`](#consolidated-record-demo) | exports and inspects one offline evidence snapshot with explicit coverage | when retaining normalization and selected delivery facts |
 | [`demo-normalization-evidence/`](demo-normalization-evidence/) | explains repair sources, exact changes and offline retention | with an installed release containing normalization evidence |
 | [`demo-repair/`](#first-repair-sample) | shows optional p2 repair with an unchanged input and an audit record | when evaluating Eclipse/OSGi coordinate repair |
@@ -1074,3 +1075,13 @@ an empty 401 is a rejection only with a validated authentication challenge. No r
 
 Older Nexus Docker repositories are not covered. Registry storage/discovery does not imply
 Xray/Lifecycle ingestion, and unavailable vendor evidence is never replaced by synthetic results.
+
+
+## Client evidence demos
+
+The [normalization evidence demo](demo-normalization-evidence/README.md) checks change pointers,
+repair sources and effective requirements. The [batch evidence demo](demo-batch-evidence/README.md)
+uses two artifacts/two targets, an exclusion and a lost response, then explicitly retries and collects
+portable v2 snapshots after receiver shutdown and source deletion. Both use Python 3.9+ and an
+installed release binary; no Go toolchain is needed. The existing [record demo](demo-record/README.md)
+also verifies explicit v2 collection with expected scope not recorded while retaining its v1 cases.

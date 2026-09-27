@@ -298,6 +298,46 @@ the document to the output file. Inspection includes it in the JSON result.
 No gate/delivery exits 1/4/5 arise merely from recorded facts. A valid consistency check does not
 authenticate the producer or verify external SBOM bytes/ingestion. Check earlier normalization and
 delivery exits yourself: collecting an old index does not prove a new normalization completed.
-Use a fresh output path after observations change; no automatic collection runs during normalize,
-deliver or reconcile. See [record schema and scope](output.md#consolidated-recordjson-v1) and the
+Use a fresh output path after observations change. Normalize and reconcile never collect automatically;
+`deliver --evidence PATH` explicitly opts into automatic v2 collection. See [record schema and scope](output.md#consolidated-recordjson-v1) and the
 [installed-binary walkthrough](../tools/README.md#consolidated-record-demo).
+
+
+### Portable client evidence
+
+With configured delivery targets, use fresh output paths:
+
+```sh
+rio normalize --gate fail
+rio deliver --evidence target/rio/record.json
+rio record inspect --file target/rio/record.json
+```
+
+Only run delivery after normalization succeeds. A failed enforced gate still leaves normalization
+evidence: export it with `rio record` instead of delivering. Invalid normalization inputs do not
+create a new completed run; collecting a previous index cannot change that.
+
+`--evidence` is opt-in. `--record` still selects one attempt journal for one artifact/target pair.
+Automatic collection runs after ordinary accepted, rejected, partial or unknown delivery outcomes.
+Successful collection preserves the delivery exit (0, 4 or 5). Collection or persistence failure
+returns 3, retains the original delivery outcome and provides `requestMayHaveOccurred`, possible
+output presence, the batch path and an exact offline recovery command. Rio never retries an upload
+to repair a local evidence problem. Existing output/source files and locks refuse before requests.
+
+For `deliver --evidence --json`, the result is separately versioned as `schemaVersion: 3`, with
+`delivery` retaining the ordinary batch result, `evidence` carrying output/source paths, errors and
+recovery arguments, and top-level outcome and request uncertainty. Without `--evidence`, the current
+schema-2 batch result is unchanged. A final record is reported only after read-back validation.
+
+Standalone collection defaults to record v1. Select v2 explicitly; `--batch` requires it:
+
+```sh
+rio record --schema-version 2 --batch target/rio/record.json.batch.json --output record-after.json
+```
+
+Repeat `--batch` for compatible retries or additional batches sharing the exact index. Repeat
+`--delivery-record` to include other explicit journals. With batches and no explicit `--index`,
+collection uses the retained index snapshot; an explicitly supplied index must match exactly.
+The captured sources support offline recovery after the working index changes. Missing bound
+journals remain visible gaps; an ordinary-return completion may separately say unattempted.
+Neither missing evidence nor receiver acknowledgment establishes successful processing.

@@ -167,7 +167,7 @@ this contract for each `index.artifacts[i]`:
 The references in the table mean the actual JSON values from the same run's `index.json`.
 `predicate.artifact` preserves every field: `id`, `input`, `output`, `specVersion`,
 `schemaValidated`, `components`, `transforms`, `gate`, `gateFindings`, `integrityFindings`, and
-`enrichment`, `context` and `selection` when present. Arrays retain the index's order and empty-array representation; absent optional
+`enrichment`, `context`, `selection`, `normalization` and `checks` when present. Arrays retain the index's order and empty-array representation; absent optional
 fields stay absent. There is no additional `schemaVersion` field in the statement or predicate;
 the two type URIs identify their versions.
 
@@ -272,7 +272,7 @@ reading or adding environment/credential values.
 
 ### Record limits and publication
 
-Limits are 16 MiB raw index, 1 MiB per event, 10,000 events per journal and across the entire selected
+For record v1, limits are 16 MiB raw index, 1 MiB per event, 10,000 events per journal and across the entire selected
 set, 256 selected journals, 32 MiB total raw sources, 128 MiB serialized record, and 20,000 directory
 entries per captured journal including ignored temps. Typed streaming validation applies before retaining nested event data; no additional collection-entry
 limit narrows the existing event byte/schema contract.
@@ -315,3 +315,48 @@ finding count; it is not a complete graph verification. Warn mode does not turn 
 into passing ones. Old indexes without extensions remain valid, with effective checks not recorded.
 Known malformed extensions refuse delivery/collection; unknown versions are retained as opaque
 unsupported evidence and must not be interpreted as current-version facts.
+
+
+## Consolidated record.json v2
+
+V1 remains the default for explicit journal collection. `--schema-version 2` and `deliver --evidence`
+write a separate v2 envelope; the v1 envelope gains no new root fields. Readers accept both versions,
+and v1-only readers refuse v2. V2 retains the v1 source/event and readable-fact meanings, adding
+`expectedScope` (`recorded` or `not-recorded`) and `batches`. Historical explicit journals can use v2
+without inventing expected routing.
+
+A batch view retains its descriptor and optional completion, source IDs, selected-pair coverage,
+and disjoint exclusion groups. An exclusion group identifies an exact artifact/target Cartesian
+subset, with a derived count; it avoids expanding huge filtered inventories. Filters and configured
+exclusions are distinct. Selected pairs retain a preassigned attempt ID that binds their exact
+prepared source, target policy, payloads and journal. Coverage separates captured/missing evidence,
+original acknowledgment, and the runner's recorded state. Later reconciliation never upgrades the
+original acknowledgment or rewrites a batch completion. All selected attempts remain visible.
+
+The source kinds `delivery-batch` and `delivery-batch-result` retain exact bytes and digests, alongside
+`normalization-index` and `delivery-event`. The inspector reconstructs all views from those bytes,
+checks exact source links and retry compatibility, and rejects altered projections and contradictions.
+If a previously unused journal slot later holds a different attempt, include its compatible batch or
+explicit journal too; it is never attributed to the older descriptor's preassigned attempt.
+
+Before the first request, evidence delivery reserves fresh output/source paths and durably writes:
+
+- `<output>.index.json`: exact captured normalization index bytes.
+- `<output>.batch.json`: immutable selected scope, invocation filters, configured target names and
+  exclusions, separate normalization/delivery manifest digests, prepared intents and journal hints.
+- `<output>.batch-result.json`: written on ordinary return, including unattempted pairs and safe error
+  codes. It is a runner assertion, not a receiver receipt. A crash may leave it absent.
+
+The JSON named by `--evidence` is the portable recipient deliverable. These sibling files and journals
+are local recovery sources. A killed process cannot promise final JSON; a later offline collection
+creates a fresh snapshot from captured sources. Stale locks are never silently broken. Files and
+journals are not overwritten, and record publication failure never triggers another upload.
+
+V2 permits 1,024 selected journal paths (including missing bound attempts), 1,024 selected pairs per
+batch and 256 batch descriptors. All batches and retries share the 10,000-event, 32 MiB raw-source and
+128 MiB serialized-record budgets. Each descriptor/completion is limited to 16 MiB and counts against
+the source budget. The existing 16 MiB index and 1 MiB event limits remain. Inventories are additionally
+bounded by source bytes. Exceeding a limit refuses; no evidence is truncated or silently omitted.
+
+The record remains unsigned and excludes full SBOM/input/mapping files, raw manifests, authenticated
+worker identity and credentials. Hashes show correspondence and consistency, not authenticity.
