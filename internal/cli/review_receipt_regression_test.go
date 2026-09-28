@@ -135,3 +135,19 @@ func TestReconcileTLSFailureRetainsBothObservationsAndRecovery(t *testing.T) {
 		t.Fatal("recovery claimed completion")
 	}
 }
+
+func TestReconcileDefaultOutputCannotMutateInvalidSourceJournal(t *testing.T) {
+	dir := batchFixture(t, "https://unused.invalid")
+	t.Chdir(dir)
+	if e := os.Mkdir("prior", 0700); e != nil {
+		t.Fatal(e)
+	}
+	var out, stderr bytes.Buffer
+	if code := Main([]string{"delivery", "reconcile", "--record", "prior", "--out", "prior", "--json"}, &out, &stderr); code == 0 {
+		t.Fatal("accepted invalid journal")
+	}
+	entries, e := os.ReadDir("prior")
+	if e != nil || len(entries) != 0 {
+		t.Fatalf("mutated source journal: %v %v", entries, e)
+	}
+}

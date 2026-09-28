@@ -46,6 +46,18 @@ func Start(out, path, operation, version string, protected ...string) (*Store, e
 		return nil, e
 	}
 	if path != "" {
+		// Validate explicit locations before creating any run state. The default
+		// destination's parent is the fresh directory created below.
+		path, e = resolveReceiptPath(path)
+		if e != nil {
+			return nil, e
+		}
+		if e = absent(path); e != nil {
+			return nil, e
+		}
+		if e = absent(path + ".lock"); e != nil {
+			return nil, e
+		}
 		if e = CheckDestination(path, protected); e != nil {
 			return nil, e
 		}
@@ -63,15 +75,10 @@ func Start(out, path, operation, version string, protected ...string) (*Store, e
 	if path == "" {
 		path = filepath.Join(dir, "record.json")
 	}
-	path, e = filepath.Abs(path)
+	path, e = resolveReceiptPath(path)
 	if e != nil {
 		return nil, e
 	}
-	parent, e := filepath.EvalSymlinks(filepath.Dir(path))
-	if e != nil {
-		return nil, fmt.Errorf("receipt parent must exist: %w", e)
-	}
-	path = filepath.Join(parent, filepath.Base(path))
 	if e = CheckDestination(path, protected); e != nil {
 		return nil, e
 	}
@@ -93,6 +100,18 @@ func Start(out, path, operation, version string, protected ...string) (*Store, e
 	}
 	return s, nil
 }
+func resolveReceiptPath(path string) (string, error) {
+	absolute, e := filepath.Abs(path)
+	if e != nil {
+		return "", e
+	}
+	parent, e := filepath.EvalSymlinks(filepath.Dir(absolute))
+	if e != nil {
+		return "", fmt.Errorf("receipt parent must exist: %w", e)
+	}
+	return filepath.Join(parent, filepath.Base(absolute)), nil
+}
+
 func (s *Store) Close() error {
 	if s.closed {
 		return nil

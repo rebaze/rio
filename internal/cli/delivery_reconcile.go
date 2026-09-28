@@ -33,7 +33,7 @@ func newDeliveryReconcileCommand(g *globalOptions, stdout, stderr io.Writer) *co
 		if e = receipt.CheckDestination(receiptPath, []string{o.record}); e != nil {
 			return deliveryFinish(runner.NewResult("reconcile", o.record), e, o, g, stdout, stderr)
 		}
-		s, e := receipt.Start(g.out, receiptPath, "reconcile", Version())
+		s, e := receipt.Start(g.out, receiptPath, "reconcile", Version(), o.record)
 		if e != nil {
 			return usageErrorf("no receipt created: %v", e)
 		}

@@ -141,3 +141,31 @@ func TestCheckpointRefusesWrongRunAndClosedOwner(t *testing.T) {
 		t.Fatal("closed writer accepted")
 	}
 }
+
+func TestInvalidExplicitReceiptCreatesNoRunDirectories(t *testing.T) {
+	for _, kind := range []string{"missing-parent", "existing-file", "existing-lock"} {
+		t.Run(kind, func(t *testing.T) {
+			dir := t.TempDir()
+			out := filepath.Join(dir, "output")
+			path := filepath.Join(dir, "record.json")
+			switch kind {
+			case "missing-parent":
+				path = filepath.Join(dir, "missing", "record.json")
+			case "existing-file":
+				if e := os.WriteFile(path, []byte("immutable"), 0600); e != nil {
+					t.Fatal(e)
+				}
+			case "existing-lock":
+				if e := os.Mkdir(path+".lock", 0700); e != nil {
+					t.Fatal(e)
+				}
+			}
+			if _, e := Start(out, path, "pipeline", "0.7.0"); e == nil {
+				t.Fatal("invalid destination accepted")
+			}
+			if _, e := os.Stat(out); !os.IsNotExist(e) {
+				t.Fatalf("created output before destination refusal: %v", e)
+			}
+		})
+	}
+}
