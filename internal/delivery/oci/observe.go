@@ -246,12 +246,13 @@ func parseReferrers(raw []byte, want Descriptor, total *int, seen map[string]boo
 	return found, nil
 }
 
-func (c *client) Observe(parent context.Context, refs []delivery.Reference) (delivery.Observation, error) {
+func (c *client) Observe(parent context.Context, refs []delivery.Reference) (ob delivery.Observation, err error) {
 	if !reflect.DeepEqual(refs, expected(c.options)) {
 		return observation("content", "unavailable", "invalid_references", 0, Facts{Phase: "readback"}, nil), invalid("observer references")
 	}
 	ctx, cancel := c.traversal(parent, false)
 	defer cancel()
+	defer func() { c.addTLS(ctx, &ob) }()
 	resp, e := c.request(ctx, "GET", "/v2/", nil, 0, "")
 	if e != nil || resp.StatusCode != 200 {
 		if resp != nil {

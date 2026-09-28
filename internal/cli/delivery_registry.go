@@ -7,11 +7,13 @@ import (
 	"github.com/rebaze/rio/internal/delivery/dtrack"
 	"github.com/rebaze/rio/internal/delivery/oci"
 	"github.com/rebaze/rio/internal/delivery/record"
+	"github.com/rebaze/rio/internal/receipt"
 	"strings"
 )
 
 // This local registry owns adapter policies; core delivery remains HTTP-free.
 type adapterEntry struct {
+	CompactDestination         func(delivery.Description) (receipt.Target, map[string]string, receipt.Transport, error)
 	HumanIdentityLabel         string
 	HumanDescription           func(delivery.Description) string
 	HumanTransportPolicy       func(delivery.Description) string
@@ -124,6 +126,14 @@ func validateDTrackSnapshot(s record.Snapshot) error {
 			var sub delivery.Submission
 			if e := delivery.DecodeJSON(event.Data, &sub, true); e != nil {
 				return e
+			}
+			if len(sub.Submitted) > 1 {
+				return delivery.Fail("invalid_record", "submitted body count")
+			}
+			for _, p := range sub.Submitted {
+				if len(s.Intent.Payloads) != 1 || p != s.Intent.Payloads[0] {
+					return delivery.Fail("invalid_record", "submitted bytes contradict intent")
+				}
 			}
 			if e := dtrack.ValidateSubmission(sub); e != nil {
 				return e

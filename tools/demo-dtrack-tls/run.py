@@ -84,28 +84,53 @@ def main():
         assert KEY not in result.stdout + result.stderr
         return json.loads(result.stdout) if as_json else result.stdout + result.stderr
 
-    def facts(result, verification, observed):
-        if "items" in result:
-            result = result["items"][0]["result"]
-        assert result["observations"][-1]["details"]["tls"] == {
-            "certificateVerification": verification, "observed": observed}
+    def retain(result, name, verification, observed):
+        raw = Path(result["receipt"]["path"]).read_bytes()
+        assert hashlib.sha256(raw).hexdigest() == result["receipt"]["sha256"]
+        assert len(raw) == result["receipt"]["size"]
+        receipt = json.loads(raw)
+        assert receipt["kind"] == "rio-run-receipt" and receipt["schemaVersion"] == 1
+        attempt = receipt["deliveries"][0]
+        assert attempt["transport"] == {"scheme": "https", "certificateVerification": verification,
+                                         "tlsObserved": observed}
+        if receipt["run"]["operation"] == "reconcile":
+            assert attempt["state"] == "observed" and attempt["prior"]["attemptId"]
+            assert not attempt.get("submitted")
+            assert attempt["responses"][0]["kind"] == "activity"
+            assert attempt["responses"][0]["value"] == "not-observed"
+        elif observed:
+            assert attempt["state"] == "accepted"
+            assert attempt["responses"][0]["references"] == [{"kind": "dependency-track:event-token", "value": TOKEN}]
+        (retained / (name + ".json")).write_bytes(raw)
+        return receipt
 
     try:
-        save()
-        run("normalize", "--gate", "fail", as_json=False)
-        facts(run("deliver", "--record", "default-rejected", code=4), "enforced", False)
-        assert requests == [], "default trust sent an HTTP request or retried"
+        # The introductory path performs the whole configured pipeline once.
         target["caFile"] = str(HERE / "SYNTHETIC-ONLY-cert.pem")
         save()
-        facts(run("deliver", "--record", "ca-verified"), "enforced", True)
+        execution = run()
+        verified = retain(execution, "ca-verified", "enforced", True)
+        assert verified["run"]["operation"] == "pipeline"
+        index = Path(execution["runDirectory"]) / "index.json"
         del target["caFile"]
+        save()
+        retain(run("deliver", "--index", index, "--record", "default-rejected", code=4),
+               "default-rejected", "enforced", False)
+        assert requests == ["POST"], "default trust sent an HTTP request or retried"
         target["insecureSkipVerify"] = True
         save()
-        plan = run("delivery", "plan")
+        plan = run("delivery", "plan", "--index", index)
         assert plan["items"][0]["destination"]["options"]["insecureSkipVerify"] is True
-        assert "insecureSkipVerify=true" in run("delivery", "plan", as_json=False)
-        facts(run("deliver", "--record", "explicit-bypass"), "disabled", True)
-        facts(run("delivery", "reconcile", "--record", "explicit-bypass"), "disabled", True)
+        assert "insecureSkipVerify=true" in run("delivery", "plan", "--index", index, as_json=False)
+        bypass = retain(run("deliver", "--index", index, "--record", "explicit-bypass"),
+               "explicit-bypass", "disabled", True)
+        before = (retained / "explicit-bypass.json").read_bytes()
+        reconciliation = run("delivery", "reconcile", "--record", "explicit-bypass")
+        # Reconciliation is a separate observation with its own immutable receipt.
+        reconciled = retain(reconciliation, "reconciled", "disabled", True)
+        assert reconciled["run"]["operation"] == "reconcile"
+        assert reconciled["deliveries"][0]["prior"]["attemptId"] == bypass["deliveries"][0]["attemptId"]
+        assert (retained / "explicit-bypass.json").read_bytes() == before
         human = run("delivery", "inspect", "--record", "explicit-bypass", as_json=False)
         assert "certificateVerification=disabled TLSObserved=true" in human
         assert "insecureSkipVerify=true" in human
@@ -117,23 +142,23 @@ def main():
         server.server_close()
         thread.join()
         stopped = True
-        output = retained / "record.json"
-        run("record", "--output", output, "--delivery-record", "default-rejected", "--delivery-record", "ca-verified", "--delivery-record", "explicit-bypass")
         for path in work.rglob("*"):
             if path.is_file():
                 assert KEY.encode() not in path.read_bytes(), "API key retained"
-        assert KEY.encode() not in output.read_bytes()
         shutil.rmtree(work)
-        assert run("record", "inspect", "--file", output, cwd=retained)["outcome"] == "valid"
-        human = run("record", "inspect", "--file", output, cwd=retained, as_json=False)
-        assert "insecureSkipVerify=true" in human and "certificateVerification=disabled TLSObserved=true" in human
-        run("record", "report", "--file", output, "--output", retained / "report.html", cwd=retained)
-        html = (retained / "report.html").read_text()
-        assert KEY not in html and "certificateVerification=disabled TLSObserved=true" in html
-        assert "certificateVerification=enforced TLSObserved=true" in html
-        print("PASS: synthetic HTTPS default refusal, CA verification, explicit bypass, saved policy and offline portable evidence")
-        print("Synthetic evidence retained:", retained)
-        print("record.json sha256:", hashlib.sha256(output.read_bytes()).hexdigest())
+        env.pop("RIO_SYNTHETIC_KEY")
+        for output in sorted(retained.glob("*.json")):
+            assert KEY.encode() not in output.read_bytes()
+            assert run("record", "inspect", "--file", output, cwd=retained)["outcome"] == "valid"
+            run("record", "report", "--file", output, "--output", output.with_suffix(".html"), cwd=retained)
+            html = output.with_suffix(".html").read_text()
+            assert KEY not in html
+            transport = json.loads(output.read_text())["deliveries"][0]["transport"]
+            assert "Certificate verification " + transport["certificateVerification"] in html
+            assert ("TLS observed" if transport["tlsObserved"] else "TLS not observed") in html
+        print("PASS: one-command HTTPS pipeline, default refusal, CA verification, explicit bypass, saved policy and offline receipts")
+        print("Synthetic receipts retained:", retained)
+        print("ca-verified.json sha256:", hashlib.sha256((retained / "ca-verified.json").read_bytes()).hexdigest())
     finally:
         if not stopped:
             server.shutdown()

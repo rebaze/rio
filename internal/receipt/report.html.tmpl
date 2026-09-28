@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>Rio receipt · {{.Run.ID}}</title>
+<style>
+:root { color-scheme: light; font-family: system-ui, sans-serif; color: #172b3a; background: #f5f6f3; }
+body { margin: 0; padding: 3rem 1.5rem; } main { max-width: 1100px; margin: auto; }
+header { border-top: 6px solid #176b60; padding-top: 1.5rem; margin-bottom: 2rem; }
+h1 { font-size: clamp(2rem, 5vw, 3.5rem); margin: .25rem 0; letter-spacing: -.04em; }
+h2 { margin-top: 2.5rem; font-size: 1.4rem; } h3 { margin: 0 0 1rem; }
+p { line-height: 1.55; } .eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: .8rem; }
+.card { background: #fff; border: 1px solid #d6ded9; padding: 1.5rem; margin: 1rem 0; border-radius: .5rem; }
+.status { display: inline-block; background: #e6eee9; border: 1px solid #b8cbc0; padding: .2rem .6rem; border-radius: .25rem; font-weight: 650; }
+code { font-family: ui-monospace, monospace; font-size: .88em; overflow-wrap: anywhere; white-space: pre-wrap; }
+dl { display: grid; grid-template-columns: 10rem minmax(0,1fr); gap: .65rem 1rem; } dt { font-weight: 600; } dd { margin: 0; overflow-wrap: anywhere; }
+table { width: 100%; border-collapse: collapse; font-size: .9rem; table-layout: fixed; } th, td { text-align: left; vertical-align: top; padding: .65rem; border-bottom: 1px solid #d6ded9; overflow-wrap: anywhere; }
+th { background: #eef2ef; } .muted, footer { color: #50636b; } .notice { border-left: 4px solid #a1661f; padding-left: 1rem; }
+@media(max-width: 650px) { body { padding: 1.5rem .75rem; } .card { padding: 1rem; } dl { grid-template-columns: 1fr; gap: .2rem; } dd { margin-bottom: .6rem; } table { font-size: .8rem; } }
+@media print { body { padding: 0; background: white; } .card { break-inside: avoid; } }
+</style>
+</head>
+<body><main>
+<header><p class="eyebrow">Rio · {{.Run.Operation}} receipt</p><h1>Consumed → enriched → delivered → acknowledged</h1>
+<p><span class="status">{{.Run.Outcome}}</span> · {{len .Artifacts}} artifacts · {{len .Deliveries}} delivery pairs</p>
+<p class="muted">{{.Run.StartedAt}}{{if .Run.FinishedAt}} → {{.Run.FinishedAt}}{{end}}<br>Run <code>{{.Run.ID}}</code> · Rio {{.RioVersion}}</p>
+{{with .Run.Prior}}<p class="muted">Prior reference: {{if .RunID}}run <code>{{.RunID}}</code> · {{end}}{{if .AttemptID}}attempt <code>{{.AttemptID}}</code> · {{end}}SHA-256 <code>{{.SHA256}}</code></p>{{end}}
+<p class="notice">Unsigned recorded assertions and observations. Execution success does not prove receiver ingestion or retained content. Input/output hashes identify bytes; they do not authenticate the producer.</p></header>
+<h2>Consumed SBOMs and meaningful changes</h2>
+{{range .Artifacts}}<section class="card"><h3>{{.ID}} <span class="status">{{.State}}</span></h3>
+{{if .PreExisting}}<p class="notice">{{if .Input}}Consumed already-normalized bytes.{{else}}No SBOM bytes were consumed by this invocation.{{end}} Earlier normalization is pre-existing work, not work performed by this invocation.</p>{{end}}
+<dl>{{with .Input}}<dt>Consumed</dt><dd><code>{{.Path}}</code></dd><dt>Input SHA-256</dt><dd><code>{{.SHA256}}</code> · {{.Size}} bytes</dd>{{end}}
+{{with .Output}}<dt>Output SHA-256</dt><dd><code>{{.SHA256}}</code> · {{.Size}} bytes</dd>{{end}}</dl>
+{{with .Changes}}{{with .SpecVersion}}<p>Specification {{.From}} → {{.To}}</p>{{end}}
+{{if .Metadata}}<table><thead><tr><th>Metadata</th><th>Before</th><th>After</th><th>Assertion / source</th></tr></thead><tbody>
+{{range .Metadata}}<tr><td><code>{{.Field}}</code><br>{{.Operation}}</td><td><code>{{value .Before}}</code></td><td><code>{{value .After}}</code></td><td>{{.Assertion}} / {{.Source}}</td></tr>{{end}}
+</tbody></table>{{end}}
+{{range .Bulk}}<p><code>{{.Operation}}</code> · {{.Scope}} · evaluated {{.Evaluated}}, applied {{.Applied}}, unmapped {{.Unmapped}}, skipped {{.Skipped}}. Counters may overlap.</p>{{range $reason,$count := .Reasons}}<p>{{$reason}}: {{$count}}</p>{{end}}{{end}}{{end}}
+{{with .Checks}}<p>Gate <strong>{{.Gate}}</strong> (mode: {{.Mode}}) · Schema {{.Schema}} · Findings {{.Findings}}</p>
+<p class="muted">Subject requirements: {{range .SubjectRequirements}}{{.}} {{end}} · Component requirements: {{range .ComponentRequirements}}{{.}} {{end}}<br>{{.ComponentScope}} · {{.ComponentEvaluation}} · components evaluated: {{.ComponentsEvaluated}} · {{.GraphFindings}} graph findings</p>{{end}}
+{{if .ErrorCode}}<p class="notice">{{.ErrorCode}}</p>{{end}}</section>{{end}}
+<h2>Destinations and acknowledgments</h2>
+{{range .Deliveries}}<section class="card"><h3>{{.ArtifactID}} → {{.Target}} <span class="status">{{.State}}</span></h3>
+{{$target := index $.Targets .Target}}<dl><dt>Receiver URL</dt><dd><code>{{$target.URL}}</code> ({{$target.Type}})</dd>
+{{if .ProjectSource}}<dt>Project selector</dt><dd>From {{.ProjectSource}} (resolved at execution)</dd>{{end}}
+{{range $key,$value := .Project}}<dt>Project {{$key}}</dt><dd><code>{{$value}}</code></dd>{{end}}
+<dt>Transport</dt><dd>{{.Transport.Scheme}} · TLS {{tls .Transport.TLSObserved}} · Certificate verification {{.Transport.CertificateVerification}}</dd>
+{{if .AttemptID}}<dt>Attempt</dt><dd><code>{{.AttemptID}}</code>{{if .AttemptedAt}} · {{.AttemptedAt}}{{end}}</dd>{{end}}
+{{with .Prior}}<dt>Prior reference</dt><dd>{{if .RunID}}Run <code>{{.RunID}}</code> · {{end}}{{if .AttemptID}}Attempt <code>{{.AttemptID}}</code> · {{end}}SHA-256 <code>{{.SHA256}}</code></dd>{{end}}
+<dt>Request may have occurred</dt><dd>{{.RequestMayHaveOccurred}}</dd>
+{{range .Intended}}<dt>Intended bytes</dt><dd>{{if .ArtifactOutput}}Output of <code>{{.ArtifactOutput}}</code> · {{.Role}} · {{.MediaType}}{{else}}<code>{{.SHA256}}</code> · {{.Size}} bytes · {{.MediaType}}{{end}}</dd>{{end}}
+{{if and .RequestMayHaveOccurred (not .Submitted)}}<dt>Submitted bytes</dt><dd>No complete body write recorded. Intended bytes are not proof of a completed upload.</dd>{{end}}
+{{range .Submitted}}<dt>Submitted bytes</dt><dd>{{if .ArtifactOutput}}Output of <code>{{.ArtifactOutput}}</code> · {{.Role}} · {{.MediaType}}{{else}}<code>{{.SHA256}}</code> · {{.Size}} bytes · {{.MediaType}}{{end}}</dd>{{end}}
+{{range .Responses}}<dt>{{.Kind}}</dt><dd><strong>{{.Value}}</strong>{{if .HTTPStatus}} · HTTP {{.HTTPStatus}}{{end}} · {{.Code}} · TLS {{tls .TLSObserved}}{{if .ObservedAt}} · {{.ObservedAt}}{{end}}</dd>
+{{range .References}}<dt>{{.Kind}}</dt><dd><code>{{.Value}}</code></dd>{{end}}{{end}}</dl>
+{{if .ErrorCode}}<p class="notice">{{.ErrorCode}}</p>{{end}}</section>{{else}}<p>Delivery stage: {{index .Run.Stages "delivery"}}.</p>{{end}}
+{{if .Exclusions}}<h2>Excluded scope</h2>{{range .Exclusions}}<p>{{.ArtifactID}} {{.Target}} · {{.Reason}} {{.Scope}} <code>{{.Rule}}</code></p>{{end}}{{end}}
+{{if .Exceptions}}<h2>Exceptions</h2>{{range .Exceptions}}<p class="notice">{{.}}</p>{{end}}{{end}}
+<footer><h2>Receipt identity and limits</h2><p>Exact JSON SHA-256: <code>{{.Digest}}</code><br>{{.Size}} bytes · <code>{{.Kind}}</code> version {{.SchemaVersion}}</p>
+<p>Inspection validates schema, references and internal consistency. It cannot replay absent source documents or detect every coherently forged unsigned receipt. Paths and URLs are references, not promises of future accessibility. This standalone view loads no remote resources.</p></footer>
+</main></body></html>

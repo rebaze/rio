@@ -34,6 +34,17 @@ func deliveryFixture(t *testing.T, url string) (string, string) {
 func deliveryRun(t *testing.T, args ...string) (int, map[string]any, string) {
 	t.Helper()
 	var out, err bytes.Buffer
+	if len(args) > 0 && (args[0] == "deliver" || len(args) > 1 && args[1] == "reconcile") {
+		hasOut := false
+		for _, a := range args {
+			if a == "--out" {
+				hasOut = true
+			}
+		}
+		if !hasOut {
+			args = append(args, "--out", t.TempDir())
+		}
+	}
 	code := Main(append(args, "--json"), &out, &err)
 	var result map[string]any
 	d := json.NewDecoder(&out)
@@ -52,6 +63,9 @@ func deliveryRun(t *testing.T, args ...string) (int, map[string]any, string) {
 		items := result["items"].([]any)
 		if len(items) == 1 {
 			if one, ok := items[0].(map[string]any)["result"].(map[string]any); ok {
+				if pub, ok := result["receipt"]; ok {
+					one["receipt"] = pub
+				}
 				result = one
 			}
 		}
@@ -218,6 +232,9 @@ func TestDeliveryOfflineNeverBuildsClient(t *testing.T) {
 	}
 	var out, err bytes.Buffer
 	for _, args := range [][]string{{"--help"}, {"version"}, {"plan", "--manifest", filepath.Join(filepath.Dir(ip), "rio.yaml")}, {"normalize", "--manifest", filepath.Join(filepath.Dir(ip), "rio.yaml")}} {
+		if len(args) > 0 && args[0] == "normalize" {
+			args = append(args, "--out", t.TempDir())
+		}
 		Main(args, &out, &err)
 	}
 	p := filepath.Join(t.TempDir(), "journal")

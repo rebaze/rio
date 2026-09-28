@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Installed-binary evidence walkthrough. All receiver responses are synthetic."""
-import base64
 import hashlib
 import http.server
 import json
@@ -93,17 +92,15 @@ def main():
         commands.append({"args": list(map(str, args)), "exit": p.returncode})
         return json.loads(p.stdout) if as_json else None
 
-    def collect(name, attempts):
-        assert server is None, "record collection must run with the receiver stopped"
-        before = state["requests"]
-        output = retained / name
-        args = ["record", "--output", output]
-        for attempt in attempts:
-            args.extend(["--delivery-record", attempt])
-        result = run(*args)
-        assert result["outcome"] == "written" and result["outputMayExist"]
-        assert state["requests"] == before
-        return json.loads(output.read_text())
+    snapshots = []
+    index_path = None
+
+    def retain(name, result):
+        original = Path(result["receipt"]["path"])
+        path = retained / (name + ".json")
+        path.write_bytes(original.read_bytes())
+        snapshots.append(path)
+        return json.loads(path.read_bytes())
 
     try:
         port = start()
@@ -114,82 +111,69 @@ def main():
         (work / "without-context.json").write_text(json.dumps(other))
         (work / "context.json").write_text((HERE / "context.json").read_text().replace("SBOM_SHA", hashlib.sha256(seed).hexdigest()))
         (work / "rio.yaml").write_text((HERE / "rio.yaml").read_text().replace("PORT", str(port)))
-        run("normalize", "--gate", "fail", "--attest", as_json=False)
-        index = json.loads((work / "target/rio/index.json").read_text())
+        execution = run()
+        first = retain("pipeline", execution)
+        index_path = Path(execution["runDirectory"]) / "index.json"
+        index = json.loads(index_path.read_bytes())
         assert "context" in index["artifacts"][0] and "context" not in index["artifacts"][1]
-        run("deliver", "--artifact", "application", "--record", "acknowledged")
+        assert first["run"]["operation"] == "pipeline" and len(first["deliveries"]) == 2
+        assert first["artifacts"][0]["changes"]["metadata"]
+        attempts = json.loads((index_path.parent / ".internal/attempts.json").read_bytes())
+        acknowledged = attempts[0]["journal"]
+        frozen = (retained / "pipeline.json").read_bytes()
         state["mode"] = "lost"
-        run("deliver", "--artifact", "application", "--record", "ambiguous", code=4)
+        lost = retain("lost-response", run("deliver", "--index", index_path, "--artifact", "application", "--record", "ambiguous", code=4))
+        assert lost["deliveries"][0]["state"] == "unknown"
+        assert lost["artifacts"][0]["preExisting"] and "changes" not in lost["artifacts"][0]
         state["mode"] = "accepted"
-        run("deliver", "--artifact", "application", "--record", "retry", "--retry-of", "ambiguous")
+        retry = retain("retry", run("deliver", "--index", index_path, "--artifact", "application", "--record", "retry", "--retry-of", "ambiguous"))
+        assert retry["deliveries"][0]["prior"]["attemptId"] == lost["deliveries"][0]["attemptId"]
+        for number, code in enumerate((0, 0, 4), 1):
+            current = retain("observation-" + str(number), run("delivery", "reconcile", "--record", acknowledged, code=code))
+            assert current["run"]["operation"] == "reconcile"
+            assert len(current["deliveries"][0]["responses"]) == 1
+            assert current["deliveries"][0]["prior"]["attemptId"] == first["deliveries"][0]["attemptId"]
+            assert not current["deliveries"][0].get("submitted")
+        assert (retained / "pipeline.json").read_bytes() == frozen
         stop()
-        before = collect("record-before.json", ["acknowledged", "ambiguous", "retry"])
-        assert sorted(x["summary"]["acknowledgment"] for x in before["deliveries"]) == ["accepted", "accepted", "unknown"]
-        assert all("latestActivity" not in x["summary"] for x in before["deliveries"])
-        no_selected = collect("record-no-deliveries.json", [])
-        assert no_selected["coverage"]["selectedDeliveryCount"] == 0
-        missing = collect("record-missing-ancestry.json", ["retry"])
-        assert len(missing["coverage"]["retryAttemptIdsNotIncluded"]) == 1
-        start(port)
-        for code in (0, 0, 4):
-            run("delivery", "reconcile", "--record", "acknowledged", code=code)
-        stop()
-        after = collect("record-after.json", ["retry", "ambiguous", "acknowledged"])
-        observed = next(x for x in after["deliveries"] if "latestActivity" in x["summary"])
-        assert observed["summary"]["latestActivity"]["observation"]["value"] == "not-observed"
-        assert observed["summary"]["lastObservation"]["observation"]["kind"] == "unavailable"
-        assert observed["summary"]["acknowledgment"] == "accepted"
-        assert len(observed["events"]) == 5
-        assert (retained / "record-before.json").read_bytes() != (retained / "record-after.json").read_bytes()
-        # A failed gate is recorded evidence and exports successfully without upload.
         failed = work / "failed"
         failed.mkdir()
         bad = json.loads(seed)
         del bad["metadata"]["component"]["version"]
         (failed / "bom.json").write_text(json.dumps(bad))
         (failed / "rio.yaml").write_text("version: 1\nartifacts: [{id: failed, sbom: bom.json}]\ngate:\n  require: [name, version]\n")
-        run("normalize", "--gate", "warn", as_json=False, cwd=failed)
-        run("record", "--output", retained / "record-failed-gate.json", cwd=failed)
-        failed_record = json.loads((retained / "record-failed-gate.json").read_text())
-        assert failed_record["normalization"]["index"]["artifacts"][0]["gate"] == "fail"
-        # Explicit v2 collection keeps historical journals useful without inventing
-        # expected batch scope. V1 remains the default above.
-        run("record", "--schema-version", "2", "--delivery-record", "acknowledged",
-            "--delivery-record", "ambiguous", "--delivery-record", "retry",
-            "--output", retained / "record-v2.json")
-        # Transfer only this file, then remove every original index/journal/SBOM.
+        failed_record = retain("failed-gate", run("--gate", "fail", cwd=failed, code=1))
+        assert failed_record["artifacts"][0]["checks"]["gate"] == "fail"
         moved = retained / "recipient"
         moved.mkdir()
-        standalone = moved / "record.json"
-        shutil.copyfile(retained / "record-after.json", standalone)
+        for path in snapshots:
+            shutil.copyfile(path, moved / path.name)
         shutil.rmtree(work)
         count = state["requests"]
-        v2 = run("record", "inspect", "--file", retained / "record-v2.json", cwd=moved)
-        assert v2["record"]["schemaVersion"] == 2 and v2["record"]["expectedScope"] == "not-recorded"
-        run("record", "report", "--file", standalone, "--output", moved / "report.html", cwd=moved)
-        run("record", "report", "--file", retained / "record-v2.json",
-            "--output", retained / "report-v2.html", cwd=moved)
-        valid = run("record", "inspect", "--file", standalone, cwd=moved)
-        assert valid["outcome"] == "valid" and state["requests"] == count
-        assert valid["record"]["normalization"]["sbomBytesVerification"] == "not-performed"
-        for kind in ("source", "summary"):
-            corrupted = json.loads(standalone.read_text())
-            if kind == "source":
-                corrupted["evidence"][0]["data"] = base64.b64encode(b"{}").decode()
+        for path in moved.glob("*.json"):
+            result = run("record", "inspect", "--file", path, cwd=moved)
+            assert result["outcome"] == "valid" and state["requests"] == count
+            assert result["record"]["kind"] == "rio-run-receipt"
+            assert "evidence" not in result["record"] and "normalization" not in result["record"]
+            run("record", "report", "--file", path, "--output", path.with_suffix(".html"), cwd=moved)
+        standalone = moved / "pipeline.json"
+        for kind in ("reference", "acknowledgment"):
+            corrupted = json.loads(standalone.read_bytes())
+            if kind == "reference":
+                corrupted["deliveries"][0]["submitted"][0]["artifactOutput"] = "missing"
             else:
-                corrupted["deliveries"][0]["summary"]["acknowledgment"] = "rejected"
+                corrupted["deliveries"][0]["state"] = "rejected"
             path = moved / ("corrupt-" + kind + ".json")
             path.write_text(json.dumps(corrupted))
-            result = run("record", "inspect", "--file", path, code=2, cwd=moved)
-            assert result["outcome"] == "error" and not result["outputMayExist"]
-        # Inspect human output as well: this reports consistency, never ingestion.
+            assert run("record", "inspect", "--file", path, code=2, cwd=moved)["outcome"] == "error"
+            path.unlink()
         run("record", "inspect", "--file", standalone, as_json=False, cwd=moved)
         for path in retained.rglob("*"):
             if path.is_file() and path.suffix in (".json", ".html"):
                 assert env["RIO_SYNTHETIC_KEY"] not in path.read_text()
-        (retained / "walkthrough.json").write_text(json.dumps({"syntheticReceiver": True, "commands": commands, "networkRequests": count, "collectionAndInspectionNetworkRequests": 0}, indent=2) + "\n")
-        print("PASS: synthetic receipts/activity; offline snapshots and relocated inspection; corruption refused")
-        print("No ingestion/authenticity/full-retention claim. Retained evidence:", retained)
+        (retained / "walkthrough.json").write_text(json.dumps({"syntheticReceiver": True, "commands": commands, "networkRequests": count, "offlineInspectionRequests": 0}, indent=2) + "\n")
+        print("PASS: one root pipeline, distinct retry/reconciliation receipts, immutable prior snapshot, source-free inspection and corruption refusal")
+        print("Retained independent receipts:", moved)
     finally:
         stop()
 

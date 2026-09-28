@@ -114,11 +114,12 @@ class ContextProducerTest(unittest.TestCase):
             "      require: [source.repository, source.revision, build.url]\n"
         )
         normalized = subprocess.run(
-            [rio, "normalize", "--manifest", "rio.yaml", "--out", "normalized"],
+            [rio, "normalize", "--manifest", "rio.yaml", "--out", "normalized", "--json"],
             cwd=self.directory.name, text=True, capture_output=True,
         )
         self.assertEqual(normalized.returncode, 0, normalized.stderr)
-        index = json.loads((Path(self.directory.name) / "normalized/index.json").read_text())
+        run_directory = Path(self.directory.name) / json.loads(normalized.stdout)["runDirectory"]
+        index = json.loads((run_directory / "index.json").read_text())
         self.assertEqual(index["artifacts"][0]["context"]["effective"]["source"]["repository"],
                          "https://code.example.org/widgets/console")
 

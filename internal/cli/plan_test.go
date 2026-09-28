@@ -81,15 +81,15 @@ func TestPlanHumanOutput(t *testing.T) {
 		"\n" +
 		"rcp-example\n" +
 		"  read   tycho-rcp.cdx.json\n" +
-		"  write  target/rio/rcp-example.cdx.json\n" +
+		"  write  target/rio/runs/<run-id>/rcp-example.cdx.json\n" +
 		"  repair-purl  ecosystem p2  table p2-maven.json\n" +
 		"\n" +
 		"rcp-example-unmapped\n" +
 		"  read   tycho-rcp.cdx.json\n" +
-		"  write  target/rio/rcp-example-unmapped.cdx.json\n" +
+		"  write  target/rio/runs/<run-id>/rcp-example-unmapped.cdx.json\n" +
 		"  no transforms\n" +
 		"\n" +
-		"gate  require name, version, purl\n"
+		"gate  require name, version, purl\ngate  mode fail\ndelivery  not-configured\nreceipt  target/rio/runs/<run-id>/record.json\n"
 	if r.stdout != want {
 		t.Fatalf("stdout =\n%s\nwant\n%s", r.stdout, want)
 	}

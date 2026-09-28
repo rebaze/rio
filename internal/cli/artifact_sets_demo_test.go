@@ -33,9 +33,7 @@ func TestArtifactSetsDemoFixtures(t *testing.T) {
 		requireExit(t, rio(t, dir, "normalize", "--manifest", tc.manifest, "--out", tc.manifest+"-out", "--gate", "fail"), ExitOK)
 	}
 	requireExit(t, rio(t, dir, "normalize", "--manifest", "overlap.yaml", "--out", "refused"), ExitUsage)
-	if _, err := os.Stat(filepath.Join(dir, "refused")); !os.IsNotExist(err) {
-		t.Fatal("overlap wrote output")
-	}
+	requireNoNormalizedOutputs(t, filepath.Join(dir, "refused"))
 }
 
 func TestArtifactSetsPlanConsumer(t *testing.T) {

@@ -19,7 +19,8 @@ type Facts struct {
 	Discovery        string `json:"discovery,omitempty"`
 }
 type details struct {
-	OCI Facts `json:"oci"`
+	TLS *TLSFacts `json:"tls,omitempty"`
+	OCI Facts     `json:"oci"`
 }
 
 func observation(kind, value, code string, httpStatus int, facts Facts, refs []delivery.Reference) delivery.Observation {
@@ -30,11 +31,24 @@ func observation(kind, value, code string, httpStatus int, facts Facts, refs []d
 	if httpStatus == 0 {
 		origin = "local"
 	}
-	return delivery.Observation{Kind: kind, Value: value, Origin: origin, Code: code, HTTPStatus: httpStatus, References: refs, Details: mustJSON(details{facts})}
+	return delivery.Observation{Kind: kind, Value: value, Origin: origin, Code: code, HTTPStatus: httpStatus, References: refs, Details: mustJSON(details{OCI: facts})}
 }
 func ValidateSnapshot(s record.Snapshot) error {
 	if e := ValidateIntent(s.Intent); e != nil {
 		return e
+	}
+	options, _, e := ValidateDescription(s.Intent.Destination)
+	if e != nil {
+		return e
+	}
+	for _, o := range s.Observations {
+		facts, e := ReadTLS(o)
+		if e != nil {
+			return e
+		}
+		if facts != nil && (options.AllowHTTP || facts.CertificateVerification != "enforced" || o.HTTPStatus > 0 && !facts.Observed) {
+			return invalid("TLS facts contradict transport")
+		}
 	}
 	expected := s.Intent.ExpectedReferences
 	if len(s.References) > 0 && !reflect.DeepEqual(s.References, expected) {
@@ -50,6 +64,17 @@ func ValidateSnapshot(s record.Snapshot) error {
 			var sub delivery.Submission
 			if e := delivery.DecodeJSON(event.Data, &sub, true); e != nil {
 				return e
+			}
+			allowed := publicationBodies(options)
+			seen := map[delivery.PayloadRef]bool{}
+			if len(sub.Submitted) > len(allowed) {
+				return invalid("submitted body count")
+			}
+			for _, p := range sub.Submitted {
+				if !slices.Contains(allowed, p) || seen[p] {
+					return invalid("submitted body identity")
+				}
+				seen[p] = true
 			}
 			if e := validateSubmission(sub, expected); e != nil {
 				return e

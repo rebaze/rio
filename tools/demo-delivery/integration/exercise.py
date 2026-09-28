@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Exercise an owned real Dependency-Track fixture over HTTPS with an installed Rio."""
 import argparse
+from email import policy
+from email.parser import BytesParser
 import hashlib
 import http.client
 import http.server
@@ -43,6 +45,7 @@ def main():
         raise setup.SetupError("private test endpoint differs from owned fixture")
     authority = urllib.parse.urlsplit(setup.local_url(state["url"]))
     observed = {"requests": 0, "uploads": 0}
+    submitted = []
     secret_values = [private["databasePassword"], private["adminPassword"], config["RIO_DTRACK_TEST_API_KEY"], config["RIO_DTRACK_TEST_DENIED_KEY"]]
 
     class Gateway(http.server.BaseHTTPRequestHandler):
@@ -76,6 +79,12 @@ def main():
                     self.send_error(413)
                     return
                 body.extend(self.rfile.read(size))
+            if self.command == "POST" and self.path == "/api/v1/bom":
+                message = BytesParser(policy=policy.default).parsebytes(
+                    ("Content-Type: " + self.headers["Content-Type"] + "\r\n\r\n").encode() + body)
+                fields = {part.get_param("name", header="Content-Disposition"): part.get_payload(decode=True)
+                          for part in message.iter_parts()}
+                submitted.append(fields)
             headers = {k: v for k, v in self.headers.items() if k.lower() not in ("host", "connection", "transfer-encoding", "content-length")}
             connection = http.client.HTTPConnection(authority.hostname, authority.port, timeout=30)
             try:
@@ -136,7 +145,15 @@ def main():
         commands.append({"args": list(map(str, args)), "exit": result.returncode})
         if result.returncode != code:
             raise setup.SetupError("installed binary operation " + " ".join(map(str, args[:2])) + " returned " + str(result.returncode) + "; expected " + str(code))
-        return json.loads(result.stdout) if as_json else result
+        if not as_json:
+            return result
+        value = json.loads(result.stdout)
+        if "receipt" in value:
+            raw = Path(value["receipt"]["path"]).read_bytes()
+            safe_bytes(raw)
+            if hashlib.sha256(raw).hexdigest() != value["receipt"]["sha256"] or len(raw) != value["receipt"]["size"]:
+                raise setup.SetupError("receipt publication digest or size differs")
+        return value
 
     def save(value):
         (work / "rio.yaml").write_text(json.dumps(value, indent=2) + "\n")
@@ -176,28 +193,54 @@ def main():
         for target in manifest["delivery"]["targets"].values():
             target.update(url=tls_url, caFile=str(TLS / "SYNTHETIC-ONLY-cert.pem"), autoCreate=True)
         manifest["delivery"]["targets"]["archive"]["project"]["name"] += "-" + suffix
-        save(manifest)
-        run("normalize", "--gate", "fail", as_json=False)
         untrusted = json.loads(json.dumps(manifest))
         untrusted["delivery"]["targets"]["security"].pop("caFile")
         untrusted["delivery"]["targets"]["security"]["project"] = {"name": "rio-untrusted-" + suffix, "version": "1"}
         save(untrusted)
-        run("deliver", "--artifact", "alpha-server", "--target", "security", "--record", "untrusted-attempt",
-            "--evidence", "untrusted.json", code=4)
+        refused = run("--artifact", "alpha-server", "--target", "security", code=4)
+        shutil.copyfile(refused["receipt"]["path"], run_root / "record-untrusted.json")
+        refusal = json.loads((run_root / "record-untrusted.json").read_text())["deliveries"][0]
+        if refusal["transport"] != {"scheme": "https", "tlsObserved": False, "certificateVerification": "enforced"}:
+            raise setup.SetupError("default trust receipt did not retain failed handshake facts")
         if observed["uploads"] != before_uploads:
             raise setup.SetupError("default trust unexpectedly reached application upload")
         save(manifest)
-        result = run("deliver", "--evidence", "client.json")
-        if result["delivery"]["outcome"] != "accepted":
-            raise setup.SetupError("real receiver did not acknowledge batch")
-        shutil.copyfile(work / "client.json", run_root / "record-before.json")
+        # The happy path is one invocation for intake, enrichment, checks and delivery.
+        submitted_before = len(submitted)
+        result = run()
+        shutil.copyfile(result["receipt"]["path"], run_root / "record-before.json")
         original_sha = hashlib.sha256((run_root / "record-before.json").read_bytes()).hexdigest()
+        receipt = json.loads((run_root / "record-before.json").read_text())
+        if receipt["kind"] != "rio-run-receipt" or receipt["schemaVersion"] != 1 or receipt["run"]["operation"] != "pipeline":
+            raise setup.SetupError("pipeline did not produce its compact receipt")
+        if result["outcome"] != "success" or any(item["state"] != "accepted" for item in receipt["deliveries"]):
+            raise setup.SetupError("real receiver did not acknowledge pipeline deliveries")
+        run_directory = Path(result["runDirectory"])
+        recovery = json.loads((run_directory / ".internal/attempts.json").read_text())
+        journals = {item["attemptId"]: item["journal"] for item in recovery}
+        artifacts = {item["id"]: item for item in receipt["artifacts"]}
+        uploads = submitted[submitted_before:]
+        if len(uploads) != len(receipt["deliveries"]):
+            raise setup.SetupError("pipeline upload count differs from receipt")
+        for item, fields in zip(receipt["deliveries"], uploads):
+            output = artifacts[item["artifactId"]]["output"]
+            payload = (run_directory / output["path"]).read_bytes()
+            if payload != fields["bom"] or hashlib.sha256(payload).hexdigest() != output["sha256"] or len(payload) != output["size"]:
+                raise setup.SetupError("receipt and multipart payload bytes differ")
+            if fields["projectName"].decode() != item["project"]["name"] or fields["projectVersion"].decode() != item["project"]["version"]:
+                raise setup.SetupError("receipt and multipart projects differ")
+            if len(item["submitted"]) != 1 or item["submitted"][0]["artifactOutput"] != item["artifactId"] or item["transport"] != {
+                    "scheme": "https", "tlsObserved": True, "certificateVerification": "enforced"}:
+                raise setup.SetupError("receipt omitted submission or verified TLS facts")
+            response = item["responses"][0]
+            if response["httpStatus"] != 200 or not any(ref["kind"] == "dependency-track:event-token" for ref in response["references"]):
+                raise setup.SetupError("receipt omitted server acknowledgment")
         # These inventory reads are harness observations, not native content verification.
         inventory = []
-        for item in result["delivery"]["items"]:
-            project = item["destination"]["identity"]["project"]
+        for i, item in enumerate(receipt["deliveries"]):
+            project = item["project"]
             query = urllib.parse.urlencode({"name": project["name"], "version": project["version"]})
-            expected = json.loads((work / "target/rio" / (item["artifactId"] + ".cdx.json")).read_text())
+            expected = json.loads((run_directory / artifacts[item["artifactId"]]["output"]["path"]).read_text())
             purls = sorted(c["purl"] for c in expected["components"])
             deadline = time.monotonic() + 120
             while time.monotonic() < deadline:
@@ -209,27 +252,30 @@ def main():
                 time.sleep(1)
             else:
                 raise setup.SetupError("synthetic project inventory did not match normalized component PURLs")
-            run("delivery", "reconcile", "--record", item["record"])
+            reconciliation = run("delivery", "reconcile", "--record", journals[item["attemptId"]])
+            shutil.copyfile(reconciliation["receipt"]["path"], run_root / ("record-reconcile-%d.json" % i))
         bypass = dict(manifest["delivery"]["targets"]["security"])
         bypass.pop("caFile")
         bypass.update(insecureSkipVerify=True, project={"name": "rio-bypass-" + suffix, "version": "1"})
         manifest["delivery"]["targets"]["bypass"] = bypass
         save(manifest)
-        run("deliver", "--artifact", "alpha-server", "--target", "bypass", "--evidence", "bypass.json")
+        bypass_result = run("deliver", "--index", run_directory / "index.json", "--artifact", "alpha-server", "--target", "bypass")
+        shutil.copyfile(bypass_result["receipt"]["path"], run_root / "record-bypass.json")
+        bypass_receipt = json.loads((run_root / "record-bypass.json").read_text())
+        if bypass_receipt["deliveries"][0]["transport"] != {"scheme": "https", "tlsObserved": True, "certificateVerification": "disabled"}:
+            raise setup.SetupError("explicit bypass receipt omitted transport policy")
         if observed["uploads"] != before_uploads + 4:
             raise setup.SetupError("unexpected application upload or retry count")
         stop_gateway()
-        (work / "target/rio/index.json").write_text("{}")
         env.pop("RIO_DEMO_CLIENT_KEY")
-        run("record", "--schema-version", "2", "--batch", "client.json.batch.json", "--batch", "bypass.json.batch.json",
-            "--batch", "untrusted.json.batch.json", "--output", run_root / "record-after.json")
         # Stop the real receiver too, before the source-free recipient verification.
         setup.stop(root)
         for path in work.rglob("*.json"):
             safe_bytes(path.read_bytes())
         shutil.rmtree(work)
-        run("record", "inspect", "--file", run_root / "record-after.json", cwd=run_root)
-        run("record", "report", "--file", run_root / "record-after.json", "--output", run_root / "report.html", cwd=run_root)
+        for path in sorted(run_root.glob("record-*.json")):
+            run("record", "inspect", "--file", path, cwd=run_root)
+        run("record", "report", "--file", run_root / "record-before.json", "--output", run_root / "report.html", cwd=run_root)
         if hashlib.sha256((run_root / "record-before.json").read_bytes()).hexdigest() != original_sha:
             raise setup.SetupError("original snapshot changed")
         for path in run_root.rglob("*"):

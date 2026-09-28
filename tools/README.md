@@ -4,7 +4,7 @@ Things that support rio without being part of it. Nothing here ships in the bina
 covered by rio's compatibility promises, and rio never calls any of it.
 
 Supporting network-facing helpers live here. **Normalization and planning stay offline**;
-explicit native delivery/reconciliation may use network clients. Rio stays static,
+root pipeline execution and explicit native delivery/reconciliation may use network clients. Rio stays static,
 `CGO_ENABLED=0`. Offline demos also live here: they exercise the binary with inspectable example
 inputs and remain separate from its runtime.
 
@@ -12,17 +12,17 @@ inputs and remain separate from its runtime.
 |---|---|---|
 | [Test binary workflow](#temporary-linux-test-binaries) | builds a selected revision as a temporary Linux download | when reproducing a problem or testing a fix |
 | [`build-p2-table.py`](#build-p2-tablepy) | builds the bundle-symbolic-name → Maven coordinate table rio repairs purls with | occasionally, on a workstation |
-| [`demo-delivery/`](demo-delivery/) | demonstrates native Dependency-Track delivery and batch evidence | offline, with an installed rio release |
-| [`demo-dtrack-tls/`](demo-dtrack-tls/) | demonstrates verified TLS and explicit certificate bypass with recorded policy | offline, with an installed rio release |
-| [`demo-oci/`](demo-oci/) | demonstrates native standalone and attached OCI delivery | offline, with an installed rio release |
-| [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | offline, with an installed rio release |
-| [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, refusals and owned-claim replacement | offline, with an installed rio release |
-| [`demo-artifact-sets/`](#artifact-sets-demo) | discovers module SBOMs, refuses missing/overlapping inputs and retains offline scope/check evidence | offline, with an installed rio release |
-| [`demo-batch-evidence/`](demo-batch-evidence/) | demonstrates partial delivery, batch scope, record v2, explicit retry and offline recovery | with an installed client-evidence release |
-| [`demo-record/`](#consolidated-record-demo) | exports and inspects one offline evidence snapshot with explicit coverage | when retaining normalization and selected delivery facts |
+| [`demo-delivery/`](demo-delivery/) | demonstrates native Dependency-Track delivery and batch evidence | with Rio 0.7.0+ and Python 3.9+ |
+| [`demo-dtrack-tls/`](demo-dtrack-tls/) | demonstrates verified TLS and explicit certificate bypass with recorded policy | with Rio 0.7.0+ and Python 3.9+ |
+| [`demo-oci/`](demo-oci/) | demonstrates native standalone and attached OCI delivery | with Rio 0.7.0+ and Python 3.9+ |
+| [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | with Rio 0.7.0+ and Python 3.9+ |
+| [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, refusals and owned-claim replacement | with Rio 0.7.0+ and Python 3.9+ |
+| [`demo-artifact-sets/`](#artifact-sets-demo) | discovers module SBOMs, refuses missing/overlapping inputs and retains offline scope/check evidence | with Rio 0.7.0+ and Python 3.9+ |
+| [`demo-batch-evidence/`](demo-batch-evidence/) | demonstrates partial delivery, compact scope, explicit retry and offline crash recovery | with Rio 0.7.0+ and Python 3.9+ |
+| [`demo-record/`](#consolidated-record-demo) | inspects independent pipeline, retry and reconciliation receipts | when retaining normalization and selected delivery facts |
 | [`demo-normalization-evidence/`](demo-normalization-evidence/) | explains repair sources, exact changes and offline retention | with an installed release containing normalization evidence |
 | [`demo-repair/`](#first-repair-sample) | shows optional p2 repair with an unchanged input and an audit record | when evaluating Eclipse/OSGi coordinate repair |
-| [`demo-agent-integration/`](#agent-integration-examples) | tests project onboarding configurations and a CI collection step | offline, with an installed rio release |
+| [`demo-agent-integration/`](#agent-integration-examples) | tests project onboarding configurations and a one-command CI receipt step | with Rio 0.7.0+ and Python 3.9+ |
 | [`rio-context.py`](#rio-contextpy) | emits one explicit build-context entry bound to original SBOM bytes | in a producing CI job |
 | [`feature-video/`](#feature-video) | records, narrates and encodes the context feature walkthrough | when the feature or its demo changes |
 
@@ -343,80 +343,11 @@ CI runs it on Python 3.9, the version the tool advertises, whenever a `.py` file
 
 ## Migrating to native Dependency-Track delivery
 
-The legacy `tools/rio-dtrack-upload.sh` uploader and its dedicated tests have been retired from
-this source tree. Use native delivery, available in Rio v0.5.0 and later. It verifies the indexed
-output bytes before sending them and retains a journal for each attempt. Existing links to the
-old uploader documentation lead here.
+The retired `rio-dtrack-upload.sh` is replaced by configured native delivery. Add a Dependency-Track target to `rio.yaml`, name the API-key environment variable, then run `rio` once. [Complete native configuration](../docs/delivery.md) and [quick start](../docs/quick-start.md).
 
-Add a target to your existing `rio.yaml`. For example, if the old script uploaded artifact
-`application` with prefix `acme/`, preserve that receiver project explicitly:
+The old prefix-plus-artifact-ID project convention is not inferred: configure explicit project names/versions or UUIDs when needed. Project creation requires `autoCreate: true`. Parent-project hierarchy remains a receiver administration concern. Explicit `--allow-failed-gate` belongs to standalone delivery; root uses its effective gate policy.
 
-```yaml
-version: 1
-artifacts:
-  - id: application
-    sbom: target/bom.json
-delivery:
-  targets:
-    security:
-      type: dependency-track
-      url: https://dtrack.example.com
-      apiKeyEnv: DTRACK_API_KEY
-      overrides:
-        application:
-          project: {name: acme/application, version: "1.2.3"}
-          # autoCreate: true  # enable only if this project should be created
-```
-
-Keep explicit project versions aligned with the releases you intend to update. Without an
-explicit selector, native delivery uses the SBOM subject's name/version, which may differ from
-the old prefix-plus-artifact-ID convention. Preview the resolved destinations before uploading.
-Keep the API key in your CI secret store or a private environment file, as shown in the
-[complete first-delivery example](../README.md#send-to-dependency-track); never put its value in YAML.
-
-```sh
-rio normalize --gate fail
-rio delivery plan --target security --json
-rio deliver --target security --json
-```
-
-`--target security` preserves the old single-endpoint scope while delivering every eligible
-indexed artifact to that target. Plain `rio deliver` sends to all configured eligible targets.
-For a non-default index location, pass `--index PATH`; choose a different intake/delivery
-manifest with `--manifest PATH`.
-
-| Previous setting or behavior | Native replacement |
-|---|---|
-| `DTRACK_URL` | Set the target's `url` in `rio.yaml`; the old environment variable is not read automatically |
-| `DTRACK_API_KEY` | Keep the injected secret and name it with `apiKeyEnv` |
-| `DTRACK_PROJECT_PREFIX` + artifact ID | Set each artifact's explicit `project.name` **and** `project.version`, or use its existing project UUID |
-| Automatic child-project creation | Opt in with `autoCreate: true` for name/version selectors; creation defaults to false |
-| `DTRACK_PARENT_UUID`, `DTRACK_PARENT_NAME`, `DTRACK_PARENT_VERSION` | Manage the hierarchy in Dependency-Track and select each existing **child** project by UUID; native delivery does not create or change parent relationships |
-| `DTRACK_POLL`, `DTRACK_POLL_TIMEOUT` | Upload returns a receipt; if polling is desired, run `rio delivery reconcile --record JOURNAL_PATH --wait 120s` for each journal printed by delivery |
-| `DTRACK_UPLOAD_FAILED=1` | Explicit `rio deliver --allow-failed-gate`; malformed evidence, unknown gate outcomes and digest mismatches still refuse |
-
-For an existing child project, replace its name/version selector with
-`project: {uuid: f90934f5-cb88-47ce-81cb-db06fc67d4b4}` (synthetic UUID). Omit `autoCreate` entirely
-for UUID selectors, including at the target level. Supplying a parent's UUID would upload into
-that parent; it does not select or create a child. No parent behavior is silently emulated.
-
-Native delivery preflights the full batch and stops at the first upload nonacceptance or
-persistence failure. Earlier attempts remain recorded and later items are unattempted. The old
-script continued after failures; update pipeline exit-code handling and inspect the journals
-before selecting unattempted pairs or explicitly retrying an uncertain attempt. Re-running an
-unchanged delivery does not automatically resend it.
-
-Polling is also stricter: the old script used `/api/v1/bom/token` with a fallback, whereas native
-reconciliation uses `/api/v1/event/token` and reports an unavailable observation or wait deadline
-with exit 4. It does not treat these outcomes as a successful wait. Check this endpoint when
-migrating older servers; retained real-server coverage is for Dependency-Track 5.1.1.
-An accepted upload or `processing:false` response is not proof of successful ingestion.
-
-See [native delivery](#native-verified-delivery) for TLS configuration, permissions, exit codes
-and deliberate retries. Run the [installed-binary demo](demo-delivery/README.md) to exercise
-batching and evidence without a server or credentials.
-
----
+Uploads return acceptance/unknown/rejection facts. Optional native reconciliation uses `/api/v1/event/token`; no processing observed does not prove ingestion. Reuse of an existing standalone journal is refused, and possible duplicates require explicit retry authorization. See the [installed-binary fault matrix](demo-delivery/README.md), [TLS policy demo](demo-dtrack-tls/README.md), and [owned real-server harness](demo-delivery/integration/README.md).
 
 ## Signing and verifying normalization attestations
 
@@ -553,7 +484,7 @@ on screen above their output. Version 2 transcripts require a fresh run of the d
 
 The [standalone enrichment demo](demo-enrichment/README.md) includes synthetic CycloneDX 1.6
 SBOMs, three manifests and a shell runner. It uses a real installed rio release containing #61;
-no Go toolchain, source build, Python, jq or network access is needed. Copy `demo-enrichment/`
+Python 3.9+ reads structured results; no Go toolchain, source build, jq or network access is needed. Copy `demo-enrichment/`
 with its inputs from the matching tagged source archive, or use it from a checkout:
 
 ```sh
@@ -574,7 +505,7 @@ SBOMs, indexes and unsigned statements in a fresh temporary directory printed at
 The [standalone context demo](demo-context/README.md) contains two synthetic CycloneDX SBOMs
 from different repositories, a shared context JSON file, three refusal cases, a prior-claim
 replacement case and a POSIX shell runner. Use an installed Rio release containing #62 and the
-matching tagged source archive; no Go toolchain, source build, Python, jq or network is needed:
+matching tagged source archive; Python 3.9+ reads structured results; no Go toolchain, source build, jq or network is needed:
 
 ```sh
 ./tools/demo-context/run.sh
@@ -660,7 +591,7 @@ credentials — the synthesizer is stubbed, so a test run never spends anything.
 
 [`demo-artifact-sets/`](demo-artifact-sets/) supplies synthetic marker files, SBOMs, manifests and a
 POSIX-shell runner. Use an installed Rio release containing #71, a shell and standard utilities;
-no Go toolchain, Maven, Python, jq or network is needed:
+Python 3.9+ is required; no Go toolchain, Maven, jq or network is needed:
 
 ```sh
 ./tools/demo-artifact-sets/run.sh
@@ -683,423 +614,91 @@ file in a reused directory, defines membership.
 
 ## Agent integration examples
 
-The [integration guide](../docs/agent-integration.md) is the shared workflow for agents configuring
-a project. [`demo-agent-integration/`](demo-agent-integration/) supplies the examples and checks:
+The [integration guide](../docs/agent-integration.md) and [examples](demo-agent-integration/) cover explicit inputs, discovered modules, mixed configuration, missing producers and ambiguous membership. Synthetic producers copy fixture SBOMs; they do not generate a real project's inventory.
 
-| Project | What it demonstrates |
-|---|---|
-| `explicit` | One desktop SBOM selected explicitly |
-| `modules` | Automatic server discovery, with a client outside the selector |
-| `mixed` | Extending an existing manifest, preserving its settings and handling an uppercase directory through exclusion plus an explicit artifact |
-| `incomplete` | A required module has no SBOM producer; configuration stays inclusive and validation fails |
-| `ambiguous` | Both candidates have SBOMs, but only the owner can decide which ships; no reference manifest is preselected |
-
-Run the reference walkthrough with an installed Rio release containing artifact sets (#71 / #72),
-POSIX shell and standard utilities including `tar` and `mktemp`:
+Run with an installed Rio 0.7.0+, Python 3.9+, POSIX shell and standard utilities:
 
 ```sh
 ./tools/demo-agent-integration/run.sh /path/to/rio
-# Or omit the argument to use rio from PATH (or RIO_BIN).
+RIO_BIN=/path/to/rio python3 tools/demo-agent-integration/test.py
 ```
 
-No Go, Maven, Python, jq or network is needed for the walkthrough. It copies projects into a fresh
-temporary directory, runs their synthetic producers, applies the copyable configurations, and
-retains plans, normalized outputs and refusal logs. Each `build.sh` copies fixture data; it is not
-a recipe for generating a real project's SBOM. The walkthrough is a reference demonstration,
-not a live agent evaluation.
-
-The [YAML examples](demo-agent-integration/examples/) are separate from the input projects so an
-agent can be evaluated without seeing an answer. The [evaluation procedure](demo-agent-integration/EVALUATION.md)
-provides fresh-session setup, prompts, owner responses, assessment criteria and an evidence-record
-format. Use it to check question quality and preservation of existing configuration in any harness.
+No Go/Maven toolchain or network is required for these offline fixtures. Each execution uses its returned `runDirectory` and automatic receipt. Tests retain exact membership, deterministic SBOM/index, configured metadata and failed-run output checks.
 
 ### Copyable CI step
 
-[`ci.sh`](demo-agent-integration/ci.sh) is a shell step for an existing pipeline. Copy it into the
-target project's CI scripts, then pass the installed Rio binary and the project's actual
-build/SBOM-producing command. For example, if that command is `sh ci/build-and-sbom.sh`:
+Copy [ci.sh](demo-agent-integration/ci.sh) into an existing producer pipeline and pass its actual build command:
 
 ```sh
 sh ci/rio.sh /path/to/rio sh ci/build-and-sbom.sh
 ```
 
-It stops on build failure, writes a JSON plan, normalizes with `--gate fail --attest`, and only
-then creates `rio-run.XXXXXXXX/bundle.tgz`. The archive holds `plan.json` and the fresh `normalized/`
-directory, including `index.json` and per-artifact statements. Connect the **printed bundle path**
-to the pipeline's existing artifact collector; do not use a wildcard that also collects old runs.
-The script does not upload anything or delete old files. Failed runs retain diagnostics but produce
-no completed `bundle.tgz`; an archive failure may leave `bundle.tgz.partial`. The producer command must establish SBOM freshness; Rio cannot infer it.
-
-Adapt the output parent and optional `--attest` flag to the target project. Rio installation and
-build tooling are prerequisites. Network-dependent generation or upload steps remain separate from
-Rio's offline processing. The example archives results, not all original inputs needed for later
-reproduction.
+It stops on producer failure, previews the configuration, then runs the configured root pipeline once. Connect the printed automatic receipt path to the existing CI artifact collector. No client bundle is assembled, and failed runs are not presented as completed work. Configured targets may use the network. Producer freshness remains the build's responsibility.
 
 ### Automated checks
 
-Maintainer checks use Python 3.9+ standard library and the same installed Rio binary:
-
-```sh
-RIO_BIN=/path/to/rio python3 tools/demo-agent-integration/test.py
-shellcheck -s sh tools/demo-agent-integration/*.sh tools/demo-agent-integration/projects/*/build.sh
-```
-
-Checks cover ordered membership, path resolution from another working directory, unchanged SBOM
-subjects/components, existing mixed-project settings, automatic inclusion, missing-output refusal,
-and exact archive contents. Build, plan, gate and archive failures must never produce a completed bundle. CI builds
-Rio and runs both the walkthrough and tests when the guide or examples change. These checks assess
-the shipped reference configurations; use the separate evaluation procedure to assess an agent.
+The onboarding checks cover literal path handling, ordered membership, existing settings, inclusion/exclusion, producer/gate failures and independent run/receipt isolation. The [evaluation procedure](demo-agent-integration/EVALUATION.md) separately evaluates an agent's configuration decisions; it is not a claim about a live agent run.
 
 ## First repair sample
 
-[`demo-repair/`](demo-repair/) is a focused example of optional p2 repair: one synthetic CycloneDX SBOM
-with a Gson p2 package URL, plus a manifest selecting the built-in p2 repair. It works with the
-published v0.3.0 binary and requires no project build or external mapping table.
-
-With the files available locally, run:
+[demo-repair/](demo-repair/) is a specialist offline example: one synthetic CycloneDX SBOM with a Gson P2 URL, a manifest selecting repair, and before/after evidence. It requires Rio 0.7.0+, Python 3.9+, POSIX shell and ordinary utilities, without Go, Maven, jq or a mapping-table download.
 
 ```sh
 ./tools/demo-repair/run.sh /path/to/rio
 ```
 
-The runner needs only an installed Rio, POSIX shell and standard utilities. It makes a temporary
-copy, shows the before/after package URLs, and leaves the input, normalized SBOM and index for
-inspection. It performs no network access and needs no Go, Maven, Python or jq. The [README quick start](../README.md#quick-start) demonstrates general version normalization
-and input/output records; this example adds the ecosystem-specific repair transform.
-
-Expected repair: `pkg:p2/com.google.gson@2.8.9?classifier=osgi.bundle` becomes
-`pkg:maven/com.google.code.gson/gson@2.8.9`, with one repair, zero unmapped components and `gate ok`.
-The original input stays unchanged; the normalized SBOM records both URLs. This synthetic example
-shows coordinate normalization, not the safety or vulnerability status of Gson.
-
-To use your own input, create a manifest selecting its path and retain this transform only if
-that SBOM needs p2 repair. See the [README's project configuration](../README.md#configure-your-project).
+The example verifies unchanged input bytes, the repaired Maven URL, counts, schema and gate. It finds SBOM/index/receipt through the structured run result and leaves its temporary output available for inspection. [Repair semantics](../docs/p2-repair.md).
 
 ## Native verified delivery
 
-Native delivery checks the complete index v1 structure, each selected gate outcome and output
-SHA-256, then sends the retained snapshots. Every indexed artifact goes to every configured
-eligible target, in index artifact order and then lexical target order. Delivery uses the index's
-members even when artifact-set source membership has changed. Normalization, intake planning,
-delivery planning and inspection remain offline.
+The product's [delivery reference](../docs/delivery.md) explains Dependency-Track configuration, scoped credentials, projects, TLS/HTTP policy, native journals, explicit retries and observations. Normal root use is one `rio` invocation; deliberate stage commands each produce an honestly scoped receipt.
 
-```yaml
-# rio.yaml: intake and delivery in one file
-version: 1
-artifacts:
-  - id: application
-    sbom: target/bom.json
-delivery:
-  targets:
-    security:
-      type: dependency-track
-      url: https://dtrack.example.com
-      # autoCreate: true      # optional; defaults to false
-      # apiKeyEnv: DTRACK_API_KEY
-      # caFile: company-ca.pem  # relative to rio.yaml
-      # allowHTTP: true       # explicit local development opt-in only
-      exclude: [test-fixtures]
-      overrides:
-        legacy-service:
-          project: {name: existing-project, version: "2.4.0"}
-```
-
-Inject the API key using your CI secret facility. No credentials belong in YAML or command
-arguments. HTTPS verifies hostnames with system roots plus an optional CA; redirects are refused.
-For an internal CA, prefer `caFile: certs/dtrack-ca.pem`. If you explicitly accept skipping both
-certificate-chain and hostname verification, set the target's `insecureSkipVerify: true`.
-It defaults to false, requires HTTPS, cannot be combined with `caFile`, and cannot be overridden
-per artifact. It does not ignore TLS protocol failures or enable redirects, fallback or replay.
-The flag is saved before the request and shown in plan, delivery, journal and record output.
-New HTTPS observations retain `details.tls.certificateVerification` (`enforced` or `disabled`)
-and `details.tls.observed` (whether a successful TLS handshake was observed). Disabled verification
-makes no claim that a certificate was invalid. Old absent TLS evidence remains not-recorded.
-Retries and reconciliation refuse a change of verification mode; use a deliberately new attempt
-with a new `--record` path to choose a different policy. Credential/CA rotation under verified TLS
-remains supported. Changing this flag never changes the default destination journal path.
-Run the [synthetic HTTPS demo](demo-dtrack-tls/README.md) against an installed binary to compare modes.
-Use the server base before `/api/v1`, optionally including a deployment prefix. Standard Go proxy
-environment variables apply. Preview reads no secrets or CA files.
+Synthetic installed-binary demonstrations require Python 3.9+:
 
 ```sh
-rio normalize --gate fail
-rio delivery plan --json
-rio deliver --json
-rio delivery inspect --record target/rio/deliveries/PAIR_KEY --json
-rio delivery reconcile --record target/rio/deliveries/PAIR_KEY --wait 30s --json
+python3 tools/demo-delivery/run.py /path/to/rio
+python3 tools/demo-dtrack-tls/run.py /path/to/rio
 ```
 
-Defaults are `rio.yaml` and `target/rio/index.json`, both selected from cwd. Use `--manifest`
-and `--index` explicitly for other locations; changing manifest location does not change the index
-default. Delivery rejects `--out`; inspection also rejects an explicit `--manifest`.
-`--target NAME` and `--artifact ID` are repeatable literal filters. Unknown or repeated values
-refuse; no eligible pairs is an error. Exclusions/overrides for IDs absent from the index are
-reported as unused rules. `--quiet` suppresses progress, never errors or requested JSON.
+The first exercises one root pipeline, exact bytes, indexed membership, fan-out/exclusions, preflight refusal, partial delivery, lost responses, explicit retry, gate override and unsupported-schema reporting. The TLS demo checks verified custom CA, explicit bypass, policy drift refusal and source-free receipt rendering. Runtime secret canaries must not appear in retained output.
 
-Default project selection uses the verified SBOM subject's complete name/version. Override it
-per target or artifact with a literal pair or `project: {uuid: f90934f5-cb88-47ce-81cb-db06fc67d4b4}`
-(synthetic UUID). Quote versions; mixed, partial or coerced selectors are invalid. UUID mode
-forbids any explicitly present `autoCreate` at the applicable target or override, even false.
-Name/version uploads need no UUID lookup or portfolio-read permission. Creation requires explicit
-`autoCreate: true` and receiver permission. Uploads replace project inventories: duplicate effective
-receiver/project routes refuse before any upload, including aliases. Multiple artifacts with mixed
-UUID and name/version modes at the same server also refuse because their independence is unproven.
-
-All selected payloads and credentials are checked, then every journal path is reserved before any
-intent or request. Payload snapshots are shared across targets. A later local failure sends nothing.
-Execution is sequential and stops on the first nonacceptance or persistence failure. Earlier attempts
-remain recorded; later items are unattempted in that invocation. There is no remote transaction,
-rollback, automatic retry or automatic resume.
-
-Automatic paths are `<index-directory>/deliveries/<pair-key>/`. The key hashes the raw index digest,
-artifact ID, output digest, adapter type and canonical target identity. Renaming a target or rotating
-credentials/CA cannot evade same-pair reuse refusal. This guard is scoped to that output directory;
-a different output directory or an explicit new path can still authorize another attempt.
-
-For advanced single-pair control:
-
-```sh
-rio deliver --artifact application --target security --record chosen-attempt
-rio deliver --artifact application --target security --retry-of chosen-attempt --record fresh-attempt
-```
-
-`--record` denotes a new directory and requires exactly one selected pair. `--retry-of` additionally
-requires an explicit fresh path. Inspect attempted pairs after a partial outcome; use filters for
-unattempted pairs or deliberate single-pair retry. Do not automatically resend accepted/unknown work.
-
-Migration from the unreleased separate-file interface: move destination transport fields into
-`delivery.targets.NAME` in rio.yaml; move an old binding's explicit `project` and `autoCreate` into
-that target's `overrides.ARTIFACT`. Remove the separate configuration file. `--config` and `--delivery`
-refuse with migration guidance. Old v1 journals remain inspectable without any configuration and
-reconcilable using `--manifest`, their recorded destination name/artifact and matching effective
-selector/policies. The old binding string is historical metadata and needs no binding map.
-
-Normalization records the raw manifest digest used then; delivery records the raw current rio.yaml
-digest. They may differ after delivery-only edits, without rewriting any index or SBOM. Neither
-digest excludes delivery text, authenticates a producer, or contains a secret value.
-
-`--allow-failed-gate` permits a recorded failed gate and is retained in evidence. It cannot
-bypass invalid records, unknown gate outcomes or digest mismatch. Skipped schema validation
-remains visible. Digest agreement establishes consistency with the supplied record, not signer
-authentication, executable equivalence, vulnerability absence or software acceptance.
-
-| Exit | Meaning for delivery commands |
-| --- | --- |
-| 0 | Accepted receipt persisted, valid observation obtained, or valid offline data displayed |
-| 2 | Preflight refusal; no HTTP request (inspection may briefly acquire a lock) |
-| 3 | Local execution/persistence failure; output states whether a request may have occurred |
-| 4 | Remote outcome unknown, observation unavailable, or wait deadline |
-| 5 | Supported receiver rejection of an upload |
-
-Code 0 never establishes ingestion. Inspect can return 0 with an `unknown` outcome. A token
-returning `processing:false` means **no processing observed**; it does not prove a valid token,
-successful ingestion or content retention. Reconciliation retains acknowledgment separately
-from activity, and never uploads. It requires the recorded artifact and destination name, effective selector and policies;
-API-key env references and CA files may rotate. It needs no original index or SBOM files.
-
-Every attempt writes immutable, numbered journal events. An intent without a submission result
-is unknown: a crash could have happened on either side of the request. Do not resubmit merely
-because a response was lost. There is no automatic upload retry. Deliberately authorize a
-possible duplicate using `rio deliver ... --retry-of delivery-record --record new-record`;
-the source/index digest, target and creation/gate policies must match and all bytes are checked
-again. Existing journals cannot be reused. The prior journal is never edited.
-
-A sibling `<record>.lock` directory protects cooperating writers and readers. Rio never breaks
-stale locks automatically. Remove one only after confirming no writer remains; age or PID
-alone is insufficient. Inspect reports orphan `.event-*.tmp` files and ignores them as evidence.
-Corrupt, empty or incomplete journals never authorize replay. File sync and immutable events
-reduce crash hazards but do not promise power-loss durability on every filesystem. Shared/network
-storage is supported only when it provides reliable exclusive directory creation and same-directory
-publication. Windows uses native filesystem operations and the same cooperative lock/validation.
-
-Limits: delivery declaration 1 MiB (no new cap on historical intake), index 16 MiB, each selected
-SBOM 64 MiB, total selected snapshots 256 MiB, selected pairs 1,024, receiver JSON 64 KiB,
-each journal event 1 MiB, journal 10,000 events. Each request has a 30-second deadline;
-`--wait` polls every 3 seconds for at most 10 minutes, persisting each observation.
-
-Native delivery is the supported SBOM upload path. For pipelines that used the retired shell
-uploader, follow the [migration guide](#migrating-to-native-dependency-track-delivery), especially
-project naming, parent hierarchy and failure handling. Integration support is limited to versions
-with retained real-server evidence; synthetic demo responses alone do not establish a tested
-server version.
-
-Run the [synthetic installed-binary demo](demo-delivery/README.md) with
-`python3 tools/demo-delivery/run.py /absolute/path/to/rio`. It uses only loopback stubs,
-retains inspectable evidence, and needs no Go toolchain.
-
-The adapter's real-server contract is tested against **Dependency-Track 5.1.1**. Retained
-[sanitized integration evidence and opt-in test instructions](demo-delivery/integration/README.md)
-cover both selectors, creation policies and denial/status behavior. Other versions are not
-advertised as tested. The integration harness uses additional read permissions only for testing.
+These local receiver simulations are not real-server compatibility claims. The existing [Dependency-Track integration harness](demo-delivery/integration/README.md) provisions pinned disposable services with scoped synthetic credentials and verifies uploaded bytes/projects/tokens. Existing CI runs this separately from synthetic demos. Do not treat a skipped integration as a pass.
 
 ## Consolidated record demo
 
+The directory name is historical; the current [receipt demo](demo-record/README.md) demonstrates separate compact receipts rather than an assembled history bundle:
+
 ```sh
-python3 tools/demo-record/run.py /absolute/path/to/rio
-# Windows: python tools/demo-record/run.py C:\path\rio.exe
+python3 tools/demo-record/run.py /path/to/rio
 ```
 
-Requires an installed Rio binary and Python 3.9+; never invokes Go. The
-[walkthrough](demo-record/README.md) creates source/build context, acknowledged and ambiguous
-synthetic deliveries, retries and reconciliation, then stops its loopback receiver before every
-record collection/inspection. It retains before/after snapshots, shows failed gates, zero selected
-journals and missing selected retry ancestry, removes the original workspace and inspects a copied
-record. Altered embedded bytes and summaries refuse. All receiver responses are labeled synthetic;
-no successful-ingestion, authenticated-identity, signing or full-retention claim is made.
+It exercises one root pipeline, a lost-response attempt, explicit retry and three independent reconciliation invocations. Earlier public receipts remain byte-identical. After receiver shutdown and source removal, it inspects/renders each receipt and refuses dangling references and contradictory acknowledgment claims. Requires Rio 0.7.0+ and Python 3.9+; no Go or external receiver is needed.
 
 ## Native OCI delivery
 
-Rio's OCI adapter is part of the binary. It needs no ORAS/Docker executable, shell helper, Docker
-credential configuration, keychain or cloud login command. The [early product example](../README.md#deliver-to-an-oci-registry)
-uses the same `rio.yaml`, verified index and batch selection as Dependency-Track. You can include
-both target types in one batch and collect their journals into one portable `record.json`.
+The [OCI product reference](../docs/delivery.md#oci-registries) covers repository configuration, authentication, attachment and response meanings. The [installed-binary demonstration](demo-oci/README.md) is runnable with Python 3.9+:
 
-An OCI target accepts `registry`, `repository`, `auth`, optional `subject`, `caFile`, `allowHTTP`,
-and `tokenServiceOrigins`. Per-artifact overrides may replace only `subject`. Common `exclude`
-and `overrides` follow the unified delivery configuration. No arbitrary tag, raw manifest, project,
-auto-create option, inline credential, or payload override is accepted.
-
-```yaml
-delivery:
-  targets:
-    registry:
-      type: oci
-      registry: registry.example.com:443
-      repository: product-repository/acme/application
-      auth:
-        usernameEnv: OCI_USERNAME
-        passwordEnv: OCI_PASSWORD
-      caFile: company-ca.pem
-      tokenServiceOrigins: [https://auth.example.com]
+```sh
+python3 tools/demo-oci/run.py /path/to/rio
 ```
 
-Use an OCI client endpoint, not a browser UI, Maven URL or generic `/repository/...` URL. Registry
-is an authority with no scheme or path (bracketed IPv6 is supported); repository contains the product
-repository key when path routing requires it. Obtain the exact endpoint from your registry operator.
-Rio canonicalizes host case and effective default ports, and refuses traversal/encoded separators.
-It does not guess Docker Hub library names. Provision a writable hosted/local OCI repository outside
-Rio; proxy/group/virtual endpoints need their own verified deployment configuration.
+It preserves standalone/attached graph checks, exact submitted representations, mixed DTrack/OCI routing, credential/policy boundaries, already-present read-back, failed gate/tampered bytes, unusable receipts, lost responses, content mismatch and an actual killed delivery process. Automatic receipts stay separate by invocation and remain inspectable after the receiver and source workspace are gone.
 
-Authentication is exactly `{anonymous: true}`, `{usernameEnv: NAME, passwordEnv: NAME}`, or
-`{bearerTokenEnv: NAME}`. Values are resolved only for selected explicit network operations. Missing,
-empty or control-containing credentials refuse without being echoed. HTTPS and hostname verification
-are the default; relative `caFile` paths resolve beside the current manifest. Saved CA references
-remain portable historical strings during inspection. `allowHTTP: true` is an explicit development
-setting. Standard Go proxy environment variables are honored; proxy credentials are not recorded.
-
-Basic/PAT and Bearer challenges are supported. Deliver negotiates repository `pull,push` scope;
-reconcile uses `pull`. Token-service origins default to the registry origin; add other **HTTPS
-origins** explicitly. Cross-origin HTTP, downgraded realms and expanded repository scopes refuse
-before forwarding credentials. Credential environment references and CA references may rotate for an
-existing journal within the same configured authentication form (anonymous, Basic/PAT or Bearer).
-Changing the authentication form, trusted origins or effective transport policy requires a new
-attempt; retry and reconciliation refuse such drift before any request. There are no generic write
-retries. The finite authentication exception can replay a body only after an explicit 401 rejection,
-using a new reader over the same snapshot. Connection reuse and HTTP/2 are disabled to exclude their
-implicit retry paths. All redirects, including read offloading, are unsupported in this initial scope.
-
-Every request has a 30-second deadline, and each submit/reconcile traversal has a five-minute deadline
-bounded by caller cancellation. Manifest, subject and Referrers documents are at most 4 MiB each;
-auth/error JSON is at most 64 KiB; the unchanged SBOM snapshot is at most 64 MiB. Referrers traversal
-allows at most 100 pages and 10,000 descriptors, counted before decoding an excess entry. Index,
-configuration and event byte limits continue to apply. Journal and adapter JSON use typed streaming validation before retaining collections or opaque
-regions; no extra generic entry count narrows the existing journal format.
-Limits refuse rather than truncate.
-
-### Packaging, attachment and evidence
-
-The wrapper is an OCI image manifest with artifact type `application/vnd.cyclonedx+json`, an exact
-`{}` empty config (`application/vnd.oci.empty.v1+json`), and one unchanged CycloneDX layer named
-`sbom.cdx.json`. Its annotation binds the raw normalization index SHA-256. No timestamp, random value,
-compression, archive or SBOM reserialization enters the envelope. The generated publication tag uses
-all 64 hex characters of the wrapper digest. The immutable manifest reference and original blob
-SHA-256 are distinct; attachment adds a third digest for the exact subject image or index.
-
-For attachment, supply `subject.digest` (`sha256:` plus lowercase hex), `subject.mediaType`, and
-`subject.size` (positive, at most 4 MiB), in the **same repository**. OCI image manifest/index and Docker
-schema-2 manifest/list media types are accepted. Obtain the descriptor from the image-producing
-pipeline; an optional setup tool is `oras manifest fetch --descriptor REGISTRY/REPOSITORY@sha256:DIGEST`.
-Rio does not invoke ORAS or resolve an image tag. Explicitly choose the multi-platform index or the
-platform manifest that the SBOM describes. The supplied association is a producer assertion.
-
-Before mutation, Rio verifies the subject and probes the standardized Referrers API. Missing or
-unsupported discovery refuses attachment; there is no referrers-tag fallback or index mutation.
-It checks the generated tag: matching content is fully read back and recorded as `already_present`;
-different content is a conflict. GET-before-PUT is not a portable atomic reservation against an
-external writer. Configure server tag immutability/access control and retention deliberately.
-
-Blob uploads preserve same-origin session query data without saving session URLs. Manifest acceptance
-requires HTTP 201 with the expected digest and a valid same-origin manifest Location; attachment also
-requires matching `OCI-Subject`. A positive 201 with an unusable receipt remains visible as its own
-observation. Partial failures leave already written blobs/sessions in place; Rio never deletes shared
-content or automatically repeats an ambiguous upload.
-
-`rio delivery reconcile --record PATH` reads and hashes the actual manifest, empty config and original
-SBOM blob, checks the generated tag, and, for attachment, verifies the subject and exact Referrers
-descriptor. Matching HEAD/digest headers alone are not verification. Missing discovery is explicit
-`not-observed`/unavailable. Reconcile never repairs or uploads. No original local index/SBOM files are
-needed after intent persistence, and current presence never proves which attempt created an object.
-
-After a crash, confirm the writer has actually stopped before manually removing its stale sibling
-`.lock` directory. Rio never breaks one automatically. Reconcile an intent-only journal first: it may
-report content verified with acknowledgment unknown. A new explicit retry uses fresh source
-verification and a fresh journal with `--retry-of`; the original event bytes remain unchanged.
-
-The shared `record.json` includes exact journal source bytes, expected and observed references,
-acknowledgment and optional latest content verification. Portable inspection reads only that file.
-Consistency is not producer authentication, executable equivalence, perpetual retention, vulnerability
-analysis, signing, Xray ingestion or Lifecycle/IQ analysis.
-
-### OCI demonstrations and registry scope
-
-The installed-binary synthetic walkthrough and the opt-in real-registry harness are documented under
-`tools/demo-oci/` and `tools/demo-oci/integration/`. Synthetic protocol tests are labeled as such and
-are not vendor compatibility evidence. Actual versions, repository recipe/routing, auth, immutability
-and observed descriptor/read-back facts belong in version-specific integration evidence.
-
-Real checks passed for standalone storage/read-back on Distribution 3.1.2 with TLS/Basic auth;
-its absent Referrers API makes attachment explicitly unsupported in Rio’s required-API mode.
-zot 2.1.21 (arm64, TLS/Basic) and Nexus 3.94.0-12 Community (native OCI hosted path routing, explicit
-loopback HTTP, Basic/Bearer auth and ALLOW_ONCE tags) passed image/index attachment, Referrers and
-actual process-crash recovery as well. These are narrowly tested configurations, not all newer
-versions or deployment modes. Artifactory has not been tested. Its interoperability work is deferred
-to the next release iteration in [#88](https://github.com/rebaze/rio/issues/88), outside this release’s
-tested support scope. See the [observed support matrix and evidence](demo-oci/integration/README.md#observed-configurations).
-
-Nexus’s manifest receipt uses a same-origin mounted URI with its configured repository key before
-`/v2/`. Rio validates that the ordered namespace parts still match and that the digest/tag is exact;
-it never follows that receipt URI. Upload sessions, paging and read-back retain their stricter
-configured repository paths. Authentication negotiates the least-required scope through a read-only
-base request before content queries. Bounded standard-code flat or wrapped errors are recognized;
-an empty 401 is a rejection only with a validated authentication challenge. No raw error is retained.
-
-Older Nexus Docker repositories are not covered. Registry storage/discovery does not imply
-Xray/Lifecycle ingestion, and unavailable vendor evidence is never replaced by synthetic results.
-
+The [real-registry harness](demo-oci/integration/README.md) uses the existing disposable Distribution/Zot/Nexus paths. Historical committed observation JSON is labeled as historical adapter evidence, not verification of a new candidate. Final integration must identify the exact tested candidate and actual native/archive execution scope.
 
 ## Client evidence demos
 
-See the result before running anything: [full record.json](demo-client-record/example/record.json),
-[downloadable offline HTML](demo-client-record/example/report.html), and
-[the small reproducible delivery example](demo-client-record/example/README.md), generated with released Rio v0.6.0.
-The example consumes two SBOMs, adds a pipeline URL and build ID, and records the destination URL,
-TLS verification and HTTP acknowledgments from a synthetic Dependency-Track API receiver.
+**Start here:** [actual generated JSON](demo-client-record/example/record.json), [offline HTML](demo-client-record/example/report.html), and [complete runnable ZIP](demo-client-record/example/example.zip). The standard receipt is 5,729 readable UTF-8 bytes, including full digests, URLs, timestamps and tokens. Its SBOMs, receiver and tokens are explicitly synthetic.
 
+```sh
+python3 tools/demo-client-record/run.py /path/to/rio
+python3 tools/demo-batch-evidence/run.py /path/to/rio
+python3 tools/demo-normalization-evidence/run.py /path/to/rio
+```
 
-The [normalization evidence demo](demo-normalization-evidence/README.md) checks change pointers,
-repair sources and effective requirements. The [batch evidence demo](demo-batch-evidence/README.md)
-uses two artifacts/two targets, an exclusion and a lost response, then explicitly retries and collects
-portable v2 snapshots after receiver shutdown and source deletion. Both use Python 3.9+ and an
-installed release binary; no Go toolchain is needed. The existing [record demo](demo-record/README.md)
-also verifies explicit v2 collection with expected scope not recorded while retaining its v1 cases.
-The record, batch and TLS demos render offline HTML after source removal; the batch demo retains
-accepted, partial and combined-history reports for comparison.
+All require an installed Rio 0.7.0+ and Python 3.9+; none requires a Go toolchain. The client example makes one root invocation per case, verifies exact context fields and multipart bytes/projects, then removes source state and stops the receiver before receipt-only inspection/rendering. The batch demo covers partial/unattempted/excluded pairs, explicit retry and actual process interruption with offline recovery **without lock breaking or upload replay**. The normalization demo keeps repair provenance and uplift in a specialist setting, with compact counts in the receipt and detailed local normalized outputs.
 
-The [complete client handoff](demo-client-record/README.md) combines two artifact sets, repairs,
-uplift, enrichment, expected routing, trusted HTTPS, explicit bypass and retained observations in
-one standalone JSON/HTML story. Partial delivery and failed-gate cases stay separate.
-The [owned real Dependency-Track harness](demo-delivery/integration/README.md#repeatable-owned-setup-and-client-handoff)
-provisions pinned disposable infrastructure and distinguishes native evidence from harness inventory checks.
+Each normal execution automatically publishes one `rio-run-receipt`, schema version 1. No `--evidence`, collection step, embedded source archive or legacy format reader remains. A retry/reconciliation has its own receipt with prior references, not a merged account of work from different invocations. See the [field guide, bounds and recovery semantics](../docs/output.md).
 
 ## Authored release notes
 
@@ -1122,8 +721,8 @@ Only after those checks does it extract and execute the native binary, assert ve
 run the complete client-record demo. It does not install or replace a user's Rio binary.
 
 ```sh
-python3 tools/verify-release.py --tag v0.6.0 --commit FULL_VERIFIED_COMMIT \
-  --notes docs/releases/v0.6.0.md --output /absolute/new/private/verification
+python3 tools/verify-release.py --tag v0.7.0 --commit FULL_VERIFIED_COMMIT \
+  --notes docs/releases/v0.7.0.md --output /absolute/new/private/verification
 ```
 
 Requires Python 3.9+, `gh` and `cosign`. The manual `Verify published release` workflow runs the same

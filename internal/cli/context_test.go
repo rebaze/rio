@@ -48,12 +48,10 @@ func TestNormalizeContextSharedSnapshotAndStatement(t *testing.T) {
 	dir, one, two := contextProject(t)
 	requireExit(t, rio(t, dir, "plan", "--json"), ExitOK)
 	requireExit(t, rio(t, dir, "normalize"), ExitUsage)
-	if _, err := os.Stat(filepath.Join(dir, "target")); !os.IsNotExist(err) {
-		t.Fatalf("failed normalize wrote outputs: %v", err)
-	}
+	requireNoNormalizedOutputs(t, filepath.Join(dir, "target"))
 	writeContextFile(t, dir, one, two)
 	requireExit(t, rio(t, dir, "normalize", "--attest"), ExitOK)
-	idx := decode(t, readFile(t, dir, "target", "rio", "index.json"))
+	idx := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "index.json"))
 	rows := idx["artifacts"].([]any)
 	if len(rows) != 2 {
 		t.Fatal(rows)
@@ -68,7 +66,7 @@ func TestNormalizeContextSharedSnapshotAndStatement(t *testing.T) {
 		if effective["id"] != id || effective["source"].(map[string]any)["workspace"] != "unknown" {
 			t.Fatalf("effective: %v", effective)
 		}
-		out := decode(t, readFile(t, dir, "target", "rio", id+".cdx.json"))
+		out := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), id+".cdx.json"))
 		if id == "one" {
 			meta := out["metadata"].(map[string]any)
 			if meta["timestamp"] != "2025-01-01T00:00:00Z" || out["components"].([]any)[0].(map[string]any)["name"] != "dependency" {
@@ -96,7 +94,7 @@ func TestNormalizeContextSharedSnapshotAndStatement(t *testing.T) {
 		if !bytes.Equal(x, storedJSON) {
 			t.Fatalf("SBOM property differs from index context:\n%s\n%s", storedJSON, x)
 		}
-		stmt := decode(t, readFile(t, dir, "target", "rio", id+".intoto.json"))
+		stmt := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), id+".intoto.json"))
 		predicate := stmt["predicate"].(map[string]any)
 		artifact := predicate["artifact"].(map[string]any)
 		y, _ := json.Marshal(artifact["context"])
@@ -104,9 +102,9 @@ func TestNormalizeContextSharedSnapshotAndStatement(t *testing.T) {
 			t.Fatal("statement context differs")
 		}
 	}
-	first := readFile(t, dir, "target", "rio", "index.json")
+	first := readFile(t, latestOutput(t, dir, "target/rio"), "index.json")
 	requireExit(t, rio(t, dir, "normalize", "--attest"), ExitOK)
-	if !bytes.Equal(first, readFile(t, dir, "target", "rio", "index.json")) {
+	if !bytes.Equal(first, readFile(t, latestOutput(t, dir, "target/rio"), "index.json")) {
 		t.Fatal("same inputs changed index")
 	}
 }
@@ -123,9 +121,7 @@ func TestNormalizeMalformedPriorContextWritesNothing(t *testing.T) {
 	r := rio(t, dir, "normalize")
 	requireExit(t, r, ExitUsage)
 	requireStderr(t, r, "one", "context")
-	if _, err := os.Stat(filepath.Join(dir, "target")); !os.IsNotExist(err) {
-		t.Fatalf("malformed prior context wrote outputs: %v", err)
-	}
+	requireNoNormalizedOutputs(t, filepath.Join(dir, "target"))
 }
 
 func TestNormalizeContextLaterDigestFailureWritesNothing(t *testing.T) {
@@ -137,7 +133,5 @@ func TestNormalizeContextLaterDigestFailureWritesNothing(t *testing.T) {
 	r := rio(t, dir, "normalize")
 	requireExit(t, r, ExitUsage)
 	requireStderr(t, r, "two", "sha256")
-	if _, err := os.Stat(filepath.Join(dir, "target")); !os.IsNotExist(err) {
-		t.Fatalf("failed normalize wrote outputs: %v", err)
-	}
+	requireNoNormalizedOutputs(t, filepath.Join(dir, "target"))
 }

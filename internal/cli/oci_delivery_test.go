@@ -18,7 +18,7 @@ import (
 	"github.com/rebaze/rio/internal/delivery/oci"
 	"github.com/rebaze/rio/internal/delivery/record"
 	"github.com/rebaze/rio/internal/delivery/runner"
-	"github.com/rebaze/rio/internal/evidence"
+	"github.com/rebaze/rio/internal/receipt"
 )
 
 func TestReconcileOCIWithoutSourcesWithRotatedCredentialsAndCA(t *testing.T) {
@@ -152,91 +152,45 @@ func TestReconcileOCIWithoutSourcesWithRotatedCredentialsAndCA(t *testing.T) {
 			t.Errorf("missing human fact %s: %s", fact, stderr.String())
 		}
 	}
-	testMixedPortableOCIRecord(t, ip, cfg, config, journal, retry)
+	testPortableOCIReceipt(t, r["receipt"].(map[string]any)["path"].(string), ip, journal, retry)
 
 }
 
-func testMixedPortableOCIRecord(t *testing.T, ip, cfg, config, journal, retry string) {
+func testPortableOCIReceipt(t *testing.T, path, ip, journal, retry string) {
 	t.Helper()
-	config += "    security:\n      type: dependency-track\n      url: https://unused.invalid\n"
-	if e := os.WriteFile(cfg, []byte(config), 0600); e != nil {
-		t.Fatal(e)
-	}
-	c, plan, e := batchPreflight(cfg, deliveryOptions{index: ip})
+	raw, e := os.ReadFile(path)
 	if e != nil {
 		t.Fatal(e)
-	}
-	if len(plan.Jobs) != 2 {
-		t.Fatal("mixed batch plan missing targets")
-	}
-	var job delivery.Job
-	for _, j := range plan.Jobs {
-		if j.Description.Type == "dependency-track" {
-			job = j
-		}
-	}
-	intent, e := runner.PrepareIntent(runner.Prepared{Verified: job.Verified, Description: job.Description, Intent: record.Intent{RioVersion: "test", Binding: job.Target, ConfigSHA256: c.SHA256}})
-	if e != nil {
-		t.Fatal(e)
-	}
-	dtrackJournal := filepath.Join(t.TempDir(), "dtrack")
-	w, e := record.Create(dtrackJournal, intent)
-	if e != nil {
-		t.Fatal(e)
-	}
-	refs := []delivery.Reference{{Kind: "dependency-track:event-token", Value: "f90934f5-cb88-47ce-81cb-db06fc67d4b4"}}
-	sub := delivery.Submission{Disposition: "accepted", References: refs, Observations: []delivery.Observation{{Kind: "acknowledgment", Value: "accepted", Origin: "receiver", Code: "accepted", HTTPStatus: 200, References: refs}}}
-	b, _ := json.Marshal(sub)
-	if e = w.Append("submission", b); e != nil {
-		t.Fatal(e)
-	}
-	if e = w.Close(); e != nil {
-		t.Fatal(e)
-	}
-	oldBuild, oldEnv := deliveryBuild, deliveryLookupEnv
-	deliveryBuild = func(delivery.Provider, delivery.Description) (delivery.Target, error) {
-		t.Fatal("record built client")
-		return nil, nil
-	}
-	deliveryLookupEnv = func(string) (string, bool) { t.Fatal("record resolved credential"); return "", false }
-	defer func() { deliveryBuild, deliveryLookupEnv = oldBuild, oldEnv }()
-	paths := []string{journal, retry, dtrackJournal}
-	doc, e := evidence.Collect(ip, paths, "test", validateSnapshot, recordPolicy)
-	if e != nil {
-		t.Fatal(e)
-	}
-	raw, e := evidence.Marshal(doc)
-	if e != nil {
-		t.Fatal(e)
-	}
-	var readable map[string]any
-	json.Unmarshal(raw, &readable)
-	for _, entry := range readable["deliveries"].([]any) {
-		d := entry.(map[string]any)
-		kind := d["intent"].(map[string]any)["destination"].(map[string]any)["type"]
-		summary := d["summary"].(map[string]any)
-		if kind == "oci" && summary["latestVerification"] == nil {
-			t.Error("OCI verification absent from shared summary")
-		}
-		if kind == "dependency-track" && summary["latestVerification"] != nil {
-			t.Error("DTrack invented content verification")
-		}
 	}
 	os.RemoveAll(filepath.Dir(ip))
-	for _, p := range paths {
-		os.RemoveAll(p)
+	os.RemoveAll(journal)
+	os.RemoveAll(retry)
+	oldBuild, oldEnv := deliveryBuild, deliveryLookupEnv
+	deliveryBuild = func(delivery.Provider, delivery.Description) (delivery.Target, error) {
+		t.Fatal("receipt built client")
+		return nil, nil
 	}
-	portable := filepath.Join(t.TempDir(), "record.json")
-	if e = os.WriteFile(portable, raw, 0600); e != nil {
+	deliveryLookupEnv = func(string) (string, bool) { t.Fatal("receipt resolved credential"); return "", false }
+	defer func() { deliveryBuild, deliveryLookupEnv = oldBuild, oldEnv }()
+	d, e := receipt.Parse(raw)
+	if e != nil {
 		t.Fatal(e)
 	}
-	var stdout, stderr bytes.Buffer
-	code := Main([]string{"record", "inspect", "--file", portable, "--json"}, &stdout, &stderr)
-	if code != 0 {
-		t.Fatal(code, stderr.String())
+	if len(d.Deliveries) != 1 || d.Deliveries[0].Prior == nil || len(d.Deliveries[0].Submitted) != 0 {
+		t.Fatal("missing current retry linkage")
 	}
-	if _, e = evidence.Parse(raw, validateSnapshot, recordPolicy); e != nil {
-		t.Fatal("portable record rejected", e)
+	content := false
+	for _, o := range d.Deliveries[0].Responses {
+		if o.Kind == "content" && o.Value == "verified" {
+			content = true
+		}
+	}
+	if !content {
+		t.Fatal("current content observation missing")
+	}
+	var out, stderr bytes.Buffer
+	if code := Main([]string{"record", "inspect", "--file", path, "--json"}, &out, &stderr); code != 0 {
+		t.Fatal(code, stderr.String())
 	}
 }
 
@@ -289,12 +243,30 @@ func TestOCICompleteJSONExitContracts(t *testing.T) {
 			config := fmt.Sprintf("version: 1\nartifacts: [{id: app, sbom: bom.json}]\ndelivery:\n  targets:\n    registry:\n      type: oci\n      registry: '%s'\n      repository: acme/app\n      auth: {anonymous: true}\n      allowHTTP: true\n", strings.TrimPrefix(server.URL, "http://"))
 			os.WriteFile(cfg, []byte(config), 0600)
 			var stdout, stderr bytes.Buffer
-			code := Main([]string{"deliver", "--index", ip, "--manifest", cfg, "--record", journal, "--json", "--quiet"}, &stdout, &stderr)
+			code := Main([]string{"deliver", "--out", t.TempDir(), "--index", ip, "--manifest", cfg, "--record", journal, "--json", "--quiet"}, &stdout, &stderr)
 			if code != tc.exit {
 				t.Fatal(code, stderr.String())
 			}
 			if strings.Contains(stdout.String()+stderr.String(), "never-copy-this-synthetic-body") {
 				t.Fatal("body leaked")
+			}
+			var envelope struct {
+				Receipt receipt.Publication `json:"receipt"`
+			}
+			if e := json.Unmarshal(stdout.Bytes(), &envelope); e != nil {
+				t.Fatal(e)
+			}
+			publicRaw, e := os.ReadFile(envelope.Receipt.Path)
+			if e != nil {
+				t.Fatal(e)
+			}
+			compact, e := receipt.Parse(publicRaw)
+			if e != nil {
+				t.Fatal(e)
+			}
+			sent := compact.Deliveries[0].Submitted
+			if len(sent) != 1 || sent[0].Role != "oci-manifest" || sent[0].MediaType != oci.ManifestMediaType || sent[0].SHA256 == compact.Artifacts[0].Output.SHA256 {
+				t.Fatalf("OCI wrapper equated with SBOM or unsent blobs claimed: %#v", sent)
 			}
 			var result runner.BatchResult
 			dec := json.NewDecoder(&stdout)
@@ -336,7 +308,7 @@ func TestOCIWholeBatchIntentLimitBeforeHTTP(t *testing.T) {
 	deliveryLookupEnv = func(string) (string, bool) { return "synthetic-value", true }
 	defer func() { deliveryLookupEnv = old }()
 	var stdout, stderr bytes.Buffer
-	code := Main([]string{"deliver", "--index", ip, "--manifest", cfg, "--json"}, &stdout, &stderr)
+	code := Main([]string{"deliver", "--out", t.TempDir(), "--index", ip, "--manifest", cfg, "--json"}, &stdout, &stderr)
 	if code != 2 || requests.Load() != 0 {
 		t.Fatal("HTTP before complete intent bound", code, requests.Load())
 	}

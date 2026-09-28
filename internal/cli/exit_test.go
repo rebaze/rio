@@ -169,7 +169,7 @@ func TestGateFailWritesEverythingAndExitsOne(t *testing.T) {
 		t.Fatalf("summary line is wrong:\n%s", r.stdout)
 	}
 
-	readFile(t, dir, "target", "rio", "server-war.cdx.json")
+	readFile(t, latestOutput(t, dir, "target/rio"), "server-war.cdx.json")
 	entry := indexArtifact(t, dir, "target/rio", 0)
 	if entry["gate"] != "fail" {
 		t.Fatalf("index gate = %v, want fail", entry["gate"])
@@ -255,7 +255,7 @@ func TestSubjectOverride(t *testing.T) {
 	dir := project(t, manifest, "tycho-rcp.cdx.json")
 	requireExit(t, rio(t, dir, "normalize", "--gate", "fail"), ExitOK)
 
-	out := decode(t, readFile(t, dir, "target", "rio", "rcp-client.cdx.json"))
+	out := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "rcp-client.cdx.json"))
 	meta, _ := out["metadata"].(map[string]any)
 	component, _ := meta["component"].(map[string]any)
 	if component["name"] != "Example RCP Client" || component["version"] != "2026.1.0" {
@@ -284,8 +284,8 @@ func TestTwoArtifactsAreIndependent(t *testing.T) {
 	r := rio(t, dir, "normalize", "--gate", "fail")
 	requireExit(t, r, ExitGate)
 
-	readFile(t, dir, "target", "rio", "rcp-client.cdx.json")
-	readFile(t, dir, "target", "rio", "server-war.cdx.json")
+	readFile(t, latestOutput(t, dir, "target/rio"), "rcp-client.cdx.json")
+	readFile(t, latestOutput(t, dir, "target/rio"), "server-war.cdx.json")
 
 	if got := indexArtifact(t, dir, "target/rio", 0)["gate"]; got != "ok" {
 		t.Fatalf("rcp-client gate = %v, want ok", got)
@@ -308,17 +308,15 @@ func TestQuietSuppressesPerArtifactLinesButKeepsTheSummary(t *testing.T) {
 	if strings.Contains(r.stdout, "components") {
 		t.Fatalf("--quiet still printed a per artifact line:\n%s", r.stdout)
 	}
-	if got, want := r.stdout, "1 artifact, no gate failures\n"; got != want {
-		t.Fatalf("stdout = %q, want %q", got, want)
-	}
+	requireProgressAndReceipt(t, r, "1 artifact, no gate failures\n")
 }
 
 func TestOutFlagChoosesTheDirectory(t *testing.T) {
 	dir := project(t, tychoManifest, "tycho-rcp.cdx.json")
 	requireExit(t, rio(t, dir, "normalize", "--out", "build/sboms"), ExitOK)
 
-	readFile(t, dir, "build", "sboms", "rcp-client.cdx.json")
-	readFile(t, dir, "build", "sboms", "index.json")
+	readFile(t, latestOutput(t, dir, "build/sboms"), "rcp-client.cdx.json")
+	readFile(t, latestOutput(t, dir, "build/sboms"), "index.json")
 }
 
 // Files rio did not write are left alone (§4.1).
@@ -381,13 +379,13 @@ func TestManifestPathInTheIndexIsNeverAbsolute(t *testing.T) {
 	} {
 		requireExit(t, rio(t, dir, args...), ExitOK)
 
-		idx := decode(t, readFile(t, dir, "target", "rio", "index.json"))
+		idx := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "index.json"))
 		manifest, _ := idx["manifest"].(map[string]any)
 		path, _ := manifest["path"].(string)
 		if path != "rio.yaml" {
 			t.Fatalf("%v recorded manifest.path = %q, want %q", args, path, "rio.yaml")
 		}
-		digests = append(digests, string(readFile(t, dir, "target", "rio", "index.json")))
+		digests = append(digests, string(readFile(t, latestOutput(t, dir, "target/rio"), "index.json")))
 	}
 	for i := range digests[1:] {
 		if digests[i+1] != digests[0] {

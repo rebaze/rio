@@ -12,8 +12,7 @@ import (
 
 func TestRecordReportOfflineExactDigestAndNoOverwrite(t *testing.T) {
 	dir := project(t, tychoManifest, "tycho-rcp.cdx.json")
-	requireExit(t, rio(t, dir, "normalize", "--gate", "fail"), ExitOK)
-	requireExit(t, rio(t, dir, "record", "--schema-version", "2", "--output", "record.json"), ExitOK)
+	requireExit(t, rio(t, dir, "normalize", "--gate", "fail", "--receipt", "record.json"), ExitOK)
 	raw := append(readFile(t, dir, "record.json"), []byte("  \n")...)
 	if err := os.WriteFile(filepath.Join(dir, "record.json"), raw, 0600); err != nil {
 		t.Fatal(err)
@@ -24,7 +23,7 @@ func TestRecordReportOfflineExactDigestAndNoOverwrite(t *testing.T) {
 	r := rio(t, dir, "record", "report", "--file", "record.json", "--output", "report.html")
 	requireExit(t, r, ExitOK)
 	html := readFile(t, dir, "report.html")
-	for _, text := range []string{delivery.Digest(raw), "rcp-client", "/components/7/purl", "built-in-entry", "Effective checks", "top-level", "not recorded"} {
+	for _, text := range []string{delivery.Digest(raw), "rcp-client", "repair-purl/p2", "applied 8", "unmapped 1", "Gate", "top-level"} {
 		if !bytes.Contains(html, []byte(text)) {
 			t.Errorf("report missing %q", text)
 		}
@@ -38,17 +37,16 @@ func TestRecordReportOfflineExactDigestAndNoOverwrite(t *testing.T) {
 	}
 	human := rio(t, dir, "record", "inspect", "--file", "record.json")
 	requireExit(t, human, ExitOK)
-	for _, text := range []string{"/components/7/purl", "built-in-entry", "subject/name", "components/purl"} {
-		if !strings.Contains(human.stderr, text) {
-			t.Errorf("terminal omits shared fact %q: %s", text, human.stderr)
+	for _, text := range []string{"repair-purl/p2", "applied=8", "unmapped=1", "gate=pass"} {
+		if !strings.Contains(human.stdout, text) {
+			t.Errorf("terminal omits shared fact %q: %s", text, human.stdout)
 		}
 	}
 }
 
 func TestRecordReportEscapesHTMLAndRejectsCorruption(t *testing.T) {
 	dir := project(t, "version: 1\nartifacts:\n  - id: app\n    sbom: in/plain-maven.cdx.json\n    subject:\n      name: '<script>alert(1)</script>'\n      version: '1'\n", "plain-maven.cdx.json")
-	requireExit(t, rio(t, dir, "normalize"), ExitOK)
-	requireExit(t, rio(t, dir, "record", "--output", "record.json"), ExitOK)
+	requireExit(t, rio(t, dir, "normalize", "--receipt", "record.json"), ExitOK)
 	requireExit(t, rio(t, dir, "record", "report", "--file", "record.json", "--output", "report.html"), ExitOK)
 	html := string(readFile(t, dir, "report.html"))
 	if strings.Contains(html, "<script>") || !strings.Contains(html, "&lt;script&gt;") {
@@ -60,7 +58,7 @@ func TestRecordReportEscapesHTMLAndRejectsCorruption(t *testing.T) {
 		}
 	}
 	raw := readFile(t, dir, "record.json")
-	raw = bytes.Replace(raw, []byte(`"selectedDeliveryCount":0`), []byte(`"selectedDeliveryCount":9`), 1)
+	raw = bytes.Replace(raw, []byte(`"schemaVersion": 1`), []byte(`"schemaVersion": 2`), 1)
 	os.WriteFile(filepath.Join(dir, "bad.json"), raw, 0600)
 	requireExit(t, rio(t, dir, "record", "report", "--file", "bad.json", "--output", "bad.html"), ExitUsage)
 	if _, err := os.Stat(filepath.Join(dir, "bad.html")); !os.IsNotExist(err) {

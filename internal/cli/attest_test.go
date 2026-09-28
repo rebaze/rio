@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/rebaze/rio/internal/buildcontext"
+	"github.com/rebaze/rio/internal/manifest"
 )
 
 // Exercise multiple artifacts with different transforms, gate outcomes and
@@ -24,11 +26,11 @@ func TestAttestPreservesEachArtifactRecord(t *testing.T) {
 		t.Run(tc.mode, func(t *testing.T) {
 			dir := project(t, manifest, "tycho-rcp.cdx.json", "gate-missing-version.cdx.json")
 			requireExit(t, rio(t, dir, "normalize", "--attest", "--gate", tc.mode), tc.exit)
-			idx := decode(t, readFile(t, dir, "target", "rio", "index.json"))
+			idx := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "index.json"))
 			for _, row := range idx["artifacts"].([]any) {
 				a := row.(map[string]any)
 				id := a["id"].(string)
-				s := decode(t, readFile(t, dir, "target", "rio", id+".intoto.json"))
+				s := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), id+".intoto.json"))
 				if s["_type"] != "https://in-toto.io/Statement/v1" || s["predicateType"] != "https://rebaze.com/attestation/sbom-normalization/v1" {
 					t.Fatalf("invalid statement types: %v", s)
 				}
@@ -38,7 +40,7 @@ func TestAttestPreservesEachArtifactRecord(t *testing.T) {
 				}
 				output := a["output"].(map[string]any)
 				name := output["path"].(string)
-				sum := fmt.Sprintf("%x", sha256.Sum256(readFile(t, dir, "target", "rio", name)))
+				sum := fmt.Sprintf("%x", sha256.Sum256(readFile(t, latestOutput(t, dir, "target/rio"), name)))
 				if output["sha256"] != sum {
 					t.Fatalf("index digest does not match %s", name)
 				}
@@ -59,18 +61,18 @@ func TestAttestIsOptInAndDeterministic(t *testing.T) {
 	}
 	before := map[string]string{}
 	for _, name := range []string{"rcp-client.cdx.json", "index.json"} {
-		before[name] = string(readFile(t, dir, "target", "rio", name))
+		before[name] = string(readFile(t, latestOutput(t, dir, "target/rio"), name))
 	}
 	requireExit(t, rio(t, dir, "normalize", "--attest"), ExitOK)
 	for name, want := range before {
-		if got := string(readFile(t, dir, "target", "rio", name)); got != want {
+		if got := string(readFile(t, latestOutput(t, dir, "target/rio"), name)); got != want {
 			t.Fatalf("--attest changed %s", name)
 		}
 	}
-	first := string(readFile(t, dir, "target", "rio", "rcp-client.intoto.json"))
+	first := string(readFile(t, latestOutput(t, dir, "target/rio"), "rcp-client.intoto.json"))
 	// A different output directory must not change the claim's bytes.
 	requireExit(t, rio(t, dir, "normalize", "--attest", "--out", "other"), ExitOK)
-	if got := string(readFile(t, dir, "other", "rcp-client.intoto.json")); got != first {
+	if got := string(readFile(t, latestOutput(t, dir, "other"), "rcp-client.intoto.json")); got != first {
 		t.Fatal("statement differs between identical runs in different output directories")
 	}
 }
@@ -92,9 +94,22 @@ func TestAttestWriteFailureDoesNotPublishIndex(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "target", "rio", "rcp-client.intoto.json"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	r := rio(t, dir, "normalize", "--attest")
-	requireExit(t, r, ExitInternal)
-	requireStderr(t, r, "rcp-client", "intoto.json")
+	man, e := manifest.Load(filepath.Join(dir, "rio.yaml"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	inputs, e := resolveArtifacts(man)
+	if e != nil {
+		t.Fatal(e)
+	}
+	a, e := normalizeArtifact(man, inputs[0], gateFail, map[string]*buildcontext.File{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	e = writeAll(man, []*artifact{a}, filepath.Join(dir, "target", "rio"), true)
+	if e == nil || !strings.Contains(e.Error(), "intoto.json") {
+		t.Fatalf("statement write failure: %v", e)
+	}
 	if _, err := os.Stat(filepath.Join(dir, "target", "rio", "index.json")); !os.IsNotExist(err) {
 		t.Fatalf("failed statement write published index: %v", err)
 	}

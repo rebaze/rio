@@ -7,7 +7,6 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
-import tarfile
 import unittest
 
 HERE = Path(__file__).resolve().parent
@@ -19,7 +18,7 @@ class OnboardingTest(unittest.TestCase):
         command = os.environ.get("RIO_BIN", "rio")
         resolved = shutil.which(command)
         if resolved is None:
-            raise RuntimeError("Install Rio containing #71, or set RIO_BIN to that binary")
+            raise RuntimeError("Install Rio v0.7.0+, or set RIO_BIN to that binary")
         cls.rio = str(Path(resolved).resolve())
 
     def setUp(self):
@@ -42,6 +41,25 @@ class OnboardingTest(unittest.TestCase):
 
     def load(self, path):
         return json.loads(path.read_text())
+
+    def inspect_receipt(self, result, operation, outcome="success"):
+        inspected = self.command(self.root, self.rio, "record", "inspect", "--file",
+                                 result["receipt"]["path"], "--json")
+        record = json.loads(inspected.stdout)["record"]
+        self.assertEqual(record["kind"], "rio-run-receipt")
+        self.assertEqual(record["schemaVersion"], 1)
+        self.assertEqual(record["run"]["id"], result["runId"])
+        self.assertEqual(record["run"]["operation"], operation)
+        self.assertEqual(record["run"]["outcome"], outcome)
+        return record
+
+    def assert_failed_normalization(self, execution):
+        result = json.loads(execution.stdout)
+        self.inspect_receipt(result, "normalize", "failed")
+        directory = Path(result["runDirectory"])
+        self.assertFalse((directory / "index.json").exists())
+        self.assertEqual(list(directory.glob("*.cdx.json")), [])
+        self.assertEqual(list(directory.glob("*.intoto.json")), [])
 
     def plan(self, project, expected=0):
         # A different CWD catches treating manifest paths as process-relative.
@@ -71,9 +89,12 @@ class OnboardingTest(unittest.TestCase):
                     self.assertEqual(original["artifacts"][0], plan["artifacts"][0])
                     self.assertEqual(original["gate"], plan["gate"])
                 out = project / "fresh-output"
-                self.command(self.root, self.rio, "normalize", "--manifest",
+                execution = self.command(self.root, self.rio, "normalize", "--manifest",
                              str(project / "rio.yaml"), "--out", str(out),
-                             "--gate", "fail", "--attest")
+                             "--gate", "fail", "--attest", "--json")
+                result = json.loads(execution.stdout)
+                out = Path(result["runDirectory"])
+                self.inspect_receipt(result, "normalize")
                 index = self.load(out / "index.json")
                 self.assertEqual([a["id"] for a in index["artifacts"]], ids)
                 self.assertEqual(manifest_before, (project / "rio.yaml").read_bytes())
@@ -108,8 +129,8 @@ class OnboardingTest(unittest.TestCase):
         result = self.plan(project, expected=2)
         self.assertIn("reporting-server", result.stderr)
         out = project / "refused"
-        self.command(project, self.rio, "normalize", "--out", str(out), expected=2)
-        self.assertFalse(out.exists())
+        execution = self.command(project, self.rio, "normalize", "--out", str(out), "--json", expected=2)
+        self.assert_failed_normalization(execution)
         self.assertEqual(before, (project / "rio.yaml").read_bytes())
 
     def test_incomplete_producer_requires_a_build_step_not_a_narrower_selector(self):
@@ -117,9 +138,12 @@ class OnboardingTest(unittest.TestCase):
         self.configure(project, "incomplete")
         self.command(project, "sh", "build.sh")
         for command in ("plan", "normalize"):
-            result = self.command(project, self.rio, command, "--out", "refused", expected=2)
+            result = self.command(project, self.rio, command, "--out", "refused", "--json", expected=2)
             self.assertIn("reporting-server", result.stderr)
-            self.assertFalse((project / "refused").exists())
+            if command == "plan":
+                self.assertFalse((project / "refused").exists())
+            else:
+                self.assert_failed_normalization(result)
         self.assertTrue((project / "services/reporting-server/pom.xml").is_file())
 
     def test_ambiguous_project_has_no_preselected_configuration(self):
@@ -132,7 +156,7 @@ class OnboardingTest(unittest.TestCase):
         for module in ("api-server", "preview-server"):
             self.assertTrue((project / "services" / module / "target/bom.json").is_file())
 
-    def test_ci_builds_then_bundles_only_fresh_successful_output(self):
+    def test_ci_builds_then_retains_each_isolated_pipeline_receipt(self):
         project = self.project("modules")
         self.configure(project, "modules")
         stale = project / "target/rio/obsolete.cdx.json"
@@ -142,36 +166,22 @@ class OnboardingTest(unittest.TestCase):
             self.command(project, "sh", str(HERE / "ci.sh"), self.rio, "sh", "build.sh")
         runs = sorted(project.glob("rio-run.*"))
         self.assertEqual(len(runs), 2)
+        ids = set()
         for run in runs:
-            with tarfile.open(run / "bundle.tgz") as archive:
-                files = {entry.name for entry in archive.getmembers() if entry.isfile()}
-            expected = {"plan.json", "normalized/index.json"}
-            for artifact in ("billing-server", "orders-server"):
-                expected.update({"normalized/" + artifact + ".cdx.json",
-                                 "normalized/" + artifact + ".intoto.json"})
-            self.assertEqual(files, expected)
+            result = self.load(run / "result.json")
+            ids.add(result["runId"])
+            record = self.inspect_receipt(result, "pipeline")
+            self.assertEqual([a["id"] for a in record["artifacts"]], ["billing-server", "orders-server"])
+            output = Path(result["runDirectory"])
+            self.assertEqual(output.parent.resolve(), (run / "output/runs").resolve())
+            self.assertEqual(self.load(output / "index.json")["artifacts"][0]["id"], "billing-server")
+            self.assertEqual(record["run"]["stages"]["delivery"], "not-configured")
+            self.assertEqual(len(list((run / "output").glob("runs/*/record.json"))), 1)
             self.assertEqual(self.load(run / "plan.json")["artifacts"][0]["id"], "billing-server")
+        self.assertEqual(len(ids), 2)
         self.assertEqual(stale.read_text(), "stale input must not be collected")
 
-    def test_failed_archive_is_not_exposed_as_a_completed_bundle(self):
-        project = self.project("modules")
-        self.configure(project, "modules")
-        # Simulate tar writing a partial archive before an I/O failure.
-        commands = self.root / "commands"
-        commands.mkdir()
-        tar = commands / "tar"
-        tar.write_text('#!/bin/sh\nprintf partial > "$2"\nexit 9\n')
-        tar.chmod(0o755)
-        result = subprocess.run(
-            ["sh", str(HERE / "ci.sh"), self.rio, "sh", "build.sh"],
-            cwd=project, text=True, capture_output=True,
-            env=dict(os.environ, PATH=str(commands) + os.pathsep + os.environ["PATH"]),
-        )
-        self.assertEqual(result.returncode, 9, result.stdout + result.stderr)
-        self.assertEqual(list(project.glob("rio-run.*/bundle.tgz")), [])
-        self.assertNotIn("Bundle ready", result.stdout)
-
-    def test_ci_does_not_bundle_build_plan_or_gate_failures(self):
+    def test_ci_does_not_announce_success_for_build_plan_or_gate_failures(self):
         for failure, expected in (("build", 7), ("plan", 2), ("gate", 1)):
             with self.subTest(failure=failure):
                 project = self.project("incomplete" if failure == "plan" else "modules")
@@ -181,15 +191,17 @@ class OnboardingTest(unittest.TestCase):
                     del seed["components"][0]["purl"]
                     (project / "seed.cdx.json").write_text(json.dumps(seed))
                 build = ["sh", "-c", "exit 7"] if failure == "build" else ["sh", "build.sh"]
-                self.command(project, "sh", str(HERE / "ci.sh"), self.rio, *build, expected=expected)
-                self.assertEqual(list(project.glob("rio-run.*/bundle.tgz")), [])
+                execution = self.command(project, "sh", str(HERE / "ci.sh"), self.rio, *build, expected=expected)
+                self.assertNotIn("Receipt ready", execution.stdout)
                 runs = list(project.glob("rio-run.*"))
                 if failure == "build":
                     self.assertEqual(runs, [])
                 elif failure == "plan":
-                    self.assertFalse((runs[0] / "normalized").exists())
+                    self.assertFalse((runs[0] / "output").exists())
                 else:
-                    index = self.load(runs[0] / "normalized/index.json")
+                    result = self.load(runs[0] / "result.json")
+                    self.inspect_receipt(result, "pipeline", "failed")
+                    index = self.load(Path(result["runDirectory"]) / "index.json")
                     self.assertTrue(all(a["gate"] == "fail" for a in index["artifacts"]))
                 shutil.rmtree(project)
 

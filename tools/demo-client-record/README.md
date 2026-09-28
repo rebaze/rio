@@ -1,52 +1,24 @@
-# A complete client evidence handoff
+# One command, one compact receipt
 
-**Start with the simple delivery story:** [full record.json](example/record.json) ·
-[HTML report](example/report.html) (download and open locally) ·
-[reproduce the two-SBOM pipeline/delivery example](example/README.md).
-It records the consumed SBOMs, added build URL/ID, destination URL, TLS facts and server receipts.
-The broader walkthrough below also exercises specialized repairs and failure cases.
+Run `rio` once. The synthetic example consumes `api.cdx.json` and `worker.cdx.json`, adds a build URL and ID, submits the resulting bytes to two projects on a local HTTPS receiver, and records HTTP responses and event tokens.
 
-Requires Python 3.9+ and an installed Rio release containing client evidence (v0.6.0 or newer).
-No Go toolchain, container or production credentials are needed:
+See the result immediately: [complete receipt](example/record.json), [offline HTML](example/report.html), or [download the runnable example](example/example.zip). The server, SBOMs and tokens are synthetic. The URL in the receipt identifies the receiver used for that run, not a product website. HTTP acceptance does not establish ingestion.
+
+With Rio 0.7.0+ installed and Python 3.9+:
 
 ```sh
-python3 tools/demo-client-record/run.py /absolute/path/to/rio
-# Windows:
-python tools/demo-client-record/run.py C:\path\rio.exe
+python3 tools/demo-client-record/run.py "$(command -v rio)"
 ```
 
-The script copies the committed synthetic fixtures, starts a loopback HTTPS receiver and supplies
-the existing clearly labelled synthetic test CA. `rio.yaml` uses JSON syntax (valid YAML), allowing
-the Python standard library to update only the disposable endpoint and CA reference.
+The runner exercises success and a lost second response, each as its own single pipeline invocation. It verifies the input/output hashes, exact multipart SBOM bytes and project fields, exact build metadata, certificate verification, HTTP status and returned token, the 8 KiB readable-JSON budget, and secret-canary absence. It stops the receiver and deletes the source workspace before inspecting and rendering a receipt-only copy.
 
-The main story uses two artifact-set modules, CycloneDX 1.4 → 1.6 uplift, a coordinate/version repair,
-an unresolved mapping, inherited producer/supplier/license enrichment, two delivery targets and an
-explicit exclusion. It executes the two-command flow, stopping if normalization fails:
+To regenerate a single example in a **new** directory:
 
 ```sh
-rio normalize --gate fail &&
-  rio deliver --evidence client.json
+python3 tools/demo-client-record/example/generate.py "$(command -v rio)" /tmp/rio-example
+python3 tools/demo-client-record/example/generate.py "$(command -v rio)" /tmp/rio-partial --partial
 ```
 
-A separate destination records explicit TLS verification bypass; it is not a policy-changing retry
-of the verified destination. Reconciliation retains processing, no processing observed, and a later
-unavailable query without rewriting the acknowledgment. The original successful snapshot stays
-byte-identical. Separate examples cover a partial/lost response, an enforced failed gate exported
-without delivery, and an explicitly authorized failed-gate delivery override.
+The output includes complete `rio.yaml`, `pipeline.json`, input and normalized SBOMs, a standalone Python runner, synthetic TLS material, JSON/HTML, and a downloadable ZIP. Neither the runner nor Rio needs a Go toolchain. Each receipt describes only its own invocation; no collection or bundle export is involved.
 
-After stopping the receiver, the script replaces the working index and collects from immutable
-batch/index snapshots. It removes only its test-created source workspace, relocates one final JSON,
-inspects it, and renders HTML offline. Edits to repair, receipt and coverage projections each refuse.
-Runtime secret canaries must be absent from records, reports and CLI output.
-
-The printed directory contains:
-
-- `recipient/record.json` and `recipient/report.html`: the standalone client handoff after reconciliation.
-- `success.json` / `.html`: the original verified-HTTPS snapshot.
-- `partial.json` / `.html`: unknown acknowledgment and an unattempted suffix.
-- `failed-gate.json` / `.html` and `explicit-override.json` / `.html`: separate gate outcomes.
-- `walkthrough.json`: commands, exits, request count and original snapshot digest.
-
-All receiver responses are synthetic. Receipts/activity are not ingestion or content-retention proof.
-For real-server observations, use the separately provisioned
-[disposable Dependency-Track integration](../demo-delivery/integration/README.md).
+For native adapter failure matrices and explicit stage operations, see the [Dependency-Track](../demo-delivery/README.md), [TLS policy](../demo-dtrack-tls/README.md), [OCI](../demo-oci/README.md), and [batch recovery](../demo-batch-evidence/README.md) examples. Artifact-set and normalization fixtures remain specialist examples in [tools/README.md](../README.md).

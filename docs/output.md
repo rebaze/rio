@@ -1,46 +1,76 @@
-# Output records
+# Compact run receipt and local outputs
 
-[Commands](cli.md) · [Manifest](manifest.md) · [Quick start](../README.md#quick-start)
+[Generated JSON](../tools/demo-client-record/example/record.json) · [Offline HTML](../tools/demo-client-record/example/report.html) · [CLI](cli.md)
 
-A completed normalization run writes one `<id>.cdx.json` per artifact and an `index.json`.
-`--attest` adds an unsigned `<id>.intoto.json` per artifact. Inputs are left in place.
+One execution produces one indented JSON document with `kind: "rio-run-receipt"` and `schemaVersion: 1`. The standard two-SBOM/build-URL-and-ID/verified-TLS example is **5,791 bytes**, below the 8,192-byte regression budget. That budget is a standard-fixture check, not a universal real-run cap.
 
-- [The index](#indexjson)
-- [What a record establishes](#what-a-record-establishes)
-- [Changes inside each SBOM](#what-rio-writes-into-the-output-sbom)
-- [Repair records](#reading-the-repair-records)
-- [Statements](#normalization-attestations)
+## Field guide
 
-## index.json
+| Field | Meaning |
+|---|---|
+| `rioVersion` | Binary version that recorded the invocation |
+| `run` | Fresh ID, operation, actual known start/end, overall outcome, phase states, explicit overrides and optional prior link |
+| `artifacts` | IDs, consumed input and generated output SHA-256/byte sizes, meaningful changes, effective checks and processing state |
+| `targets` | Shared target type and configured receiver URL, stored once per label |
+| `deliveries` | Selected pairs, resolved projects/repositories, attempt IDs/prior references, intended/submitted byte identities, transport and response observations |
+| `exclusions` | Artifact/target filtering and declared artifact-set exclusion rules |
+| `exceptions` | Concise failures, overrides, recovery gaps or persistence problems |
 
-The index identifies the current run's members. It records the tool/version and manifest digest,
-then each artifact's ID, input/output paths and SHA-256 digests, spec versions, component count,
-transform results, schema-validation status and gate findings. Optional selection, enrichment and
-context records appear when applicable. The outer `schemaVersion` remains `1`.
+Operations are `pipeline`, `normalize`, `deliver` and `reconcile`. Overall `success` means requested execution succeeded, not that a server ingested the SBOM. Outcomes also include `failed`, `partial` and `incomplete`. A recovered interrupted run has no invented finish time. Phase states distinguish completed/passed, failed, partial/incomplete, not attempted, not configured, skipped, pre-existing and not applicable work.
 
-Input paths are relative to the manifest directory; output paths are relative to the index.
-Rio writes the index last. Exit 1 still produces the index and SBOMs for inspection; exit 2 writes
-no new outputs. See [exit codes](cli.md#exit-codes) before deciding whether a run passed.
+Input paths refer to the original manifest context; output paths refer to the original run directory. Delivery of pre-existing outputs records the consumed normalized path. These paths/URLs are references, not promises of future access. Moving a receipt does not require moving any source file, and inspection never follows those references.
 
-Use a fresh output directory for each CI run, or collect exactly the members of the current
-index. Reused directories may retain files from earlier runs; Rio does not delete them.
+`bytes.artifactOutput` reuses an artifact's exact output digest/size. Optional role/media type describe the request representation. Otherwise a byte identity has its own SHA-256, byte size, media type, role and transformation where applicable. A zero byte size may be omitted and means zero; its digest must identify the empty bytes. OCI config/manifest wrappers have their own identities, rather than being equated with the SBOM.
 
-## What a record establishes
+### Changes and checks
 
-A consumer can check an output file against its recorded digest, inspect the reported gate result,
-and see repairs and gaps. A structurally valid record can report failed checks. The gate covers
-SBOM fields, not software acceptance, vulnerability absence or compliance. rio does not add missing
-components or scan for vulnerabilities; a passing gate does not establish SBOM completeness.
+Small metadata additions retain the exact value; replacement/removal retains before/after. `before: null` with `operation: add` denotes prior absence. Source labels distinguish manifest, context-file and context-default values; `assertion: producer` labels unsigned producer assertions, not authenticated facts. Spec changes retain `from` and `to`.
 
-Unmapped components and dangling dependency references can coexist with `gate: "ok"`. A schema
-version beyond the embedded schemas produces `schemaValidated: false`, even if the gate passes.
-Missing or invalid inputs stop compilation with exit 2 and produce no new record.
+A metadata value whose compact JSON exceeds 1,024 bytes is explicitly represented as:
 
-The attestation subject is the normalized SBOM, not a built binary or deployment. Source assertions
-and mapping entries are inputs to normalization, not independently verified facts. Retain the
-original SBOM, context JSON when used, manifest and any external mapping table alongside the outputs if later inspection
-or reproduction is required; rio does not package those inputs automatically. The index references
-the manifest by digest but does not embed its requirements or identify the external table by digest.
+```json
+{"representation":"sha256-of-json","sha256":"<full SHA-256>","bytes":12345}
+```
+
+This is a value digest and encoded length, **not the full value**. The digest covers Rio's compact JSON serialization (Go `encoding/json`, sorted object keys and its normal HTML-character escaping), not original source formatting.
+
+Bulk changes retain operation/rule, traversal scope, evaluated/applied/unmapped/skipped counts, and unresolved reasons/counts. Applied and unmapped may overlap: a qualifier can be repaired while coordinates remain unresolved. Never add overlapping counters into a supposed component total. Unchanged dependency inventory, Rio bookkeeping and per-component rewrite ledgers are not copied into the receipt.
+
+Checks retain effective component/subject requirements, traversal scope, policy mode, evaluated component count, schema status and concise finding counts. Empty component requirements/inventory are explicitly `not-evaluated`; unsupported schema versions are `not-available`. Absent checks are not passes. A warn policy does not change a recorded failed check into success. Standalone delivery labels checks as pre-existing rather than claiming to have performed earlier normalization checks.
+
+### Delivery observations
+
+Pair states distinguish `accepted`, `rejected`, `unknown`, `unattempted`, `error`, `evidence-gap`, and reconciliation's `observed`/`unavailable`. `requestMayHaveOccurred` remains conservative when a response or journal is missing. `intended` is the prepared byte identity; `submitted` contains distinct complete body writes actually observed during this adapter attempt. Absence of `submitted` does not prove zero bytes reached a receiver. Already-present OCI content can be accepted without any new body writes.
+
+Transport records HTTP/HTTPS, certificate-verification policy and whether TLS was observed during any response in this invocation. Each response also retains its own optional TLS observation, so a later connection failure does not erase an earlier HTTPS response. Missing observation is not false; HTTP verification is not applicable. Response records preserve known status/time, acknowledgment/activity/content facts and allowlisted receiver references. DTrack retains its event token; OCI retains its applicable manifest/blob/tag/subject references. No arbitrary response bodies, API keys, environment dumps, private keys, source archives or complete SBOM inventories are embedded.
+
+An accepted acknowledgment, observed processing activity and verified content are separate capabilities. A DTrack event token does not establish ingestion. Hashes identify bytes but neither authenticate the producer nor prove future retention. The receipt is unsigned. Inspection validates shape, reference bindings and consistency; it cannot detect every coherently forged unsigned receipt or replay absent originals.
+
+## Bounds and deterministic serialization
+
+The parser and publisher enforce 8 MiB UTF-8 JSON, at most 10,000 entries per collection, nesting depth 64, at most 250,000 JSON values, and 16 KiB per string/key. A token preflight enforces collection bounds before retaining oversized arrays. Individual metadata values over 1,024 compact-JSON bytes use the explicit digest representation above. Unsupported sizes are refused; attempts/claims are never silently dropped to meet a limit. Native adapter/index/journal limits also apply and can be tighter.
+
+Captured facts serialize in stable order with indented readable JSON. Repeated real executions legitimately differ in run IDs, observed times and receiver facts. The report's digest is over the exact input JSON file, including its whitespace. HTML escapes supplied text, embeds styles and contains no scripts, external fonts or remote assets.
+
+## Interruption and recovery
+
+Output is reserved before requests. Publication syncs a temporary sibling and links it into an absent destination; it never replaces another receipt. Internal immutable checkpoints and attempt journals retain committed facts. A hard kill leaves incomplete state, not a fabricated successful receipt. On Windows, file sync/no-overwrite/readback apply, but directory fsync is unavailable, so power-loss durability has that platform limit.
+
+If public receipt persistence fails after a request, Rio returns failure and reports the possible output and local run directory. Inspect what exists and recover locally; do not submit again merely to obtain a nicer receipt:
+
+```sh
+rio record recover --run target/rio/runs/RUN_ID --output recovered.json
+```
+
+The output must be fresh and outside the source run/journal namespaces. Recovery reads bounded committed local prefixes (64 MiB aggregate journal budget), never constructs clients, resolves credentials, removes locks or replays uploads. Incomplete runs stay incomplete even when a retained acknowledgment is recovered. Independently checkpointed live responses are preserved if journal evidence becomes unavailable. Missing journals/completion are evidence gaps, not proof no request occurred.
+
+A retry or network reconciliation is a **new invocation** with a new receipt and prior ID/digest reference when available. Earlier public receipts do not change. Reconciliation receipts contain only current observations; prior acknowledgments are referenced rather than copied into a claim of current work.
+
+## Local normalization outputs
+
+Each execution owns `<out>/runs/<run-id>/`. Normalization creates one `<id>.cdx.json` per processed artifact and writes `index.json` last. Optional standalone `normalize --attest` creates unsigned `<id>.intoto.json` statements. The index is the local handoff for intentional `deliver --index ...`, not a client archive to embed in a receipt.
+
+The index retains tool/manifest identity, input/output hashes and paths, selected members, exact normalization details and check results. Input paths are manifest-relative; output paths are index-relative. Enforced gate failures still write the processed SBOMs/index so findings can be examined. Invalid input/configuration may leave a failed receipt; no stale index from another run is substituted. `runDirectory` identifies current outputs; no mutable latest pointer is required.
 
 ## What rio writes into the output SBOM
 
@@ -56,8 +86,7 @@ they belong to. What it never changes is the set of components. A change there i
 
 ## Reading the repair records
 
-The output document records the rule and before-and-after values for each repair. It does not yet
-record which coordinate source won or preserve the mapping table's evidence metadata.
+The output document records the rule and before-and-after values for each repair. The local index normalization ledger also identifies coordinate sources and retained evidence metadata; the public receipt summarizes bulk repairs instead of copying that component ledger.
 `metadata.properties` carries one property per repaired component:
 
 ```json
@@ -190,198 +219,3 @@ rio does not sign statements or make network calls. An unsigned statement record
 is not cryptographic proof of who made it. Signing and verification belong to the surrounding
 pipeline. A signature can authenticate a statement without proving its assertions true; see
 [the planned signing tools](../tools/README.md#signing-and-verifying-normalization-attestations).
-
-## Consolidated record.json v1
-
-`rio record` writes one record of current evidence. It captures the complete normalization index
-and only the delivery journals explicitly selected with `--delivery-record`. Existing index,
-SBOM, statement and journal bytes remain unchanged. `rio record inspect --file record.json`
-checks the file without its original workspace, configuration, SBOM files, credentials or network.
-
-The root has exactly `schemaVersion: 1`, `kind: "rio-evidence-record"`, `tool`, `normalization`,
-`deliveries`, `coverage` and `evidence`. `tool` identifies the collector; the index retains its own
-normalizer version. All fields use lower camel case. Required arrays are always arrays, including
-empty arrays. The encoding is compact JSON, with HTML escaping disabled and a final newline.
-There is no collection timestamp, inferred shared build, worker hostname, Git checkout identity
-or random export ID.
-
-| Section | Contract |
-| --- | --- |
-| `normalization` | `evidenceId: "normalization-index"`, `indexSHA256`, the complete parsed original `index` (including additive fields), and `sbomBytesVerification: "not-performed"` |
-| `deliveries[]` | `attemptId`, `artifactId`, original validated `intent`, all ordered `events`, `journal`, ordered `evidenceIds`, and `summary` |
-| `journal` | `sha256` over concatenated exact committed event bytes, `eventCount`, `lastSequence` |
-| `summary` | `acknowledgment` (`accepted`, `rejected`, or `unknown`); optional `latestActivity` and `lastObservation`, each carrying `sequence`, `observedAt` and the complete `observation` |
-| `evidence[]` | `id`, `kind`, `mediaType: "application/json"`, raw-byte `sha256`, decoded `size`, `encoding: "base64"`, and strict standard-base64 `data` |
-
-Evidence kinds are `normalization-index` and `delivery-event`. The index source ID is
-`normalization-index`; event IDs are `delivery/<attemptId>/<20-digit sequence>`. The exact source
-bytes, including original whitespace, are retained separately from readable JSON. Reformatting
-readable objects is harmless; editing meaningful facts is refused unless the embedded evidence
-supports them. Numbers are compared losslessly, including integers above 2^53.
-
-Deliveries sort by artifact ID, then attempt ID. Evidence starts with the index and follows that
-same delivery/event order. The index's artifact order is preserved. Coverage ID arrays are sorted.
-Identical source bytes, collector version and collector notes produce identical output regardless
-of argument order or source relocation. Each journal is captured under its own lock: this is not a
-single global transactional instant. Later observations require a new snapshot at a new path.
-
-Every selected attempt joins the exact raw index digest, artifact, output/payload digests, gate and
-schema-validation facts. The inspector replays shared journal validation and offline adapter checks,
-reconstructs readable facts and compares them. Failed gates, rejected submissions, intent-only
-unknown histories and unavailable observations are valid evidence. `summary.latestVerification` optionally retains the latest OCI content observation with its event
-sequence and time. Expected references remain predictions in the intent; current content or referrer
-presence never upgrades the attempt’s historical acknowledgment. Mixed Dependency-Track and OCI
-attempts join the same exact index. Last activity, latest verification and last query
-are separate, selected by event sequence rather than wall-clock timestamps. `processing:false`
-does not establish ingestion, vulnerability analysis or content retention.
-
-Dependency-Track's optional saved `options.insecureSkipVerify: true` records explicit HTTPS
-certificate-chain/hostname verification bypass. False is omitted, preserving older option bytes.
-New HTTPS acknowledgment, activity and unavailable observations carry allowlisted
-`details.tls: {"certificateVerification":"enforced"|"disabled","observed":true|false}`.
-`observed` means a successful TLS handshake was observed, including a later lost HTTP response;
-it does not assert certificate validity. No peer certificates, private keys or raw transport errors
-are retained. Older histories without TLS details remain valid and have no recorded TLS facts.
-Inspection binds details to the saved HTTPS policy and rejects contradictions. Retry and reconcile
-policy comparisons include the explicit flag; TLS mode does not change destination identity.
-
-Retries retain their original references. When the prior attempt is selected, its recorded digest
-must match a valid committed prefix, so later reconciliation of that prior journal remains valid.
-Source, effective target and declared policies must agree; credential/CA reference rotation is
-permitted. Saved CA references retain their original POSIX, Windows drive or UNC spelling during
-offline inspection, without applying the inspecting host's path rules. A missing selected ancestor remains visible without following its historical path hint.
-Self-links, cycles, duplicate attempts (including copies/aliases) and mismatched sources refuse.
-
-`coverage` always states:
-
-- `deliverySelection: "explicit"` and `selectedDeliveryCount`.
-- `artifactIdsWithoutSelectedDeliveries` and `retryAttemptIdsNotIncluded`.
-- `sbomFiles`, `normalizationInputs`, `normalizationStatements`, `signatures`: `"not-included"`.
-- `workerIdentity: "not-recorded"`, `authenticatedProducerIdentity: "not-established"`.
-- `collectionNotes`: optional entries with `code: "orphan-temporary-files"`, `attemptId`, `count`
-  and `assertion: "collector"`. These are checked collector claims about ignored uncommitted entries;
-  the inspector does not independently establish their historical presence. Temp contents/names
-  are not included.
-
-Zero selected journals means no delivery evidence was selected; it does not establish that no
-upload occurred. Supplied per-artifact source/build claims retain producer assertion status;
-missing context remains absent. Existing `.intoto.json` statements are not collected in v1.
-The record is unsigned: someone can replace both source bytes and hashes consistently. Passing
-inspection establishes internal consistency, not authenticity or tamper-proofness, and does not
-rehash external SBOM bytes. Full input/mapping/SBOM retention and reproduction (#46), signing
-(#14) remain separate milestones. OCI delivery evidence is included in this same record. This file is intended for the same audience
-as its source records: supplied metadata and internal names/URLs are preserved faithfully, without
-reading or adding environment/credential values.
-
-### Record limits and publication
-
-For record v1, limits are 16 MiB raw index, 1 MiB per event, 10,000 events per journal and across the entire selected
-set, 256 selected journals, 32 MiB total raw sources, 128 MiB serialized record, and 20,000 directory
-entries per captured journal including ignored temps. Typed streaming validation applies before retaining nested event data; no additional collection-entry
-limit narrows the existing event byte/schema contract.
-Limits refuse; they never truncate evidence.
-A streaming envelope preflight checks array counts before retaining their elements, and capture
-applies remaining aggregate event capacity before reading any next-journal event.
-
-The existing parent directory is required. An existing output file, directory or symlink refuses,
-as do source/index/journal/output-lock collisions. Rio finishes capture, validation and bounded
-serialization before creating output. A canonical sibling `<output>.lock` directory coordinates
-exporters; existing locks are never automatically broken. Output preflight also briefly takes each
-selected journal's shared sibling lock for metadata-only physical-identity checks, including
-case aliases of a lock name that did not previously exist. These locks are released before
-output locking/publication; no journal events are reopened. Rio writes a unique mode-0600 temporary
-file, syncs/closes it, publishes with a same-directory hard link that cannot replace an existing
-name, syncs the directory where supported, and reads/validates the published bytes. Filesystems
-without hard-link support fail safely. Ordinary exits remove owned temp/lock entries; cleanup
-failure is an execution failure. A final file is never deleted merely because later sync/readback
-fails. Windows has no directory fsync through `os.File`; do not infer universal power-loss
-protection. Inspect a possibly published file before retrying at a new path.
-
-### Selected scope and effective checks
-
-`normalizationScope` is another optional version-1 extension. It binds the manifest digest,
-effective spec floor, explicit artifact IDs, artifact-set module selectors and declared exclusions,
-resolved membership, SBOM selectors, and transform options with defaults filled in. It does not
-inventory modules outside those selectors or include delivery configuration, credentials or raw
-manifest bytes. Per-artifact `selection` keeps its existing meaning and shape.
-
-`artifacts[].checks` records `mode` (`warn` or `fail`), unconditional subject name/version checks,
-selected component requirements, and the number evaluated and failed for each requirement.
-Component traversal includes nested components; `componentCount` is its denominator. This is
-separate from the index's existing top-level component count used by repair transforms.
-An explicit empty `gate.require: []` yields no component evaluations and `not-evaluated`, while
-subject checks still run. A requirement with no components to inspect is also `not-evaluated`.
-
-Schema validation is recorded separately as `pass` or `not-available` (for a newer unsupported
-CycloneDX version). The graph check is specifically dangling dependency references, with its own
-finding count; it is not a complete graph verification. Warn mode does not turn failed requirements
-into passing ones. Old indexes without extensions remain valid, with effective checks not recorded.
-Known malformed extensions refuse delivery/collection; unknown versions are retained as opaque
-unsupported evidence and must not be interpreted as current-version facts.
-
-
-## Consolidated record.json v2
-
-V1 remains the default for explicit journal collection. `--schema-version 2` and `deliver --evidence`
-write a separate v2 envelope; the v1 envelope gains no new root fields. Readers accept both versions,
-and v1-only readers refuse v2. V2 retains the v1 source/event and readable-fact meanings, adding
-`expectedScope` (`recorded` or `not-recorded`) and `batches`. Historical explicit journals can use v2
-without inventing expected routing.
-
-A batch view retains its descriptor and optional completion, source IDs, selected-pair coverage,
-and disjoint exclusion groups. An exclusion group identifies an exact artifact/target Cartesian
-subset, with a derived count; it avoids expanding huge filtered inventories. Filters and configured
-exclusions are distinct. Selected pairs retain a preassigned attempt ID that binds their exact
-prepared source, target policy, payloads and journal. Coverage separates captured/missing evidence,
-original acknowledgment, and the runner's recorded state. Later reconciliation never upgrades the
-original acknowledgment or rewrites a batch completion. All selected attempts remain visible.
-
-The source kinds `delivery-batch` and `delivery-batch-result` retain exact bytes and digests, alongside
-`normalization-index` and `delivery-event`. The inspector reconstructs all views from those bytes,
-checks exact source links and retry compatibility, and rejects altered projections and contradictions.
-If a previously unused journal slot later holds a different attempt, include its compatible batch or
-explicit journal too; it is never attributed to the older descriptor's preassigned attempt.
-
-Before the first request, evidence delivery reserves fresh output/source paths and durably writes:
-
-- `<output>.index.json`: exact captured normalization index bytes.
-- `<output>.batch.json`: immutable selected scope, invocation filters, configured target names and
-  exclusions, separate normalization/delivery manifest digests, prepared intents and journal hints.
-- `<output>.batch-result.json`: written on ordinary return, including unattempted pairs and safe error
-  codes. It is a runner assertion, not a receiver receipt. A crash may leave it absent.
-
-The JSON named by `--evidence` is the portable recipient deliverable. These sibling files and journals
-are local recovery sources. A killed process cannot promise final JSON; a later offline collection
-creates a fresh snapshot from captured sources. Stale locks are never silently broken. Files and
-journals are not overwritten, and record publication failure never triggers another upload.
-
-V2 permits 1,024 selected journal paths (including missing bound attempts), 1,024 selected pairs per
-batch and 256 batch descriptors. All batches and retries share the 10,000-event, 32 MiB raw-source and
-128 MiB serialized-record budgets. Each descriptor/completion is limited to 16 MiB and counts against
-the source budget. The existing 16 MiB index and 1 MiB event limits remain. Inventories are additionally
-bounded by source bytes. Exceeding a limit refuses; no evidence is truncated or silently omitted.
-
-The record remains unsigned and excludes full SBOM/input/mapping files, raw manifests, authenticated
-worker identity and credentials. Hashes show correspondence and consistency, not authenticity.
-
-
-## Human-readable report
-
-`rio record report --file record.json --output report.html` renders validated v1 or v2 evidence
-without its source workspace. Terminal inspection and HTML share one view model. Known facts stay
-useful in older records, while missing or unsupported normalization extensions are labelled instead
-of being interpreted as zero changes or passing checks.
-
-The report separates selection scope, substantive changes and Rio bookkeeping, effective field
-requirements, schema and graph findings, expected routing, original acknowledgments, observation
-history, exceptions and source digests. Applied/unmapped/skipped repair counters keep their existing
-semantics; applied and unmapped can overlap. Component-change denominators describe top-level
-components, while requirement evaluation explicitly includes nested components. Repeated attempts
-are all retained rather than choosing the most favorable outcome.
-
-The HTML contains only escaped supplied text and embedded styling, with system fonts, internal
-section navigation and native disclosure elements. It has no scripts or network dependencies; URLs
-are text. The exact input-record SHA-256 identifies the JSON that was rendered. Neither that hash,
-record consistency nor an accepted receipt establishes authenticity or Dependency-Track ingestion.
-Keep the JSON as the primary machine-readable artifact. Reports use a new path, never overwrite an
-existing file and refuse output beyond 128 MiB rather than truncating it.

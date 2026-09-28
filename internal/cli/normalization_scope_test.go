@@ -74,7 +74,7 @@ func TestEffectiveChecksNestedEmptyAndMode(t *testing.T) {
 func TestNormalizationScopeExcludesDeliveryConfiguration(t *testing.T) {
 	dir := project(t, tychoManifest, "tycho-rcp.cdx.json")
 	requireExit(t, rio(t, dir, "normalize"), ExitOK)
-	idx := decode(t, readFile(t, dir, "target/rio/index.json"))
+	idx := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "index.json"))
 	s, _ := idx["normalizationScope"].(map[string]any)
 	if s == nil {
 		t.Fatal("scope missing")
@@ -116,7 +116,7 @@ artifactSets:
 	setModule(t, dir, "clients/client")
 	setWrite(t, dir, "services/excluded/pom.xml", "<project/>") // excluded before resolving missing SBOM
 	requireExit(t, rio(t, dir, "normalize"), ExitOK)
-	idx := decode(t, readFile(t, dir, "target/rio/index.json"))
+	idx := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "index.json"))
 	scope := idx["normalizationScope"].(map[string]any)
 	sets := scope["artifactSets"].([]any)
 	if len(sets) != 2 || len(scope["explicitArtifacts"].([]any)) != 0 {
@@ -145,7 +145,7 @@ func TestFutureSchemaCheckRemainsUnavailable(t *testing.T) {
 func TestKnownExtensionsRefuseContradictionsAndKeepFutureOpaque(t *testing.T) {
 	dir := project(t, tychoManifest, "tycho-rcp.cdx.json")
 	requireExit(t, rio(t, dir, "normalize"), ExitOK)
-	original := readFile(t, dir, "target/rio/index.json")
+	original := readFile(t, latestOutput(t, dir, "target/rio"), "index.json")
 	for _, kind := range []string{"scope", "checks", "future"} {
 		t.Run(kind, func(t *testing.T) {
 			idx := decode(t, original)

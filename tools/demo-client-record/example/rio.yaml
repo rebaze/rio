@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "artifacts": [
+    {
+      "id": "api",
+      "sbom": "api.cdx.json",
+      "context": {
+        "file": "pipeline.json",
+        "require": [
+          "build.url",
+          "build.id"
+        ]
+      }
+    },
+    {
+      "id": "worker",
+      "sbom": "worker.cdx.json",
+      "context": {
+        "file": "pipeline.json",
+        "require": [
+          "build.url",
+          "build.id"
+        ]
+      }
+    }
+  ],
+  "delivery": {
+    "targets": {
+      "security": {
+        "type": "dependency-track",
+        "url": "https://127.0.0.1:53946",
+        "apiKeyEnv": "RIO_DEMO_DELIVERY_KEY",
+        "caFile": "demo-ca.pem"
+      }
+    }
+  }
+}

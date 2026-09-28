@@ -1,0 +1,25 @@
+{
+  "contextVersion": 1,
+  "artifacts": [
+    {
+      "id": "api",
+      "sbom": {
+        "sha256": "1d2b04c0df452a4c2c34d84a6c195bb2805c3f208cf8f6c0bbe90ec54970dc01"
+      },
+      "build": {
+        "url": "https://ci.example.org/runs/42",
+        "id": "42"
+      }
+    },
+    {
+      "id": "worker",
+      "sbom": {
+        "sha256": "721bd8311e643571b9e6fef197a8ffb41e8ff1cbde641d1c03bdd0cba2e012ef"
+      },
+      "build": {
+        "url": "https://ci.example.org/runs/42",
+        "id": "42"
+      }
+    }
+  ]
+}

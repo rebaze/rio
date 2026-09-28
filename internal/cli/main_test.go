@@ -169,7 +169,7 @@ func bomRefs(t *testing.T, doc map[string]any) []string {
 
 func indexOf(t *testing.T, r run, out string) map[string]any {
 	t.Helper()
-	return decode(t, readFile(t, r.dir, out, "index.json"))
+	return decode(t, readFile(t, latestOutput(t, r.dir, out), "index.json"))
 }
 
 func requireExit(t *testing.T, r run, want int) {

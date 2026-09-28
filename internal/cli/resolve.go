@@ -19,7 +19,13 @@ type resolvedArtifact struct {
 	source    string
 }
 
-func resolveArtifacts(man *manifest.Manifest) ([]resolvedArtifact, error) {
+func resolveArtifacts(man *manifest.Manifest, filters ...[]string) ([]resolvedArtifact, error) {
+	wanted := map[string]bool{}
+	if len(filters) > 0 {
+		for _, id := range filters[0] {
+			wanted[id] = true
+		}
+	}
 	var result []resolvedArtifact
 	ids := map[string]int{}
 	var inputs []os.FileInfo
@@ -29,6 +35,15 @@ func resolveArtifacts(man *manifest.Manifest) ([]resolvedArtifact, error) {
 	}
 	var roots []selectedRoot
 	add := func(spec manifest.Artifact, base, source string, selection *index.Selection) error {
+		if len(wanted) > 0 && !wanted[spec.ID] {
+			if first, ok := ids[spec.ID]; ok {
+				return usageErrorf("%s: ID %q collides: %s and %s", man.Path, spec.ID, result[first].source, source)
+			}
+			ids[spec.ID] = len(result)
+			inputs = append(inputs, nil)
+			result = append(result, resolvedArtifact{Spec: spec, Selection: selection, source: source})
+			return nil
+		}
 		input, err := discover.Resolve(base, spec.ID, spec.SBOM)
 		if err != nil {
 			return usageErrorf("%s: %s: %v", man.Path, source, err)
@@ -45,6 +60,9 @@ func resolveArtifacts(man *manifest.Manifest) ([]resolvedArtifact, error) {
 				return usageErrorf("%s: %s: %v", man.Path, source, err)
 			}
 			for i, other := range inputs {
+				if other == nil {
+					continue
+				}
 				if (selection != nil || result[i].Selection != nil) && os.SameFile(info, other) {
 					return usageErrorf("%s: %s (%s) and %s (%s) select the same physical SBOM", man.Path, result[i].source, result[i].Input, source, input)
 				}

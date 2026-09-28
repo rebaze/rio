@@ -9,8 +9,13 @@ import (
 	"time"
 )
 
-func Reconcile(ctx context.Context, w *record.Writer, target delivery.Observer, configSHA256 string, wait time.Duration) (Result, error) {
-	return reconcile(ctx, w, target, configSHA256, wait, pause)
+type ReconcileHooks struct {
+	Before func() error
+	After  func(delivery.Observation, string, string) error
+}
+
+func Reconcile(ctx context.Context, w *record.Writer, target delivery.Observer, configSHA256 string, wait time.Duration, hooks ...ReconcileHooks) (Result, error) {
+	return reconcile(ctx, w, target, configSHA256, wait, pause, hooks...)
 }
 func pause(ctx context.Context, d time.Duration) error {
 	timer := time.NewTimer(d)
@@ -22,7 +27,7 @@ func pause(ctx context.Context, d time.Duration) error {
 		return nil
 	}
 }
-func reconcile(ctx context.Context, w *record.Writer, target delivery.Observer, configSHA256 string, wait time.Duration, sleep func(context.Context, time.Duration) error) (Result, error) {
+func reconcile(ctx context.Context, w *record.Writer, target delivery.Observer, configSHA256 string, wait time.Duration, sleep func(context.Context, time.Duration) error, hooks ...ReconcileHooks) (Result, error) {
 	r := NewResult("reconcile", "")
 	s, e := w.Snapshot()
 	if e != nil {
@@ -53,10 +58,28 @@ func reconcile(ctx context.Context, w *record.Writer, target delivery.Observer, 
 		if content {
 			timeout = 5 * time.Minute
 		}
+		for _, h := range hooks {
+			if h.Before != nil {
+				if e := h.Before(); e != nil {
+					return Failure(r, e, 3)
+				}
+			}
+		}
+		attemptedAt := time.Now().UTC().Format(time.RFC3339Nano)
 		requestCtx, cancel := context.WithTimeout(ctx, timeout)
 		r.RequestMayHaveOccurred = true
 		o, observeErr := target.Observe(requestCtx, refs)
+		observedAt := time.Now().UTC().Format(time.RFC3339Nano)
 		cancel()
+		// Retain this invocation's live observation even if journal publication
+		// fails afterwards. No hook retries the observation or submission.
+		for _, h := range hooks {
+			if h.After != nil {
+				if e := h.After(o, attemptedAt, observedAt); e != nil {
+					return Failure(r, e, 3)
+				}
+			}
+		}
 		b, e := json.Marshal(record.Reconciliation{Observation: o, ConfigSHA256: configSHA256})
 		r.Observations = append(r.Observations, o)
 		if o.Kind == "activity" {

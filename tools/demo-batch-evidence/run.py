@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Installed-binary batch/v2/recovery demo. Python 3.9+, synthetic loopback only."""
+"""Installed-binary compact batch/recovery demo. Python 3.9+, synthetic loopback only."""
 import argparse
 import hashlib
 import http.server
@@ -80,90 +80,71 @@ def main():
     try:
         manifest = (Path(__file__).resolve().parent / "rio.yaml").read_text()
         (work / "rio.yaml").write_text(manifest.replace("PORT", str(server.server_port)))
-        run("normalize", "--gate", "fail")
-        first = run("deliver", "--evidence", "partial.json", "--json", code=4)
-        assert state["requests"] == 2
-        assert first["delivery"]["outcome"] == "partial"
-        initial = (work / "partial.json").read_bytes()
+        first = run("--json", code=4)
+        run_dir = Path(first["runDirectory"])
+        index_path = run_dir / "index.json"
+        assert state["requests"] == 2 and first["outcome"] == "partial"
+        initial = Path(first["receipt"]["path"]).read_bytes()
         (retained / "partial.json").write_bytes(initial)
         before = hashlib.sha256(initial).hexdigest()
         record = json.loads(initial)
-        pairs = record["batches"][0]["pairs"]
-        assert [p["acknowledgment"] for p in pairs] == ["accepted", "unknown", "not-captured"]
-        assert pairs[2]["runnerState"] == "unattempted"
-        assert record["batches"][0]["exclusions"][0]["artifactIDs"] == ["worker"]
-        # An unchanged rerun refuses before another request.
-        run("deliver", "--evidence", "rerun.json", "--json", code=2)
+        assert [p["state"] for p in record["deliveries"]] == ["accepted", "unknown", "unattempted"]
+        assert {"artifactId": "worker", "target": "archive", "reason": "target-exclude"} in record["exclusions"]
+        run("deliver", "--index", index_path, "--json", code=2)
         assert state["requests"] == 2
-        old = first["delivery"]["items"][1]["record"]
-        run("deliver", "--artifact", "app", "--target", "security", "--retry-of", old,
-            "--record", work / "retry-attempt", "--evidence", "retry.json", "--json")
-        # Explicit fresh slot keeps the original batch's unattempted slot absent.
-        run("deliver", "--artifact", "worker", "--target", "security", "--record",
-            work / "worker-attempt", "--evidence", "worker.json", "--json")
-        shutil.copyfile(work / "worker.json", retained / "accepted.json")
+        attempts = json.loads((run_dir / ".internal/attempts.json").read_bytes())
+        old = attempts[1]["journal"]
+        retry = run("deliver", "--index", index_path, "--artifact", "app", "--target", "security", "--retry-of", old,
+                    "--record", work / "retry-attempt", "--json")
+        shutil.copyfile(retry["receipt"]["path"], retained / "retry.json")
+        accepted = run("deliver", "--index", index_path, "--artifact", "worker", "--target", "security", "--record", work / "worker-attempt", "--json")
+        shutil.copyfile(accepted["receipt"]["path"], retained / "accepted.json")
         assert state["requests"] == 4
-        # Kill only the owned child after the receiver proves its durable intent
-        # preceded the request. No completion or final record can be promised.
         state["pause"] = True
-        child = subprocess.Popen([binary, "deliver", "--artifact", "app", "--target", "security",
-                                  "--retry-of", str(work / "retry-attempt"),
-                                  "--record", str(work / "crash-attempt"),
-                                  "--evidence", "crash.json", "--json"],
+        child = subprocess.Popen([binary, "deliver", "--index", str(index_path), "--out", "crash-output", "--artifact", "app", "--target", "security",
+                                  "--retry-of", str(work / "retry-attempt"), "--record", str(work / "crash-attempt"), "--json"],
                                  cwd=work, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             assert arrived.wait(10), "owned delivery child did not reach receiver"
-            descriptor = json.loads((work / "crash.json.batch.json").read_bytes())
             assert (work / "crash-attempt/00000000000000000000.json").is_file()
             assert child.poll() is None
             child.kill()
             stdout, stderr = child.communicate(timeout=10)
-            assert canary.encode() not in stdout + stderr
-            assert child.returncode != 0
+            assert canary.encode() not in stdout + stderr and child.returncode != 0
         finally:
             if child.poll() is None:
                 child.kill()
                 child.communicate(timeout=10)
             release.set()
-        assert not (work / "crash.json").exists()
-        assert not (work / "crash.json.batch-result.json").exists()
-        # Explicit harness cleanup after a verified terminal child. Production
-        # collection never breaks these locks automatically.
-        for suffix in ("", ".index.json", ".batch.json", ".batch-result.json"):
-            (work / ("crash.json" + suffix + ".lock")).rmdir()
-        for pair in descriptor["pairs"]:
-            Path(pair["journalPathHint"] + ".lock").rmdir()
+        crash_runs = list((work / "crash-output/runs").iterdir())
+        assert len(crash_runs) == 1 and not (crash_runs[0] / "record.json").exists()
         stop()
-        # The current index is deliberately unusable; --batch recovers its snapshot.
-        (work / "target/rio/index.json").write_text("{}")
-        final = retained / "handoff.json"
-        run("record", "--schema-version", "2", "--batch", "partial.json.batch.json",
-            "--batch", "retry.json.batch.json", "--batch", "worker.json.batch.json",
-            "--batch", "crash.json.batch.json", "--output", final)
-        handoff = json.loads(final.read_bytes())
-        assert len(handoff["deliveries"]) == 5 and len(handoff["batches"]) == 4
-        crash = next(b for b in handoff["batches"] if b["scope"]["completionPathHint"].endswith("crash.json.batch-result.json"))
-        assert "completion" not in crash and crash["pairs"][0]["acknowledgment"] == "unknown"
-        for file in work.rglob("*.json"):
-            assert canary.encode() not in file.read_bytes(), "secret in retained source"
-        shutil.rmtree(work)  # Only this demonstration's own synthetic workspace.
-        inspected = run("record", "inspect", "--file", final, "--json", cwd=retained)
-        assert inspected["outcome"] == "valid"
-        for stem in ("handoff", "partial", "accepted"):
-            run("record", "report", "--file", retained / (stem + ".json"),
-                "--output", retained / (stem + ".html"), cwd=retained)
+        # Recovery reads committed local prefixes without breaking crash locks,
+        # reading the mutable index, constructing a client or replaying requests.
+        index_path.write_text("{}")
+        count = state["requests"]
+        final = retained / "crash-incomplete.json"
+        run("record", "recover", "--run", crash_runs[0], "--output", final, "--json")
+        crash = json.loads(final.read_bytes())
+        assert crash["run"]["outcome"] == "incomplete" and crash["run"]["stages"]["delivery"] == "incomplete"
+        assert crash["deliveries"][0]["state"] == "unknown" and not crash["deliveries"][0].get("responses")
+        assert (work / "crash-attempt.lock").is_dir() and state["requests"] == count
+        shutil.rmtree(work)
+        for stem in ("crash-incomplete", "partial", "retry", "accepted"):
+            result = run("record", "inspect", "--file", retained / (stem + ".json"), "--json", cwd=retained)
+            assert result["outcome"] == "valid"
+            run("record", "report", "--file", retained / (stem + ".json"), "--output", retained / (stem + ".html"), cwd=retained)
             html = (retained / (stem + ".html")).read_text()
             assert canary not in html and "<script" not in html.lower()
         assert hashlib.sha256((retained / "partial.json").read_bytes()).hexdigest() == before
-        run("record", "inspect", "--file", retained / "partial.json", cwd=retained)
-        handoff["deliveries"][0]["summary"]["acknowledgment"] = "forged"
+        record["deliveries"][0]["state"] = "rejected"
         tampered = retained / "tampered.json"
-        tampered.write_text(json.dumps(handoff))
+        tampered.write_text(json.dumps(record))
         run("record", "inspect", "--file", tampered, code=2, cwd=retained)
         tampered.unlink()
-        print("PASS: partial/lost response, actual process interruption, unattempted coverage, exclusions and explicit retry.")
-        print("PASS: stopped receiver, replaced working index, removed sources, inspected portable snapshots.")
-        print("Retained:", final)
+        print("PASS: one root batch, partial/lost response, unattempted coverage, exclusions, explicit retry and actual child-process interruption.")
+        print("PASS: unchanged prior receipts, stopped receiver, corrupt index, source removal and offline recovery/inspection without replay or lock breaking.")
+        print("Retained independent receipts:", retained)
     finally:
         stop()
 

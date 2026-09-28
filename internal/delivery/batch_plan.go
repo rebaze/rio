@@ -15,6 +15,9 @@ const PairLimit = 1024
 type PlanOptions struct {
 	Artifacts, Targets []string
 	AllowFailedGate    bool
+	// BeforeInputs reserves execution state after validating selection, before
+	// reading any payload. Offline planners leave this hook nil.
+	BeforeInputs func(BatchPlan) error
 }
 type Job struct {
 	ArtifactID, Target, Record string
@@ -225,6 +228,11 @@ func planResolved(plan BatchPlan, c Config, indexPath string, idx index.Index, o
 			}
 		}
 	}
+	if o.BeforeInputs != nil {
+		if e := o.BeforeInputs(plan); e != nil {
+			return plan, e
+		}
+	}
 	cursor := 0
 	failJob := func(e error) (BatchPlan, error) {
 		if safe, ok := e.(*Error); ok {
@@ -271,6 +279,7 @@ func planResolved(plan BatchPlan, c Config, indexPath string, idx index.Index, o
 			return failJob(e)
 		}
 		for _, id := range eligible {
+			plan.Jobs[cursor].Verified = v
 			d, p, e := DescribeTarget(c, id, a.ID, v.Subject(), registry)
 			if e != nil {
 				return failJob(e)

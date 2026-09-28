@@ -11,6 +11,7 @@ import (
 	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/delivery/record"
 	"github.com/rebaze/rio/internal/delivery/runner"
+	"github.com/rebaze/rio/internal/receipt"
 	"gopkg.in/yaml.v3"
 )
 
@@ -27,7 +28,7 @@ func (p *contentProvider) Prepare(d delivery.Description, s delivery.Source, ref
 	if len(refs) != 1 || refs[0].SHA256 != s.OutputSHA256 {
 		p.t.Fatal("preparation did not receive verified refs")
 	}
-	return delivery.Preparation{Description: d, ExpectedReferences: []delivery.Reference{{Kind: "object", Value: s.OutputSHA256}}}, nil
+	return delivery.Preparation{Description: d, ExpectedReferences: []delivery.Reference{{Kind: "test-content:object", Value: s.OutputSHA256}}}, nil
 }
 func (p *contentProvider) Build(d delivery.Description, _ func(string) (string, bool)) (delivery.Target, error) {
 	p.builds++
@@ -38,7 +39,7 @@ func (p *contentProvider) Submit(context.Context, []delivery.Payload) (delivery.
 }
 func (p *contentProvider) Observe(_ context.Context, refs []delivery.Reference) (delivery.Observation, error) {
 	p.observes++
-	if len(refs) != 1 || refs[0].Kind != "object" {
+	if len(refs) != 1 || refs[0].Kind != "test-content:object" {
 		p.t.Fatal("expected reference not routed", refs)
 	}
 	return delivery.Observation{Kind: "content", Value: "verified", Origin: "receiver", Code: "content_verified", References: refs}, nil
@@ -49,6 +50,9 @@ func TestAdapterContentOfflineRoutingAndIntentRecovery(t *testing.T) {
 	deliveryAdapters = func(dir string) map[string]adapterEntry {
 		return map[string]adapterEntry{"test-content": {
 			Provider: p,
+			CompactDestination: func(delivery.Description) (receipt.Target, map[string]string, receipt.Transport, error) {
+				return receipt.Target{Type: "test-content", URL: "https://unused.invalid"}, map[string]string{"object": "example"}, receipt.Transport{Scheme: "https", CertificateVerification: "enforced"}, nil
+			},
 			ValidateIntent: func(i record.Intent) error {
 				p.validations++
 				if len(i.ExpectedReferences) != 1 {

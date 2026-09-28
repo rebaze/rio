@@ -112,12 +112,15 @@ type TransformSpec struct {
 
 // Output is the output section.
 type Output struct {
+	Directory        string
 	SpecVersionFloor string
 }
 
 // Gate is the gate section.
 type Gate struct {
-	Require []string
+	ModeExplicit bool
+	Mode         string
+	Require      []string
 }
 
 // Requires reports whether field is one of the gate's required fields.
@@ -260,12 +263,14 @@ type subjectSection struct {
 }
 
 type outputSection struct {
+	Directory *string `yaml:"directory"`
 	// A pointer separates "not given" (use the default) from an explicit
 	// empty string (a mistake worth reporting).
 	SpecVersionFloor *string `yaml:"specVersionFloor"`
 }
 
 type gateSection struct {
+	Mode    *string   `yaml:"mode"`
 	Require *[]string `yaml:"require"`
 }
 
@@ -383,6 +388,12 @@ func (l loader) artifacts(f *fileSection, m *Manifest) error {
 }
 
 func (l loader) output(f *fileSection, m *Manifest) error {
+	if f.Output != nil && f.Output.Directory != nil {
+		if strings.TrimSpace(*f.Output.Directory) == "" {
+			return l.errf("output.directory", "must be a nonempty path")
+		}
+		m.Output.Directory = *f.Output.Directory
+	}
 	m.Output.SpecVersionFloor = DefaultSpecVersionFloor
 	if f.Output == nil || f.Output.SpecVersionFloor == nil {
 		return nil
@@ -398,6 +409,14 @@ func (l loader) output(f *fileSection, m *Manifest) error {
 }
 
 func (l loader) gate(f *fileSection, m *Manifest) error {
+	m.Gate.Mode = "fail"
+	if f.Gate != nil && f.Gate.Mode != nil {
+		if *f.Gate.Mode != "fail" && *f.Gate.Mode != "warn" {
+			return l.errf("gate.mode", "must be fail or warn")
+		}
+		m.Gate.Mode = *f.Gate.Mode
+		m.Gate.ModeExplicit = true
+	}
 	if f.Gate == nil || f.Gate.Require == nil {
 		m.Gate.Require = DefaultRequire()
 		return nil
@@ -769,7 +788,7 @@ func (l loader) strictStringTypes() error {
 					child = path + "." + key.Value
 				}
 				// Set selector strings and existing extension mappings are strict.
-				enabled := inside || (path == "" && key.Value == "artifactSets") || ((key.Value == "enrichment" || key.Value == "context") && artifactStrictParent.MatchString(path))
+				enabled := inside || (path == "output" && key.Value == "directory") || (path == "gate" && key.Value == "mode") || (path == "" && key.Value == "artifactSets") || ((key.Value == "enrichment" || key.Value == "context") && artifactStrictParent.MatchString(path))
 				if key.Value == "transforms" && strings.HasPrefix(path, "artifactSets[") {
 					enabled = false
 				}

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/delivery/record"
-	"github.com/rebaze/rio/internal/evidence"
+	"github.com/rebaze/rio/internal/receipt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -47,19 +47,7 @@ func TestReviewLegacyDTrackLargeIntentRemainsReadable(t *testing.T) {
 	if !bytes.Equal(raw, after) {
 		t.Fatal("legacy bytes changed")
 	}
-	doc, e := evidence.Collect(ip, []string{dir}, "test", validateSnapshot, recordPolicy)
-	if e != nil {
-		t.Fatal("legacy collection refused", e)
-	}
-	encoded, e := evidence.Marshal(doc)
-	if e != nil {
-		t.Fatal(e)
-	}
-	os.RemoveAll(dir)
-	os.RemoveAll(filepath.Dir(ip))
-	if _, e = evidence.Parse(encoded, validateSnapshot, recordPolicy); e != nil {
-		t.Fatal("portable legacy inspection refused", e)
-	}
+
 }
 func TestReviewMixedBatchFormerStructuralBoundary(t *testing.T) {
 	for _, count := range []int{9932, 9933, 9934} {
@@ -106,38 +94,24 @@ func TestReviewMixedBatchFormerStructuralBoundary(t *testing.T) {
 	}
 }
 
-func TestReviewSummaryDetailsRefuseBeforeMaterialization(t *testing.T) {
-	original, e := os.ReadFile("testdata/oci-mixed-record.json")
+func TestReviewUnknownReceiptFieldsRefuseBeforeMaterialization(t *testing.T) {
+	dir := pipelineFixture(t, "")
+	t.Chdir(dir)
+	_, _, path := rootReceipt(t)
+	original, e := os.ReadFile(path)
 	if e != nil {
 		t.Fatal(e)
 	}
-	for _, field := range []string{"latestVerification", "latestActivity", "lastObservation"} {
-		t.Run(field, func(t *testing.T) {
-			var doc map[string]any
-			json.Unmarshal(original, &doc)
-			var summary map[string]any
-			for _, item := range doc["deliveries"].([]any) {
-				entry := item.(map[string]any)
-				if entry["intent"].(map[string]any)["destination"].(map[string]any)["type"] == "oci" {
-					summary = entry["summary"].(map[string]any)
-					break
-				}
-			}
-			observation := summary["latestVerification"].(map[string]any)
-			summary[field] = observation
-			observation["observation"].(map[string]any)["details"] = map[string]any{"oci": map[string]any{"unknown": json.RawMessage("[" + strings.Repeat("{},", 100000) + "{}]")}}
-			raw, _ := json.Marshal(doc)
-			runtime.GC()
-			var before, after runtime.MemStats
-			runtime.ReadMemStats(&before)
-			_, e = evidence.Parse(raw, validateSnapshot, recordPolicy)
-			runtime.ReadMemStats(&after)
-			if e == nil {
-				t.Fatal("forged summary accepted")
-			}
-			if after.TotalAlloc-before.TotalAlloc > 8<<20 {
-				t.Fatalf("summary details materialized before adapter refusal: %d", after.TotalAlloc-before.TotalAlloc)
-			}
-		})
+	raw := bytes.Replace(original, []byte(`"run": {`), []byte(`"sourceArchive": [`+strings.Repeat(`{},`, 100000)+`{}], "run": {`), 1)
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	_, e = receipt.Parse(raw)
+	runtime.ReadMemStats(&after)
+	if e == nil {
+		t.Fatal("unknown source archive accepted")
+	}
+	if after.TotalAlloc-before.TotalAlloc > 8<<20 {
+		t.Fatal("unknown field materialized before refusal")
 	}
 }

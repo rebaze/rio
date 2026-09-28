@@ -28,7 +28,6 @@ import (
 	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/delivery/record"
 	"github.com/rebaze/rio/internal/delivery/runner"
-	"github.com/rebaze/rio/internal/evidence"
 	"github.com/rebaze/rio/internal/index"
 	"gopkg.in/yaml.v3"
 )
@@ -121,8 +120,7 @@ type integrationEvidence struct {
 	DeniedCanRead        bool                  `json:"expectedDeniedAccountCanRead"`
 	Scenarios            []integrationScenario `json:"scenarios"`
 	Requests             []integrationRequest  `json:"requests"`
-	RecordSHA256         string                `json:"recordSHA256,omitempty"`
-	RecordBytes          int                   `json:"recordBytes,omitempty"`
+	OfflineJournals      int                   `json:"offlineJournalsValidated"`
 	ReferrersExpectation string                `json:"expectedReferrersCapability"`
 }
 type integrationTrace struct {
@@ -747,7 +745,6 @@ func TestIntegrationOCI(t *testing.T) {
 	})
 	v, indexPath, nonce := integrationInput(t)
 	dir := filepath.Dir(indexPath)
-	rawIndex, _ := os.ReadFile(indexPath)
 	source, _ := os.ReadFile(filepath.Join(dir, "bom.json"))
 	variants := map[string]delivery.Verified{}
 	for _, id := range []string{"conflict", "denied", "crash"} {
@@ -867,39 +864,36 @@ func TestIntegrationOCI(t *testing.T) {
 	}
 	crashPath, crashTarget := integrationCrash(t, cfg, root, variants["crash"], indexPath, nonce, dir, image, trace, &doc)
 	paths = append(paths, crashPath)
-	savedIndex := filepath.Join(dir, "captured-index.json")
-	os.WriteFile(savedIndex, rawIndex, 0600)
-	collected, e := evidence.Collect(savedIndex, paths, "integration", ValidateSnapshot, func(a, b record.Intent) error {
-		if !SamePolicy(a.Destination, b.Destination, false) {
-			return invalid("integration retry policy")
-		}
-		return nil
-	})
-	if e != nil {
-		t.Fatal("real-registry evidence collection failed", safeError(e))
-	}
-	raw, e := evidence.Marshal(collected)
-	if e != nil {
-		t.Fatal("real-registry evidence serialization failed", safeError(e))
-	}
+	// Recovery journals remain an internal mechanism, not a public evidence
+	// bundle. Validate their committed bytes after deleting source workspace
+	// files; actual invocation receipts are exercised by the installed CLI demo.
+	captures := make([]record.Capture, 0, len(paths))
 	for _, path := range paths {
+		c, e := record.CaptureRead(path, 64<<20)
+		if e != nil {
+			t.Fatal("journal capture", safeError(e))
+		}
+		if e = ValidateSnapshot(c.Snapshot); e != nil {
+			t.Fatal("journal validation", safeError(e))
+		}
+		captures = append(captures, c)
 		os.RemoveAll(path)
 	}
-	os.Remove(savedIndex)
+	os.Remove(indexPath)
 	os.Remove(filepath.Join(dir, "rio.yaml"))
 	for _, id := range []string{"app", "conflict", "denied", "crash"} {
 		os.Remove(filepath.Join(dir, integrationSourceName(id)))
 	}
 	os.Remove(crashTarget.client.options.CAFile)
-	if _, e = evidence.Parse(raw, ValidateSnapshot, func(a, b record.Intent) error {
-		if !SamePolicy(a.Destination, b.Destination, false) {
-			return invalid("integration retry policy")
+	for _, c := range captures {
+		decoded, e := record.DecodeEvents(c.RawEvents)
+		if e != nil || decoded.SHA256 != c.Snapshot.SHA256 {
+			t.Fatal("offline committed journal prefix differs", safeError(e))
 		}
-		return nil
-	}); e != nil {
-		t.Fatal("portable real-registry evidence inspection failed", safeError(e))
+		if e = ValidateSnapshot(decoded); e != nil {
+			t.Fatal("offline adapter validation", safeError(e))
+		}
+		doc.OfflineJournals++
 	}
-	doc.RecordSHA256 = delivery.Digest(raw)
-	doc.RecordBytes = len(raw)
 	t.Logf("Observed %d real-registry scenarios; raw read-back, declared Referrers profile and actual child-crash recovery passed", len(doc.Scenarios))
 }

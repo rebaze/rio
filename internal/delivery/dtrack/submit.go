@@ -9,12 +9,20 @@ import (
 	"net/textproto"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 func (c *client) Submit(ctx context.Context, payloads []delivery.Payload) (sub delivery.Submission, err error) {
 	sub = delivery.Submission{Disposition: "unknown", References: []delivery.Reference{}, Observations: []delivery.Observation{}}
 	var tlsObserved bool
+	var bodyWritten atomic.Bool
+	ctx = context.WithValue(ctx, bodyWriteKey{}, &bodyWritten)
 	defer func() {
+		if bodyWritten.Load() {
+			for _, p := range payloads {
+				sub.Submitted = append(sub.Submitted, p.Ref())
+			}
+		}
 		for i := range sub.Observations {
 			c.addTLS(&sub.Observations[i], tlsObserved)
 		}

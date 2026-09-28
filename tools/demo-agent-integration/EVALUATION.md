@@ -27,8 +27,8 @@ while preserving their relative layout. This includes the manifest, command and 
 The guide's synthetic examples can remain unavailable for this exercise: the agent must derive the configuration from the target project. Let it report an
 unavailable example link rather than silently substitute unrelated documentation.
 
-Use an installed Rio binary containing artifact sets (#71 / #72), and supply its absolute path if
-it is not on PATH. These projects use `sh build.sh` as a synthetic producer. No Maven or Go
+Use an installed Rio v0.7.0+ binary, and supply its absolute path if
+it is not on PATH. These projects use `sh build.sh` as a synthetic producer. Python 3.9+ is used by the reference runner and CI step. No Maven or Go
 installation, downloads or actual compilation are needed. Initial target directories are absent;
 the agent should discover and run the documented producer where it exists.
 

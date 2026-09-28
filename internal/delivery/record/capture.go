@@ -161,3 +161,30 @@ func (w *Writer) capture(empty bool, budget int64, retain bool, maxEvents ...int
 	c.Snapshot.SHA256 = hex.EncodeToString(h.Sum(nil))
 	return c, nil
 }
+
+// RecoverySnapshot reads only immutable committed events without acquiring or
+// removing the writer lock. It can therefore recover a crash-held journal. A live
+// writer may append another event: this is a validated prefix, never proof of
+// invocation completion. Callers must keep the recovered run incomplete unless
+// an independent durable completion checkpoint exists. No requests are made.
+func RecoverySnapshot(path string, maxBytes int64) (Snapshot, error) {
+	abs, e := filepath.Abs(path)
+	if e != nil {
+		return Snapshot{}, e
+	}
+	w := &Writer{path: abs}
+	c, e := w.capture(false, maxBytes, false)
+	return c.Snapshot, e
+}
+
+// RecoveryCapture is the bounded recovery reader retaining exact committed
+// event bytes so callers can verify an earlier prefix digest. It has the same
+// incomplete-prefix semantics as RecoverySnapshot and does not remove locks.
+func RecoveryCapture(path string, maxBytes int64) (Capture, error) {
+	abs, e := filepath.Abs(path)
+	if e != nil {
+		return Capture{}, e
+	}
+	w := &Writer{path: abs}
+	return w.capture(false, maxBytes, true)
+}

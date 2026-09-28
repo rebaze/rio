@@ -41,7 +41,7 @@ artifacts:
 	if r.exit != 0 {
 		t.Fatalf("normalize: exit %d: %s", r.exit, r.stderr)
 	}
-	output := readFile(t, dir, "target/rio/widget.cdx.json")
+	output := readFile(t, latestOutput(t, dir, "target/rio"), "widget.cdx.json")
 	out := decode(t, output)
 	in := decode(t, []byte(enrichmentInput))
 	if diff := cmp.Diff(in["components"], out["components"]); diff != "" {
@@ -93,12 +93,12 @@ artifacts:
 			t.Fatalf("standalone SBOM enrichment property is not versioned: %v", property)
 		}
 	}
-	statement := decode(t, readFile(t, dir, "target/rio/widget.intoto.json"))
+	statement := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "widget.intoto.json"))
 	if diff := cmp.Diff(art, statement["predicate"].(map[string]any)["artifact"]); diff != "" {
 		t.Fatal(diff)
 	}
 	r = rio(t, dir, "normalize", "--attest", "--out", "again")
-	if r.exit != 0 || !bytes.Equal(output, readFile(t, dir, "again/widget.cdx.json")) {
+	if r.exit != 0 || !bytes.Equal(output, readFile(t, latestOutput(t, dir, "again"), "widget.cdx.json")) {
 		t.Fatalf("nondeterministic output: %s", r.stderr)
 	}
 	// Reprocessing enriched input must not grow the enrichment audit trail.
@@ -109,7 +109,7 @@ artifacts:
 	if r.exit != 0 {
 		t.Fatal(r.stderr)
 	}
-	reapplied := decode(t, readFile(t, dir, "reapplied/widget.cdx.json"))
+	reapplied := decode(t, readFile(t, latestOutput(t, dir, "reapplied"), "widget.cdx.json"))
 	if n := len(properties(t, reapplied)["rebaze:normalize:enrichment"]); n != 4 {
 		t.Fatalf("duplicate enrichment records: %d", n)
 	}
@@ -127,9 +127,7 @@ func TestNormalizeEnrichmentRefusesBeforeWriting(t *testing.T) {
 			if r.exit != 2 || !strings.Contains(r.stderr, tc.want) {
 				t.Fatalf("exit=%d stderr=%s", r.exit, r.stderr)
 			}
-			if _, err := os.Stat(filepath.Join(dir, "target/rio")); !os.IsNotExist(err) {
-				t.Fatalf("wrote output for invalid enrichment: %v", err)
-			}
+			requireNoNormalizedOutputs(t, filepath.Join(dir, "target/rio"))
 		})
 	}
 }
@@ -150,7 +148,7 @@ artifacts:
 	if r.exit != 0 {
 		t.Fatal(r.stderr)
 	}
-	out := decode(t, readFile(t, dir, "target/rio/widget.cdx.json"))
+	out := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "widget.cdx.json"))
 	sub := out["metadata"].(map[string]any)["component"].(map[string]any)
 	if sub["name"] != "product" || sub["version"] != "2.0" || sub["purl"] != "pkg:generic/product@2.0" || sub["bom-ref"] != "root" {
 		t.Fatal(sub)
@@ -173,7 +171,7 @@ func TestEnrichmentDemoFixtures(t *testing.T) {
 	}
 	for _, id := range []string{"console", "agent"} {
 		in := decode(t, readFile(t, dir, "inputs", id+".cdx.json"))
-		out := decode(t, readFile(t, dir, "enriched", id+".cdx.json"))
+		out := decode(t, readFile(t, latestOutput(t, dir, "enriched"), id+".cdx.json"))
 		for _, key := range []string{"components", "dependencies"} {
 			if diff := cmp.Diff(in[key], out[key]); diff != "" {
 				t.Fatalf("%s changed %s: %s", id, key, diff)
@@ -211,9 +209,7 @@ func TestEnrichmentDemoFixtures(t *testing.T) {
 	if r.exit != 2 {
 		t.Fatalf("demo conflict exit=%d", r.exit)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "refused")); !os.IsNotExist(err) {
-		t.Fatalf("conflict wrote files: %v", err)
-	}
+	requireNoNormalizedOutputs(t, filepath.Join(dir, "refused"))
 	r = rio(t, dir, "normalize", "--manifest", "replace.yaml", "--out", "replaced", "--attest")
 	if r.exit != 0 {
 		t.Fatal(r.stderr)

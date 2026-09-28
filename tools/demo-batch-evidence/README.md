@@ -1,30 +1,13 @@
-# Batch evidence and portable record v2
+# Compact batch receipts and offline recovery
 
-Run with Python 3.9+ and an installed Rio containing the client evidence workflow (v0.6.0 or newer):
+Run with Rio 0.7.0+ and Python 3.9+:
 
 ```sh
 python3 tools/demo-batch-evidence/run.py /absolute/path/to/rio
 ```
 
-Only synthetic inputs and a loopback receiver are used. No Go toolchain or container is required.
-Two artifacts route to two targets, with one configured exclusion. The receiver accepts the first
-upload and loses the second response; Rio retains the unknown acknowledgment and records the
-unattempted suffix. An unchanged rerun refuses. Separate explicitly selected attempts retry the
-unknown pair and deliver the unattempted artifact using fresh journal paths.
+One root invocation routes two synthetic artifacts to two loopback targets with a configured exclusion. The receiver accepts one upload and loses the next response; the receipt preserves accepted, unknown and unattempted states. An unchanged standalone delivery refuses, while an explicit retry and a selected unattempted pair use fresh journals and independent receipts.
 
-The demo also kills its own delivery child after the receiver observes a request backed by a durable
-intent. After verifying that child has exited, the harness explicitly removes only its owned empty
-locks; Rio itself never breaks locks. The absent completion remains unknown in the recovered record.
+The demo then kills its own delivery child after the receiver observes its request. `record recover` reads committed local state with the receiver stopped and the working index deliberately corrupted. It leaves the run and delivery phase incomplete, preserves unknown response state, makes no request and **does not remove crash locks**. Earlier receipts remain byte-identical.
 
-The demo then stops the receiver, corrupts the working index, and collects all four batches from
-their retained index snapshots. It deletes its own source workspace and inspects only portable
-JSON files, keeping the original partial snapshot. A forged receipt summary refuses inspection.
-Runtime secret canaries must be absent from CLI output, journals, recovery sources and records.
-
-The explicit HTTP policy is for this local synthetic receiver. These receipts demonstrate
-acknowledgment and uncertainty, not Dependency-Track processing or content verification.
-The optional HTML client report is covered by the complete client-record demo.
-
-The client-evidence version of this demo requires an installed release containing `record report`
-(v0.6.0 or newer). It renders self-contained HTML after removing the source workspace. No JavaScript,
-external fonts or network resources are needed to read it; retain the JSON for machine inspection.
+After removing the entire source workspace, the demo inspects and renders each independent receipt, refuses a contradictory acknowledgment, and checks secret-canary absence. The HTTP policy is explicit and limited to synthetic local receivers. No Go toolchain, external service, bundle collection or legacy record reader is required.

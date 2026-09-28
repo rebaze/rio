@@ -35,6 +35,17 @@ func batchFixture(t *testing.T, server string) string {
 func runBatch(t *testing.T, args ...string) (int, map[string]any, string) {
 	t.Helper()
 	var out, stderr bytes.Buffer
+	if len(args) > 0 && args[0] == "deliver" {
+		hasOut := false
+		for _, a := range args {
+			if a == "--out" {
+				hasOut = true
+			}
+		}
+		if !hasOut {
+			args = append(args, "--out", t.TempDir())
+		}
+	}
 	code := Main(append(args, "--json"), &out, &stderr)
 	var r map[string]any
 	dec := json.NewDecoder(&out)
@@ -547,8 +558,15 @@ func TestDeliveryBatchOversizedLaterIntentRefusesBeforeAnyRequest(t *testing.T) 
 	if code != 2 || calls != 0 || len(items) != 3 {
 		t.Fatalf("code=%d requests=%d selected=%d; all complete intents must be checked before submission", code, calls, len(items))
 	}
-	if r["error"].(map[string]any)["code"] != "size_limit" || items[1].(map[string]any)["state"] != "error" {
-		t.Fatal("missing failed intent result")
+	// The compact receipt's string bound now rejects this selected project
+	// before intent preparation; no item may be reported as attempted.
+	if r["error"].(map[string]any)["code"] != "size_limit" {
+		t.Fatal("missing explicit size refusal")
+	}
+	for _, item := range items {
+		if item.(map[string]any)["state"] != "unattempted" {
+			t.Fatal("preflight claimed an attempted item")
+		}
 	}
 	for _, item := range items {
 		if item.(map[string]any)["result"] != nil {

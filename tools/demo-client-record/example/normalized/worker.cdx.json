@@ -1,0 +1,58 @@
+{
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "name": "commons-lang3",
+      "purl": "pkg:maven/org.apache.commons/commons-lang3@3.17.0",
+      "type": "library",
+      "version": "3.17.0"
+    }
+  ],
+  "metadata": {
+    "component": {
+      "externalReferences": [
+        {
+          "type": "build-system",
+          "url": "https://ci.example.org/runs/42"
+        }
+      ],
+      "name": "worker",
+      "type": "application",
+      "version": "1.0.0"
+    },
+    "properties": [
+      {
+        "name": "rebaze:normalize:context",
+        "value": "{\"version\":1,\"file\":{\"path\":\"pipeline.json\",\"sha256\":\"fb56c1feccb449108bf909c31ea5c5ebfcdc40f7cb79de4a4cd7f883b94e98ab\"},\"selector\":\"/artifacts/1\",\"effective\":{\"id\":\"worker\",\"sbom\":{\"sha256\":\"721bd8311e643571b9e6fef197a8ffb41e8ff1cbde641d1c03bdd0cba2e012ef\"},\"build\":{\"url\":\"https://ci.example.org/runs/42\",\"id\":\"42\"}},\"defaulted\":[],\"changes\":[{\"field\":\"build.id\",\"target\":\"context:/build/id\",\"before\":null,\"after\":\"42\",\"selector\":\"/artifacts/1/build/id\",\"override\":false},{\"field\":\"build.url\",\"target\":\"context:/build/url\",\"before\":null,\"after\":\"https://ci.example.org/runs/42\",\"selector\":\"/artifacts/1/build/url\",\"override\":false},{\"field\":\"build.url\",\"target\":\"/metadata/component/externalReferences\",\"before\":null,\"after\":[{\"type\":\"build-system\",\"url\":\"https://ci.example.org/runs/42\"}],\"selector\":\"/artifacts/1/build/url\",\"override\":false}],\"assertion\":\"producer\",\"ownedReferences\":[\"build.url\"]}"
+      },
+      {
+        "name": "rebaze:normalize:artifact-id",
+        "value": "worker"
+      },
+      {
+        "name": "rebaze:normalize:input-sha256",
+        "value": "721bd8311e643571b9e6fef197a8ffb41e8ff1cbde641d1c03bdd0cba2e012ef"
+      },
+      {
+        "name": "rebaze:normalize:manifest-sha256",
+        "value": "b62c60e5743b7735d801508d32f4ad0d6b63c5153c28172b5663ed4278e91211"
+      },
+      {
+        "name": "rebaze:normalize:tool",
+        "value": "rio 0.7.0"
+      }
+    ],
+    "tools": {
+      "components": [
+        {
+          "group": "rebaze",
+          "name": "rio",
+          "type": "application",
+          "version": "0.7.0"
+        }
+      ]
+    }
+  },
+  "specVersion": "1.6",
+  "version": 1
+}
