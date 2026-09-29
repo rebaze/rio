@@ -688,6 +688,8 @@ The [real-registry harness](demo-oci/integration/README.md) uses the existing di
 
 ## Client evidence demos
 
+[Juice Shop hands-on walkthrough](demo-juice-shop/README.md): build Juice Shop from source in Docker, generate CycloneDX SBOMs, then show enrichment, delivery and quality gates with local Dependency-Track.
+
 **Start here:** [actual generated JSON](demo-client-record/example/record.json), [offline HTML](demo-client-record/example/report.html), and [complete runnable ZIP](demo-client-record/example/example.zip). The standard receipt is 5,729 readable UTF-8 bytes, including full digests, URLs, timestamps and tokens. Its SBOMs, receiver and tokens are explicitly synthetic.
 
 ```sh
