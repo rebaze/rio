@@ -37,6 +37,17 @@ rio record report --file tools/demo-juice-shop/example/frontend-record.json --ou
 Choose unused output filenames when rendering. The committed HTML is self-contained;
 download it and open it locally, or compare its contents with the corresponding JSON.
 
+Verify the saved provenance and regenerate/compare both inspection outputs and HTML
+reports offline with an installed Rio:
+
+```sh
+python3 tools/demo-juice-shop/verify.py "$(command -v rio)"
+```
+
+CI runs this same verifier against the built binary. It also checks helper preflight
+and cleanup behavior, tests stale-sample rejection, and lints the build script. The
+full Docker source build and receiver walkthrough remain separate integration work.
+
 To capture fresh results, follow the [walkthrough](../README.md) with the installed
 release: build a fresh directory, prepare the receiver, run each artifact separately,
 inspect/render both receipts, check receiver inventory, and stop the receiver. Retain
