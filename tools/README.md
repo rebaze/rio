@@ -688,6 +688,8 @@ The [real-registry harness](demo-oci/integration/README.md) uses the existing di
 
 ## Client evidence demos
 
+[Juice Shop hands-on walkthrough](demo-juice-shop/README.md): preview the [backend receipt](demo-juice-shop/example/backend-record.json) and [frontend gate-failure report](demo-juice-shop/example/frontend-report.html), then build Juice Shop from source in Docker and show enrichment, delivery and quality gates with local Dependency-Track. The supplier and example CI URL are synthetic demo assertions.
+
 **Start here:** [actual generated JSON](demo-client-record/example/record.json), [offline HTML](demo-client-record/example/report.html), and [complete runnable ZIP](demo-client-record/example/example.zip). The standard receipt is 5,729 readable UTF-8 bytes, including full digests, URLs, timestamps and tokens. Its SBOMs, receiver and tokens are explicitly synthetic.
 
 ```sh

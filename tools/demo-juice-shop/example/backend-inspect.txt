@@ -1,0 +1,27 @@
+Rio 0.7.0 — pipeline: success
+run run-02478a49d23c76647d998e5fa7d7748f
+
+backend: completed
+  consumed inputs/backend.cdx.json sha256=29915c58273b72ee1ef63c0c2fb76d66accd82e5b0a1ddbbb43b1e98cec8319e
+  output sha256=6326f65e34242a629496ce1714f921685e6ada158633ea31ce52541e16341009 bytes=1374346
+  build.id: absent → local-20261001T182549Z (producer assertion, context-file)
+  build.system.name: absent → local Docker build (producer assertion, context-file)
+  build.timestamp: absent → 2026-10-01T18:25:49.234594+00:00 (producer assertion, context-file)
+  build.url: absent → https://ci.example.org/juice-shop-demo/runs/local-20261001T182549Z (producer assertion, context-file)
+  source.ref: absent → refs/tags/v20.2.0 (producer assertion, context-file)
+  source.revision: absent → 5658473cf8814459bf89000ce373b20ed0b4eb37 (producer assertion, context-file)
+  source.workspace: absent → dirty (producer assertion, context-file)
+  /metadata/component/externalReferences: [{"comment":"as detected from PackageJson property \"bugs.url\"","type":"issue-tracker","url":"https://github.com/juice-shop/juice-shop/issues"},{"comment":"as detected from PackageJson property \"repository.url\"","type":"vcs","url":"git+https://github.com/juice-shop/juice-shop.git"},{"comment":"as detected from PackageJson property \"homepage\"","type":"website","url":"https://owasp-juice.shop"}] → [{"comment":"as detected from PackageJson property \"bugs.url\"","type":"issue-tracker","url":"https://github.com/juice-shop/juice-shop/issues"},{"comment":"as detected from PackageJson property \"repository.url\"","type":"vcs","url":"git+https://github.com/juice-shop/juice-shop.git"},{"comment":"as detected from PackageJson property \"homepage\"","type":"website","url":"https://owasp-juice.shop"},{"type":"build-system","url":"https://ci.example.org/juice-shop-demo/runs/local-20261001T182549Z"}] (producer assertion, context-file)
+  /metadata/component/supplier: absent → {"name":"rebaze demo distribution"} (producer assertion, manifest)
+  gate=pass mode=fail schema=pass findings=0
+
+backend → security (http://127.0.0.1:52840): accepted
+  project={"name":"juice-shop","version":"20.2.0"} transport=http TLS=not recorded verification=not-applicable
+  submitted role=sbom mediaType=application/vnd.cyclonedx+json artifactOutput=backend sha256= bytes=0
+  acknowledgment=accepted HTTP=200 code=accepted TLS=not recorded
+    dependency-track:event-token: 01a0f8bb-afad-7132-bd6d-d1d19df920ce
+excluded: artifact=frontend target= reason=artifact-filter scope= rule=
+
+Valid structure and internal consistency; unsigned recorded assertions/observations.
+HTTP acceptance does not prove ingestion or retained content.
+JSON sha256=6dc96c0bfcbb8609566cdd018fe9e098dfcb94c21bce0e9c295d8425b1a896cf bytes=6695

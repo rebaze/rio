@@ -1,0 +1,154 @@
+{
+  "kind": "rio-run-receipt",
+  "schemaVersion": 1,
+  "rioVersion": "0.7.0",
+  "run": {
+    "id": "run-482e77fe3b686e57ad82279e501c7c9e",
+    "operation": "pipeline",
+    "startedAt": "2026-10-01T18:30:45.029298Z",
+    "finishedAt": "2026-10-01T18:30:45.196405Z",
+    "outcome": "failed",
+    "stages": {
+      "checks": "failed",
+      "delivery": "not-attempted",
+      "intake": "completed",
+      "normalize": "completed"
+    },
+    "overrides": {
+      "artifact": "[frontend]",
+      "receipt": "frontend-record.json"
+    }
+  },
+  "artifacts": [
+    {
+      "id": "frontend",
+      "state": "completed",
+      "input": {
+        "path": "inputs/frontend.cdx.json",
+        "sha256": "e971f9fad4d73801c6f30d07394dfb3f00225d6e01131f370f2b52d002f186c1",
+        "size": 585047
+      },
+      "output": {
+        "path": "frontend.cdx.json",
+        "sha256": "ae2ca9edafa7014183ce59227a74cab6605a39d1667a31d51a1724b50a1315f6",
+        "size": 588814
+      },
+      "changes": {
+        "metadata": [
+          {
+            "field": "build.id",
+            "operation": "add",
+            "before": null,
+            "after": "local-20261001T182549Z",
+            "assertion": "producer",
+            "source": "context-file"
+          },
+          {
+            "field": "build.system.name",
+            "operation": "add",
+            "before": null,
+            "after": "local Docker build",
+            "assertion": "producer",
+            "source": "context-file"
+          },
+          {
+            "field": "build.timestamp",
+            "operation": "add",
+            "before": null,
+            "after": "2026-10-01T18:25:49.234594+00:00",
+            "assertion": "producer",
+            "source": "context-file"
+          },
+          {
+            "field": "build.url",
+            "operation": "add",
+            "before": null,
+            "after": "https://ci.example.org/juice-shop-demo/runs/local-20261001T182549Z",
+            "assertion": "producer",
+            "source": "context-file"
+          },
+          {
+            "field": "source.ref",
+            "operation": "add",
+            "before": null,
+            "after": "refs/tags/v20.2.0",
+            "assertion": "producer",
+            "source": "context-file"
+          },
+          {
+            "field": "source.revision",
+            "operation": "add",
+            "before": null,
+            "after": "5658473cf8814459bf89000ce373b20ed0b4eb37",
+            "assertion": "producer",
+            "source": "context-file"
+          },
+          {
+            "field": "source.workspace",
+            "operation": "add",
+            "before": null,
+            "after": "dirty",
+            "assertion": "producer",
+            "source": "context-file"
+          },
+          {
+            "field": "/metadata/component/supplier",
+            "operation": "add",
+            "before": null,
+            "after": {
+              "name": "rebaze demo distribution"
+            },
+            "assertion": "producer",
+            "source": "manifest"
+          }
+        ]
+      },
+      "checks": {
+        "mode": "fail",
+        "gate": "fail",
+        "schema": "pass",
+        "subjectRequirements": [
+          "name",
+          "version"
+        ],
+        "componentRequirements": [
+          "name",
+          "version",
+          "purl"
+        ],
+        "componentScope": "all components including nested",
+        "componentEvaluation": "evaluated",
+        "componentsEvaluated": 672,
+        "findings": 559
+      }
+    }
+  ],
+  "targets": {
+    "security": {
+      "type": "dependency-track",
+      "url": "http://127.0.0.1:52840"
+    }
+  },
+  "deliveries": [
+    {
+      "projectSource": "normalized-subject",
+      "artifactId": "frontend",
+      "target": "security",
+      "state": "unattempted",
+      "requestMayHaveOccurred": false,
+      "transport": {
+        "scheme": "http",
+        "certificateVerification": "not-applicable"
+      }
+    }
+  ],
+  "exclusions": [
+    {
+      "artifactId": "backend",
+      "reason": "artifact-filter"
+    }
+  ],
+  "exceptions": [
+    "gate-failed"
+  ]
+}

@@ -63,7 +63,7 @@ jobs:
           # Fixtures, golden files and the embedded CycloneDX schemas are
           # inputs to the test suite, so a change to any of them has to run it.
           # Missing that is how a stale golden file reaches main.
-          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery|record|oci|dtrack-tls|normalization-evidence|batch-evidence|client-record)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$)' <<<"$CHANGED" >/dev/null; then go=true; fi
+          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery|record|oci|dtrack-tls|normalization-evidence|batch-evidence|client-record|juice-shop)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$)' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.github/workflows/.*\.ya?ml$' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.goreleaser\.yaml$' <<<"$CHANGED" >/dev/null; then goreleaser=true; fi
           if grep -E '\.sh$' <<<"$CHANGED" >/dev/null; then shell=true; fi
@@ -146,6 +146,8 @@ jobs:
           ./tools/demo-agent-integration/run.sh "$PWD/rio"
           RIO_BIN="$PWD/rio" python3 tools/demo-agent-integration/test.py
           RIO_BIN="$PWD/rio" python3 tools/rio-context_test.py
+          python3 tools/demo-juice-shop/verify.py "$PWD/rio"
+          RIO_BIN="$PWD/rio" python3 tools/demo-juice-shop/verify_test.py
 
       - name: Lint shell scripts
         if: steps.changes.outputs.shell == 'true'
@@ -159,6 +161,7 @@ jobs:
           shellcheck --version
           shellcheck -s sh tools/demo-repair/run.sh tools/demo-agent-integration/*.sh tools/demo-agent-integration/projects/*/build.sh tools/demo-artifact-sets/run.sh install.sh tools/demo-enrichment/run.sh tools/demo-context/run.sh tools/demo-context/check-replacement.sh
           shellcheck install_test.sh
+          shellcheck tools/demo-juice-shop/build.sh
 
       - name: Test the installer offline
         if: steps.changes.outputs.shell == 'true'
@@ -191,6 +194,7 @@ jobs:
           python3 tools/release-notes_test.py
           python3 tools/verify-release_test.py
           python3 tools/demo-delivery/integration/setup_test.py
+          python3 tools/demo-juice-shop/demo_test.py
 
       - name: Install GoReleaser
         if: steps.changes.outputs.goreleaser == 'true'
@@ -238,6 +242,7 @@ jobs:
           python tools/demo-batch-evidence/run.py "$PWD/rio-demo.exe"
           python tools/demo-client-record/run.py "$PWD/rio-demo.exe"
           python tools/demo-oci/run.py "$PWD/rio-demo.exe"
+          python tools/demo-juice-shop/verify.py "$PWD/rio-demo.exe"
 
 
   oci-distribution:

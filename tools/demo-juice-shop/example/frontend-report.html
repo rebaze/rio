@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>Rio receipt · run-482e77fe3b686e57ad82279e501c7c9e</title>
+<style>
+:root { color-scheme: light; font-family: system-ui, sans-serif; color: #172b3a; background: #f5f6f3; }
+body { margin: 0; padding: 3rem 1.5rem; } main { max-width: 1100px; margin: auto; }
+header { border-top: 6px solid #176b60; padding-top: 1.5rem; margin-bottom: 2rem; }
+h1 { font-size: clamp(2rem, 5vw, 3.5rem); margin: .25rem 0; letter-spacing: -.04em; }
+h2 { margin-top: 2.5rem; font-size: 1.4rem; } h3 { margin: 0 0 1rem; }
+p { line-height: 1.55; } .eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: .8rem; }
+.card { background: #fff; border: 1px solid #d6ded9; padding: 1.5rem; margin: 1rem 0; border-radius: .5rem; }
+.status { display: inline-block; background: #e6eee9; border: 1px solid #b8cbc0; padding: .2rem .6rem; border-radius: .25rem; font-weight: 650; }
+code { font-family: ui-monospace, monospace; font-size: .88em; overflow-wrap: anywhere; white-space: pre-wrap; }
+dl { display: grid; grid-template-columns: 10rem minmax(0,1fr); gap: .65rem 1rem; } dt { font-weight: 600; } dd { margin: 0; overflow-wrap: anywhere; }
+table { width: 100%; border-collapse: collapse; font-size: .9rem; table-layout: fixed; } th, td { text-align: left; vertical-align: top; padding: .65rem; border-bottom: 1px solid #d6ded9; overflow-wrap: anywhere; }
+th { background: #eef2ef; } .muted, footer { color: #50636b; } .notice { border-left: 4px solid #a1661f; padding-left: 1rem; }
+@media(max-width: 650px) { body { padding: 1.5rem .75rem; } .card { padding: 1rem; } dl { grid-template-columns: 1fr; gap: .2rem; } dd { margin-bottom: .6rem; } table { font-size: .8rem; } }
+@media print { body { padding: 0; background: white; } .card { break-inside: avoid; } }
+</style>
+</head>
+<body><main>
+<header><p class="eyebrow">Rio · pipeline receipt</p><h1>Consumed → enriched → delivered → acknowledged</h1>
+<p><span class="status">failed</span> · 1 artifacts · 1 delivery pairs</p>
+<p class="muted">2026-10-01T18:30:45.029298Z → 2026-10-01T18:30:45.196405Z<br>Run <code>run-482e77fe3b686e57ad82279e501c7c9e</code> · Rio 0.7.0</p>
+
+<p class="notice">Unsigned recorded assertions and observations. Execution success does not prove receiver ingestion or retained content. Input/output hashes identify bytes; they do not authenticate the producer.</p></header>
+<h2>Consumed SBOMs and meaningful changes</h2>
+<section class="card"><h3>frontend <span class="status">completed</span></h3>
+
+<dl><dt>Consumed</dt><dd><code>inputs/frontend.cdx.json</code></dd><dt>Input SHA-256</dt><dd><code>e971f9fad4d73801c6f30d07394dfb3f00225d6e01131f370f2b52d002f186c1</code> · 585047 bytes</dd>
+<dt>Output SHA-256</dt><dd><code>ae2ca9edafa7014183ce59227a74cab6605a39d1667a31d51a1724b50a1315f6</code> · 588814 bytes</dd></dl>
+
+<table><thead><tr><th>Metadata</th><th>Before</th><th>After</th><th>Assertion / source</th></tr></thead><tbody>
+<tr><td><code>build.id</code><br>add</td><td><code>absent</code></td><td><code>local-20261001T182549Z</code></td><td>producer / context-file</td></tr><tr><td><code>build.system.name</code><br>add</td><td><code>absent</code></td><td><code>local Docker build</code></td><td>producer / context-file</td></tr><tr><td><code>build.timestamp</code><br>add</td><td><code>absent</code></td><td><code>2026-10-01T18:25:49.234594&#43;00:00</code></td><td>producer / context-file</td></tr><tr><td><code>build.url</code><br>add</td><td><code>absent</code></td><td><code>https://ci.example.org/juice-shop-demo/runs/local-20261001T182549Z</code></td><td>producer / context-file</td></tr><tr><td><code>source.ref</code><br>add</td><td><code>absent</code></td><td><code>refs/tags/v20.2.0</code></td><td>producer / context-file</td></tr><tr><td><code>source.revision</code><br>add</td><td><code>absent</code></td><td><code>5658473cf8814459bf89000ce373b20ed0b4eb37</code></td><td>producer / context-file</td></tr><tr><td><code>source.workspace</code><br>add</td><td><code>absent</code></td><td><code>dirty</code></td><td>producer / context-file</td></tr><tr><td><code>/metadata/component/supplier</code><br>add</td><td><code>absent</code></td><td><code>{&#34;name&#34;:&#34;rebaze demo distribution&#34;}</code></td><td>producer / manifest</td></tr>
+</tbody></table>
+
+<p>Gate <strong>fail</strong> (mode: fail) · Schema pass · Findings 559</p>
+<p class="muted">Subject requirements: name version  · Component requirements: name version purl <br>all components including nested · evaluated · components evaluated: 672 · 0 graph findings</p>
+</section>
+<h2>Destinations and acknowledgments</h2>
+<section class="card"><h3>frontend → security <span class="status">unattempted</span></h3>
+<dl><dt>Receiver URL</dt><dd><code>http://127.0.0.1:52840</code> (dependency-track)</dd>
+<dt>Project selector</dt><dd>From normalized-subject (resolved at execution)</dd>
+
+<dt>Transport</dt><dd>http · TLS not recorded · Certificate verification not-applicable</dd>
+
+
+<dt>Request may have occurred</dt><dd>false</dd>
+
+
+
+</dl>
+</section>
+<h2>Excluded scope</h2><p>backend  · artifact-filter  <code></code></p>
+<h2>Exceptions</h2><p class="notice">gate-failed</p>
+<footer><h2>Receipt identity and limits</h2><p>Exact JSON SHA-256: <code>4fab5354eb0e58e812272582f71736ef376fbe0179db2a26adb8003d8a2e7097</code><br>4104 bytes · <code>rio-run-receipt</code> version 1</p>
+<p>Inspection validates schema, references and internal consistency. It cannot replay absent source documents or detect every coherently forged unsigned receipt. Paths and URLs are references, not promises of future accessibility. This standalone view loads no remote resources.</p></footer>
+</main></body></html>

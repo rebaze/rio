@@ -1,0 +1,16 @@
+diff --git a/frontend/package.json b/frontend/package.json
+index ec9fe92..c2d3c24 100644
+--- a/frontend/package.json
++++ b/frontend/package.json
+@@ -19,9 +19,9 @@
+   "private": true,
+   "dependencies": {
+     "@angular/animations": "^22.0.1",
+-    "@angular/build": "^22.0.1",
++    "@angular/build": "22.0.1",
+     "@angular/cdk": "^22.0.1",
+-    "@angular/cli": "^22.0.1",
++    "@angular/cli": "22.0.1",
+     "@angular/common": "^22.0.1",
+     "@angular/compiler": "^22.0.1",
+     "@angular/compiler-cli": "^22.0.1",
