@@ -1,5 +1,36 @@
 # Juice Shop: build → SBOM → Rio → delivery receipt
 
+See the result before running the build: [backend receipt](example/backend-record.json),
+[backend HTML report](example/backend-report.html), [frontend receipt](example/frontend-record.json),
+and [frontend HTML report](example/frontend-report.html).
+
+These excerpts are actual `rio record inspect` output from **Rio 0.7.0** on
+2026-10-01, using source-built Juice Shop 20.2.0 SBOMs and local Dependency-Track:
+
+```text
+Rio 0.7.0 — pipeline: success
+  gate=pass mode=fail schema=pass findings=0
+backend → security (http://127.0.0.1:52840): accepted
+  acknowledgment=accepted HTTP=200 code=accepted TLS=not recorded
+
+Rio 0.7.0 — pipeline: failed
+  gate=fail mode=fail schema=pass findings=559
+frontend → security (http://127.0.0.1:52840): unattempted
+```
+
+| Captured result | Backend | Frontend |
+|---|---|---|
+| Component entries checked | 689 | 672 |
+| Quality findings | 0 | 559 |
+| Delivery | Accepted, HTTP 200 with event token | Blocked before upload |
+
+The supplier and example CI URL are **synthetic demo assertions**; the build,
+SBOMs and receiver response are real. The receiver used loopback HTTP, so no TLS
+was observed. A separate inventory check observed 654 backend components stored
+and no frontend project. Acceptance and completed processing are separate facts.
+Read the [capture provenance and offline inspection instructions](example/README.md).
+Fresh dependency resolution can change the counts in your own run.
+
 Build OWASP Juice Shop from source, generate its SBOMs with its own CycloneDX tools,
 then use Rio to **add build context, check quality, and deliver to Dependency-Track**.
 Finish by comparing a successful backend receipt with the frontend's quality-gate result.

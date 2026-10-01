@@ -1,0 +1,229 @@
+{
+  "kind": "rio-run-receipt",
+  "schemaVersion": 1,
+  "rioVersion": "0.7.0",
+  "run": {
+    "id": "run-02478a49d23c76647d998e5fa7d7748f",
+    "operation": "pipeline",
+    "startedAt": "2026-10-01T18:30:44.332227Z",
+    "finishedAt": "2026-10-01T18:30:44.973093Z",
+    "outcome": "success",
+    "stages": {
+      "checks": "passed",
+      "delivery": "completed",
+      "intake": "completed",
+      "normalize": "completed"
+    },
+    "overrides": {
+      "artifact": "[backend]",
+      "receipt": "backend-record.json"
+    }
+  },
+  "artifacts": [
+    {
+      "id": "backend",
+      "state": "completed",
+      "input": {
+        "path": "inputs/backend.cdx.json",
+        "sha256": "29915c58273b72ee1ef63c0c2fb76d66accd82e5b0a1ddbbb43b1e98cec8319e",
+        "size": 1369752
+      },
+      "output": {
+        "path": "backend.cdx.json",
+        "sha256": "6326f65e34242a629496ce1714f921685e6ada158633ea31ce52541e16341009",
+        "size": 1374346
+      },
+      "changes": {
+        "metadata": [
+          {
+            "field": "build.id",
+            "operation": "add",
+            "before": null,
+            "after": "local-20261001T182549Z",
+            "assertion": "producer",
+            "source": "context-file"
+          },
+          {
+            "field": "build.system.name",
+            "operation": "add",
+            "before": null,
+            "after": "local Docker build",
+            "assertion": "producer",
+            "source": "context-file"
+          },
+          {
+            "field": "build.timestamp",
+            "operation": "add",
+            "before": null,
+            "after": "2026-10-01T18:25:49.234594+00:00",
+            "assertion": "producer",
+            "source": "context-file"
+          },
+          {
+            "field": "build.url",
+            "operation": "add",
+            "before": null,
+            "after": "https://ci.example.org/juice-shop-demo/runs/local-20261001T182549Z",
+            "assertion": "producer",
+            "source": "context-file"
+          },
+          {
+            "field": "source.ref",
+            "operation": "add",
+            "before": null,
+            "after": "refs/tags/v20.2.0",
+            "assertion": "producer",
+            "source": "context-file"
+          },
+          {
+            "field": "source.revision",
+            "operation": "add",
+            "before": null,
+            "after": "5658473cf8814459bf89000ce373b20ed0b4eb37",
+            "assertion": "producer",
+            "source": "context-file"
+          },
+          {
+            "field": "source.workspace",
+            "operation": "add",
+            "before": null,
+            "after": "dirty",
+            "assertion": "producer",
+            "source": "context-file"
+          },
+          {
+            "field": "/metadata/component/externalReferences",
+            "operation": "replace",
+            "before": [
+              {
+                "comment": "as detected from PackageJson property \"bugs.url\"",
+                "type": "issue-tracker",
+                "url": "https://github.com/juice-shop/juice-shop/issues"
+              },
+              {
+                "comment": "as detected from PackageJson property \"repository.url\"",
+                "type": "vcs",
+                "url": "git+https://github.com/juice-shop/juice-shop.git"
+              },
+              {
+                "comment": "as detected from PackageJson property \"homepage\"",
+                "type": "website",
+                "url": "https://owasp-juice.shop"
+              }
+            ],
+            "after": [
+              {
+                "comment": "as detected from PackageJson property \"bugs.url\"",
+                "type": "issue-tracker",
+                "url": "https://github.com/juice-shop/juice-shop/issues"
+              },
+              {
+                "comment": "as detected from PackageJson property \"repository.url\"",
+                "type": "vcs",
+                "url": "git+https://github.com/juice-shop/juice-shop.git"
+              },
+              {
+                "comment": "as detected from PackageJson property \"homepage\"",
+                "type": "website",
+                "url": "https://owasp-juice.shop"
+              },
+              {
+                "type": "build-system",
+                "url": "https://ci.example.org/juice-shop-demo/runs/local-20261001T182549Z"
+              }
+            ],
+            "assertion": "producer",
+            "source": "context-file"
+          },
+          {
+            "field": "/metadata/component/supplier",
+            "operation": "add",
+            "before": null,
+            "after": {
+              "name": "rebaze demo distribution"
+            },
+            "assertion": "producer",
+            "source": "manifest"
+          }
+        ]
+      },
+      "checks": {
+        "mode": "fail",
+        "gate": "pass",
+        "schema": "pass",
+        "subjectRequirements": [
+          "name",
+          "version"
+        ],
+        "componentRequirements": [
+          "name",
+          "version",
+          "purl"
+        ],
+        "componentScope": "all components including nested",
+        "componentEvaluation": "evaluated",
+        "componentsEvaluated": 689,
+        "findings": 0
+      }
+    }
+  ],
+  "targets": {
+    "security": {
+      "type": "dependency-track",
+      "url": "http://127.0.0.1:52840"
+    }
+  },
+  "deliveries": [
+    {
+      "artifactId": "backend",
+      "target": "security",
+      "project": {
+        "name": "juice-shop",
+        "version": "20.2.0"
+      },
+      "attemptId": "0907f057d230a8a3b971c5d91ba57a5d",
+      "state": "accepted",
+      "intended": [
+        {
+          "artifactOutput": "backend",
+          "mediaType": "application/vnd.cyclonedx+json",
+          "role": "sbom"
+        }
+      ],
+      "submitted": [
+        {
+          "artifactOutput": "backend",
+          "mediaType": "application/vnd.cyclonedx+json",
+          "role": "sbom"
+        }
+      ],
+      "attemptedAt": "2026-10-01T18:30:44.748288Z",
+      "requestMayHaveOccurred": true,
+      "transport": {
+        "scheme": "http",
+        "certificateVerification": "not-applicable"
+      },
+      "responses": [
+        {
+          "kind": "acknowledgment",
+          "value": "accepted",
+          "httpStatus": 200,
+          "observedAt": "2026-10-01T18:30:44.952972Z",
+          "code": "accepted",
+          "references": [
+            {
+              "kind": "dependency-track:event-token",
+              "value": "01a0f8bb-afad-7132-bd6d-d1d19df920ce"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "exclusions": [
+    {
+      "artifactId": "frontend",
+      "reason": "artifact-filter"
+    }
+  ]
+}
