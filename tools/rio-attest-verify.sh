@@ -21,7 +21,7 @@ while [ "$#" -gt 0 ]; do
     -h|--help) usage; exit 0 ;;
     --public-key|--bundle)
       option="$1"
-      [ "$#" -ge 2 ] && [ -n "$2" ] || refuse "$option requires a file"
+      if [ "$#" -lt 2 ] || [ -z "$2" ]; then refuse "$option requires a file"; fi
       case "$2" in --*) refuse "$option requires a file" ;; esac
       if [ "$option" = --public-key ]; then
         [ -z "$public_key" ] || refuse 'duplicate --public-key'
@@ -31,7 +31,7 @@ while [ "$#" -gt 0 ]; do
         bundle="$2"
       fi
       shift 2 ;;
-    --) shift; [ "$#" -eq 1 ] && [ -z "$blob" ] || refuse 'expected one SBOM file'; blob="$1"; shift ;;
+    --) shift; if [ "$#" -ne 1 ] || [ -n "$blob" ]; then refuse 'expected one SBOM file'; fi; blob="$1"; shift ;;
     -*) refuse "unknown option: $1" ;;
     *) [ -z "$blob" ] || refuse 'expected one SBOM file'; blob="$1"; shift ;;
   esac
@@ -40,7 +40,7 @@ for dependency in jq cosign; do
   command -v "$dependency" >/dev/null 2>&1 || refuse "$dependency is required"
 done
 for file in "$public_key" "$bundle" "$blob"; do
-  [ -f "$file" ] && [ -r "$file" ] && [ -s "$file" ] && [ ! -L "$file" ] || refuse 'supply readable, nonempty regular public-key, bundle and SBOM files'
+  if [ ! -f "$file" ] || [ ! -r "$file" ] || [ ! -s "$file" ] || [ -L "$file" ]; then refuse 'supply readable, nonempty regular public-key, bundle and SBOM files'; fi
 done
 version=$(cosign version --json) || refuse 'cannot read cosign version'
 [ "$(printf '%s' "$version" | jq -r '.gitVersion')" = v3.0.6 ] || refuse 'cosign v3.0.6 is required'

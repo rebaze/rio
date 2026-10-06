@@ -29,7 +29,7 @@ while [ "$#" -gt 0 ]; do
     -h|--help) usage; exit 0 ;;
     --key|--public-key)
       option="$1"
-      [ "$#" -ge 2 ] && [ -n "$2" ] || refuse "$option requires a file"
+      if [ "$#" -lt 2 ] || [ -z "$2" ]; then refuse "$option requires a file"; fi
       case "$2" in --*) refuse "$option requires a file" ;; esac
       if [ "$option" = --key ]; then
         [ -z "$key" ] || refuse 'duplicate --key'
@@ -39,13 +39,13 @@ while [ "$#" -gt 0 ]; do
         public_key="$2"
       fi
       shift 2 ;;
-    --) shift; [ "$#" -eq 1 ] && [ -z "$directory" ] || refuse 'expected one output directory'; directory="$1"; shift ;;
+    --) shift; if [ "$#" -ne 1 ] || [ -n "$directory" ]; then refuse 'expected one output directory'; fi; directory="$1"; shift ;;
     -*) refuse "unknown option: $1" ;;
     *) [ -z "$directory" ] || refuse 'expected one output directory'; directory="$1"; shift ;;
   esac
 done
-[ -n "$key" ] && [ -n "$public_key" ] || refuse 'supply --key and --public-key; no keyless fallback'
-[ -n "$directory" ] && [ -d "$directory" ] || refuse 'supply an existing output directory'
+if [ -z "$key" ] || [ -z "$public_key" ]; then refuse 'supply --key and --public-key; no keyless fallback'; fi
+if [ -z "$directory" ] || [ ! -d "$directory" ]; then refuse 'supply an existing output directory'; fi
 for dependency in jq cosign; do
   command -v "$dependency" >/dev/null 2>&1 || refuse "$dependency is required"
 done
@@ -59,7 +59,7 @@ fi
 version=$(cosign version --json) || refuse 'cannot read cosign version'
 [ "$(printf '%s' "$version" | jq -r '.gitVersion')" = v3.0.6 ] || refuse 'cosign v3.0.6 is required (same pin as release.yaml)'
 for file in "$key" "$public_key"; do
-  [ -f "$file" ] && [ -r "$file" ] && [ -s "$file" ] || refuse "key must be a readable, nonempty local file: $file"
+  if [ ! -f "$file" ] || [ ! -r "$file" ] || [ ! -s "$file" ]; then refuse "key must be a readable, nonempty local file: $file"; fi
 done
 # Absolute paths prevent a local filename from being interpreted as a KMS/URL.
 key="$(cd -- "$(dirname "$key")" && pwd -P)/$(basename "$key")"
@@ -80,7 +80,7 @@ pem_body() {
 derived=$(cosign public-key --key "$key" </dev/null) || refuse 'cannot unlock signing key; check --key and COSIGN_PASSWORD'
 derived=$(printf '%s' "$derived" | pem_body) || refuse 'cosign returned an invalid public key'
 expected=$(pem_body < "$public_key") || refuse '--public-key must contain one PEM PUBLIC KEY'
-[ -n "$derived" ] && [ "$derived" = "$expected" ] || refuse '--public-key does not match the signing key'
+if [ -z "$derived" ] || [ "$derived" != "$expected" ]; then refuse '--public-key does not match the signing key'; fi
 
 regular() { [ -f "$1" ] && [ -r "$1" ] && [ ! -L "$1" ]; }
 regular "$directory/index.json" || refuse 'index.json must be a readable regular file, not a symlink'
@@ -114,7 +114,7 @@ while IFS= read -r id; do
   bundle="$directory/$id.sigstore.json"
   regular "$statement" || refuse "$id: missing statement or symlink"
   regular "$blob" || refuse "$id: missing SBOM or symlink"
-  [ ! -e "$bundle" ] && [ ! -L "$bundle" ] || refuse "$id: bundle already exists; use a fresh output directory"
+  if [ -e "$bundle" ] || [ -L "$bundle" ]; then refuse "$id: bundle already exists; use a fresh output directory"; fi
   cp "$statement" "$stage/$id.intoto.json"
   cp "$blob" "$stage/$id.cdx.json"
   jq -e -s --arg id "$id" --arg predicate "$predicate_type" --slurpfile index "$stage/index.json" '
