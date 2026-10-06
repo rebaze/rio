@@ -1,0 +1,9 @@
+version: 1
+artifacts:
+  - id: console
+    sbom: inputs/prior-console.cdx.json
+    enrichment:
+      subject: {version: "1.0.0", purl: "pkg:maven/org.example/console@1.0.0"}
+    context:
+      file: context-prior.json
+      replace: [build.id, source.workspace]

@@ -40,7 +40,12 @@ case "$1" in
       shift
     done
     [ "${SIGN_FAIL:-}" != "$(basename "$statement")" ] || exit 1
-    cp "$statement" "$bundle"
+    jq -Rs '{mediaType:"application/vnd.dev.sigstore.bundle.v0.3+json",
+      verificationMaterial:{publicKey:{hint:"fixture"}},
+      dsseEnvelope:{payloadType:"application/vnd.in-toto+json",payload:(.|@base64),signatures:[{sig:"fixture"}]}}' "$statement" > "$bundle"
+    if [ "${BUNDLE_FORMAT:-}" = legacy ]; then
+      printf '{"cert":"embedded-key","base64Signature":"fixture"}' > "$bundle"
+    fi
     if [ "${INTERRUPT:-0}" = 1 ]; then kill -TERM "$PPID"; fi
     if [ "${CHANGE_INPUT:-0}" = 1 ]; then printf changed > "$WORK/output with spaces/a.cdx.json"; fi
     case "${CREATE_DESTINATION:-0}" in
@@ -50,7 +55,13 @@ case "$1" in
     esac
     ;;
   verify-blob-attestation)
-    case "$*" in *"${VERIFY_FAIL:-NEVER-MATCH}"*) exit 1 ;; esac
+    shift
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = --bundle ]; then bundle="$2"; shift; fi
+      shift
+    done
+    id=$(jq -r '.dsseEnvelope.payload|@base64d|fromjson|.predicate.artifact.id' "$bundle")
+    [ "${VERIFY_FAIL:-}" != "$id.cdx.json" ] || exit 1
     ;;
   *) exit 99 ;;
 esac
@@ -69,6 +80,7 @@ run() {
   out="$(WORK="$work" PATH="$work/bin:$PATH" COSIGN_PASSWORD=FIXTURE-SECRET \
     INTERRUPT="${INTERRUPT:-0}" CHANGE_INPUT="${CHANGE_INPUT:-0}" CREATE_DESTINATION="${CREATE_DESTINATION:-0}" \
     VERSION="${VERSION:-v3.0.6}" KEY_FAIL="${KEY_FAIL:-0}" SIGN_FAIL="${SIGN_FAIL:-}" VERIFY_FAIL="${VERIFY_FAIL:-}" \
+    BUNDLE_FORMAT="${BUNDLE_FORMAT:-}" \
     bash "$script" "$@" 2>&1)"
   code=$?
 }
@@ -143,7 +155,9 @@ normal
 check test "$code" -eq 0
 check test -s "$dir/a.sigstore.json"
 check test -s "$dir/b.sigstore.json"
-check cmp "$dir/a.intoto.json" "$dir/a.sigstore.json"
+# jq binds $statement through --slurpfile; it is not a shell substitution.
+# shellcheck disable=SC2016
+check jq -e --slurpfile statement "$dir/a.intoto.json" '(.dsseEnvelope.payload|@base64d|fromjson) == $statement[0]' "$dir/a.sigstore.json"
 check jq -e -s '[.[]|select(.[0]=="attest-blob" or .[0]=="verify-blob-attestation")|.[0]] == ["attest-blob","verify-blob-attestation","attest-blob","verify-blob-attestation"]' "$work/calls"
 check jq -e -s 'all(.[]|select(.[0]=="attest-blob"); index("--tlog-upload=false") != null and index("--use-signing-config=false") != null and index("--key") != null and index("--yes") != null)' "$work/calls"
 check jq -e -s 'all(.[]|select(.[0]=="verify-blob-attestation"); index("--insecure-ignore-tlog") != null and index("https://rebaze.com/attestation/sbom-normalization/v1") != null)' "$work/calls"
@@ -155,6 +169,12 @@ for failure in sign verify; do
   check test ! -e "$dir/a.sigstore.json"
   check test "$(find "$dir" -name '.rio-attest-*' | wc -l | tr -d ' ')" = 0
 done
+
+workspace
+BUNDLE_FORMAT=legacy normal
+check test "$code" -eq 1
+check test ! -e "$dir/a.sigstore.json"
+check jq -e -s 'all(.[]; .[0] != "verify-blob-attestation")' "$work/calls"
 
 # Dependency refusal is tested with a restricted PATH, never the host's cosign.
 for missing in cosign jq hash; do

@@ -1,0 +1,9 @@
+version: 1
+
+artifacts:
+  - id: desktop
+    sbom: desktop/target/bom.json
+artifactSets:
+  - modules: "services/**/*server/pom.xml"
+    sbom: "target/bom.json"
+    idFrom: module-directory

@@ -1,0 +1,5 @@
+version: 1
+
+artifacts:
+  - id: desktop
+    sbom: desktop/target/bom.json

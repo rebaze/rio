@@ -1,0 +1,19 @@
+version: 1
+artifacts:
+  - id: application
+    sbom: bom.json
+delivery:
+  targets:
+    registry:
+      type: oci
+      registry: REGISTRY_AUTHORITY
+      repository: demo/application
+      allowHTTP: true
+      auth:
+        usernameEnv: RIO_OCI_DEMO_USERNAME
+        passwordEnv: RIO_OCI_DEMO_PASSWORD
+    security:
+      type: dependency-track
+      url: DTRACK_URL
+      allowHTTP: true
+      apiKeyEnv: RIO_DTRACK_DEMO_KEY

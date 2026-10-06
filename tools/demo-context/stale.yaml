@@ -1,0 +1,5 @@
+version: 1
+artifacts:
+  - id: console
+    sbom: inputs/console.cdx.json
+    context: {file: context-stale.json}

@@ -1,0 +1,46 @@
+version: 1
+
+# Shared product and organization defaults. These are producer assertions.
+enrichment:
+  subject:
+    group: com.example
+    version: "1.0.0"
+    type: application
+    manufacturer:
+      name: Example Products
+      url: [https://products.example.com]
+      contact:
+        - name: Product Security
+          email: security@example.com
+    supplier:
+      name: Example Distribution
+      url: [https://distribution.example.com]
+    securityContact: mailto:security@example.com
+    website: https://products.example.com
+    documentation: https://products.example.com/docs
+    support: https://products.example.com/support
+  producer:
+    name: Example Build Services
+    url: [https://build.example.com]
+  dataLicense: CC0-1.0
+
+artifacts:
+  - id: console
+    sbom: inputs/console.cdx.json
+    enrichment:
+      subject:
+        name: console
+        purl: pkg:maven/com.example/console@1.0.0
+        documentation: https://products.example.com/console/docs
+  - id: agent
+    sbom: inputs/agent.cdx.json
+    enrichment:
+      subject:
+        name: agent
+        purl: pkg:maven/com.example/agent@1.0.0
+        documentation: https://products.example.com/agent/docs
+
+output:
+  specVersionFloor: "1.6"
+gate:
+  require: [name, version, purl]

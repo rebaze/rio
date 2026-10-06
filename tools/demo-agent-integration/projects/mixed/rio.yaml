@@ -1,0 +1,12 @@
+version: 1
+artifacts:
+  # Existing release identity: preserve this override when adding servers.
+  - id: desktop
+    sbom: desktop/target/bom.json
+    subject: {name: shipping-desktop, version: "3.2.0"}
+    transforms:
+      - repair-purl: {ecosystem: p2, table: config/p2-maven.json}
+output:
+  specVersionFloor: "1.5"
+gate:
+  require: [name, version]

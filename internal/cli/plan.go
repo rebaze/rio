@@ -11,9 +11,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rebaze/rio/internal/discover"
+	"github.com/rebaze/rio/internal/delivery"
+	"github.com/rebaze/rio/internal/enrichment"
 	"github.com/rebaze/rio/internal/index"
 	"github.com/rebaze/rio/internal/manifest"
+	"github.com/rebaze/rio/internal/receipt"
 	"github.com/rebaze/rio/internal/transform"
 	"github.com/rebaze/rio/internal/transform/purl/p2"
 )
@@ -24,7 +26,7 @@ import (
 // know, rather than reading half a document it misunderstands.
 const PlanVersion = 1
 
-// plan is the whole of `rio plan --json`: what a normalize run would read,
+// plan is the whole of `rio plan --json`: what a pipeline run would read,
 // write and repair, described without doing any of it.
 //
 // The shape is a contract. tools/build-p2-table.py execs `rio plan --json` and
@@ -36,9 +38,13 @@ const PlanVersion = 1
 // completed run needs the mapping table, which is what the plan is read to
 // produce -- so the index can never describe the first run in a repository.
 type plan struct {
-	PlanVersion int          `json:"planVersion"`
-	Tool        planTool     `json:"tool"`
-	Manifest    planManifest `json:"manifest"`
+	RunDirectory string              `json:"runDirectory"`
+	Receipt      string              `json:"receipt"`
+	Delivery     planRouting         `json:"delivery"`
+	Exclusions   []receipt.Exclusion `json:"exclusions,omitempty"`
+	PlanVersion  int                 `json:"planVersion"`
+	Tool         planTool            `json:"tool"`
+	Manifest     planManifest        `json:"manifest"`
 	// Out is --out exactly as given, resolved by rio against the process
 	// working directory rather than the manifest's.
 	Out string `json:"out"`
@@ -73,12 +79,25 @@ type planManifest struct {
 }
 
 type planArtifact struct {
-	ID string `json:"id"`
+	ID        string           `json:"id"`
+	Selection *index.Selection `json:"selection,omitempty"`
 	// Input.Path is relative to the manifest directory and Output.Path is
-	// relative to Out, exactly as index.json records them.
+	// relative to RunDirectory, exactly as index.json records them.
 	Input      planFile        `json:"input"`
 	Output     planFile        `json:"output"`
 	Transforms []planTransform `json:"transforms"`
+	// Enrichment is an optional, independently versioned additive extension.
+	Enrichment *enrichment.Resolved `json:"enrichment,omitempty"`
+	// Context is an optional producer-assertion binding. Its file is described
+	// from the manifest only; plan must not open it.
+	Context *planContext `json:"context,omitempty"`
+}
+
+type planContext struct {
+	Version int      `json:"version"`
+	File    string   `json:"file"`
+	Require []string `json:"require"`
+	Replace []string `json:"replace"`
 }
 
 type planFile struct {
@@ -86,6 +105,7 @@ type planFile struct {
 }
 
 type planGate struct {
+	Mode    string   `json:"mode"`
 	Require []string `json:"require"`
 }
 
@@ -145,32 +165,69 @@ func (t planTransform) MarshalJSON() ([]byte, error) {
 
 func newPlanCommand(opts *globalOptions, stdout io.Writer) *cobra.Command {
 	var asJSON bool
+	var o pipelineOptions
 
 	cmd := &cobra.Command{
 		Use:   "plan",
-		Short: "Print what a normalize run would read, write and repair",
+		Short: "Preview the effective pipeline and delivery routing offline",
 		Long: "plan reads the manifest, resolves each artifact's SBOM glob, and prints what\n" +
-			"a normalize run would read, where it would write, and which transforms it\n" +
-			"would apply. It writes nothing and makes no network calls.\n\n" +
+			"a pipeline run would read, where it would write, and which transforms it\n" +
+			"would apply, and how selected artifacts route to targets. It writes nothing,\n" +
+			"does not read SBOM/context contents, and makes no network calls. Project selectors\n" +
+			"from normalized subjects are resolved during execution.\n\n" +
 			"--json prints the same thing as a machine contract, which is how\n" +
 			"tools/build-p2-table.py learns which SBOMs to harvest and which mapping\n" +
 			"table to write. Unlike index.json it needs no prior run, so it works in a\n" +
 			"repository whose mapping table does not exist yet.",
 		Args: cobra.NoArgs,
-		RunE: func(*cobra.Command, []string) error {
-			return runPlan(opts, asJSON, stdout)
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runPlan(cmd, opts, o, asJSON, stdout)
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print the plan as JSON")
+	cmd.Flags().StringVar(&o.gate, "gate", "", "gate override: fail or warn")
+	cmd.Flags().StringVar(&o.receipt, "receipt", "", "preview an explicit public receipt destination")
+	cmd.Flags().StringArrayVar(&o.artifacts, "artifact", nil, "artifact ID filter (repeatable)")
+	cmd.Flags().StringArrayVar(&o.targets, "target", nil, "target ID filter (repeatable)")
+	cmd.Flags().BoolVar(&o.skip, "skip-delivery", false, "preview local stages without delivery")
 	return cmd
 }
 
-func runPlan(opts *globalOptions, asJSON bool, stdout io.Writer) error {
+func runPlan(cmd *cobra.Command, opts *globalOptions, o pipelineOptions, asJSON bool, stdout io.Writer) error {
 	man, err := manifest.Load(opts.manifest)
 	if err != nil {
 		return usageErrorf("%v", err)
 	}
 
+	resolved, err := resolveArtifacts(man, o.artifacts)
+	if err != nil {
+		return err
+	}
+
+	mode, err := effectiveGate(cmd, man, o)
+	if err != nil {
+		return err
+	}
+	effective := *opts
+	effective.out = effectiveOutput(cmd, opts, man)
+	opts = &effective
+	resolved, excluded, err := selectInputs(resolved, o.artifacts)
+	if err != nil {
+		return err
+	}
+	config, err := delivery.ParseConfig(man.Delivery, man.Dir, man.SHA256)
+	if err != nil {
+		return err
+	}
+	routing, routingExclusions, err := describeRouting(config, resolved, o)
+	if err != nil {
+		return err
+	}
+	runDir := filepath.ToSlash(filepath.Join(opts.out, "runs", "<run-id>"))
+	receiptPath := o.receipt
+	if receiptPath == "" {
+		receiptPath = runDir + "/record.json"
+	}
 	builtin, err := p2.BuiltinEntries()
 	if err != nil {
 		// The table is compiled in, so only a broken build reaches this.
@@ -178,6 +235,8 @@ func runPlan(opts *globalOptions, asJSON bool, stdout io.Writer) error {
 	}
 
 	p := plan{
+		RunDirectory: runDir, Receipt: filepath.ToSlash(receiptPath), Delivery: routing,
+		Exclusions:  append(append(excluded, declaredExclusions(man)...), routingExclusions...),
 		PlanVersion: PlanVersion,
 		Tool:        planTool{Name: index.ToolName, Version: version},
 		Manifest: planManifest{
@@ -187,15 +246,15 @@ func runPlan(opts *globalOptions, asJSON bool, stdout io.Writer) error {
 		},
 		Out:          filepath.ToSlash(opts.out),
 		BuiltinTable: builtin,
-		Artifacts:    make([]planArtifact, 0, len(man.Artifacts)),
+		Artifacts:    make([]planArtifact, 0, len(resolved)),
 		// gate.require may legally be the empty subset, and a nil slice
 		// serializes as null. Every array this format promises is an array,
 		// exactly as in index.json, so a consumer can iterate it unguarded.
-		Gate: planGate{Require: append([]string{}, man.Gate.Require...)},
+		Gate: planGate{Mode: mode, Require: append([]string{}, man.Gate.Require...)},
 	}
 
-	for _, spec := range man.Artifacts {
-		a, err := describeArtifact(man, spec)
+	for _, input := range resolved {
+		a, err := describeArtifact(man, input)
 		if err != nil {
 			return err
 		}
@@ -208,17 +267,26 @@ func runPlan(opts *globalOptions, asJSON bool, stdout io.Writer) error {
 	return writePlanText(p, man, opts, stdout)
 }
 
-// describeArtifact is the plan's counterpart to normalize's prepare, minus
+// describeArtifact is the plan's counterpart to normalization prepare, minus
 // everything that touches the artifact's contents.
 //
-// The transforms are described before the glob is resolved, in the order
-// prepare builds and resolves them, so the two commands report the same
-// failure first on a manifest with more than one problem.
-func describeArtifact(man *manifest.Manifest, spec manifest.Artifact) (planArtifact, error) {
+// Shared preflight has already expanded declarations and resolved every input.
+func describeArtifact(man *manifest.Manifest, input resolvedArtifact) (planArtifact, error) {
+	spec := input.Spec
 	a := planArtifact{
 		ID:         spec.ID,
+		Selection:  input.Selection,
+		Enrichment: spec.Enrichment,
 		Output:     planFile{Path: spec.ID + ".cdx.json"},
 		Transforms: make([]planTransform, 0, len(spec.Transforms)),
+	}
+	if spec.Context != nil {
+		a.Context = &planContext{
+			Version: 1,
+			File:    filepath.ToSlash(spec.Context.File),
+			Require: append([]string{}, spec.Context.Require...),
+			Replace: append([]string{}, spec.Context.Replace...),
+		}
 	}
 
 	// A plan that succeeded on a manifest normalize refuses would describe a
@@ -232,11 +300,7 @@ func describeArtifact(man *manifest.Manifest, spec manifest.Artifact) (planArtif
 		a.Transforms = append(a.Transforms, planTransform{Name: ts.Name, Options: options})
 	}
 
-	path, err := discover.Resolve(man.Dir, spec.ID, spec.SBOM)
-	if err != nil {
-		return planArtifact{}, usageErrorf("%v", err)
-	}
-	rel, err := index.RelPath(man.Dir, path)
+	rel, err := index.RelPath(man.Dir, input.Input)
 	if err != nil {
 		return planArtifact{}, usageErrorf("artifact %q: %v", spec.ID, err)
 	}
@@ -269,11 +333,24 @@ func writePlanText(p plan, man *manifest.Manifest, opts *globalOptions, stdout i
 	if !opts.quiet {
 		for _, a := range p.Artifacts {
 			fmt.Fprintf(stdout, "\n%s\n", a.ID)
+			if a.Selection != nil {
+				fmt.Fprintf(stdout, "  select %s module %s (marker %s)\n", a.Selection.Source, a.Selection.Module, a.Selection.Marker)
+			}
 			fmt.Fprintf(stdout, "  read   %s\n", a.Input.Path)
-			fmt.Fprintf(stdout, "  write  %s\n", filepath.ToSlash(filepath.Join(opts.out, a.Output.Path)))
+			fmt.Fprintf(stdout, "  write  %s\n", filepath.ToSlash(filepath.Join(p.RunDirectory, a.Output.Path)))
 			if len(a.Transforms) == 0 {
 				fmt.Fprintf(stdout, "  no transforms\n")
-				continue
+			}
+			if a.Enrichment != nil {
+				fmt.Fprintln(stdout, "  enrichment")
+				for _, field := range a.Enrichment.Fields {
+					fmt.Fprintf(stdout, "    %s = %s (source %s, replace=%t)\n", field.Field, field.Value, field.Source, field.Replace)
+				}
+			}
+			if a.Context != nil {
+				fmt.Fprintf(stdout, "  context  %s\n", a.Context.File)
+				fmt.Fprintf(stdout, "    require %s\n", requireList(a.Context.Require))
+				fmt.Fprintf(stdout, "    replace %s\n", requireList(a.Context.Replace))
 			}
 			for _, t := range a.Transforms {
 				fmt.Fprintf(stdout, "  %s\n", describeTransformLine(t, man.Dir))
@@ -283,6 +360,19 @@ func writePlanText(p plan, man *manifest.Manifest, opts *globalOptions, stdout i
 	}
 
 	fmt.Fprintf(stdout, "gate  require %s\n", requireList(p.Gate.Require))
+	fmt.Fprintf(stdout, "gate  mode %s\ndelivery  %s\nreceipt  %s\n", p.Gate.Mode, p.Delivery.Mode, p.Receipt)
+	if !opts.quiet {
+		for _, pair := range p.Delivery.Pairs {
+			fmt.Fprintf(stdout, "  deliver %s → %s (%s)", pair.ArtifactID, pair.Target, p.Delivery.Targets[pair.Target].URL)
+			if pair.ProjectSource != "" {
+				fmt.Fprintf(stdout, " project from %s (resolved at execution)", pair.ProjectSource)
+			} else {
+				b, _ := json.Marshal(pair.Project)
+				fmt.Fprintf(stdout, " project %s", b)
+			}
+			fmt.Fprintln(stdout)
+		}
+	}
 	return nil
 }
 

@@ -1,0 +1,44 @@
+services:
+  database:
+    image: postgres:18@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+    environment:
+      POSTGRES_DB: rio_test
+      POSTGRES_USER: rio_test
+      POSTGRES_PASSWORD: ${RIO_TEST_DB_PASSWORD:?}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rio_test -d rio_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    volumes:
+      - database:/var/lib/postgresql
+    labels:
+      io.rebaze.rio.test-owner: ${RIO_DTRACK_TEST_OWNER:?}
+  apiserver:
+    image: dependencytrack/apiserver:5.1.1@sha256:764dee822521e43d50ad7d0ca5bc35f48968b6b098ef97945e2ecac8c55d52e5
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      DT_DATASOURCE_URL: jdbc:postgresql://database:5432/rio_test
+      DT_DATASOURCE_USERNAME: rio_test
+      DT_DATASOURCE_PASSWORD: ${RIO_TEST_DB_PASSWORD:?}
+      DT_TASK_SCHEDULER_ENABLED: "false"
+    mem_limit: 3g
+    ports:
+      - "127.0.0.1::8080"
+    volumes:
+      - apiserver:/data
+    labels:
+      io.rebaze.rio.test-owner: ${RIO_DTRACK_TEST_OWNER:?}
+volumes:
+  database:
+    labels:
+      io.rebaze.rio.test-owner: ${RIO_DTRACK_TEST_OWNER:?}
+  apiserver:
+    labels:
+      io.rebaze.rio.test-owner: ${RIO_DTRACK_TEST_OWNER:?}
+networks:
+  default:
+    labels:
+      io.rebaze.rio.test-owner: ${RIO_DTRACK_TEST_OWNER:?}

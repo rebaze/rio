@@ -1,0 +1,24 @@
+Rio 0.7.0 — pipeline: failed
+run run-482e77fe3b686e57ad82279e501c7c9e
+
+frontend: completed
+  consumed inputs/frontend.cdx.json sha256=e971f9fad4d73801c6f30d07394dfb3f00225d6e01131f370f2b52d002f186c1
+  output sha256=ae2ca9edafa7014183ce59227a74cab6605a39d1667a31d51a1724b50a1315f6 bytes=588814
+  build.id: absent → local-20261001T182549Z (producer assertion, context-file)
+  build.system.name: absent → local Docker build (producer assertion, context-file)
+  build.timestamp: absent → 2026-10-01T18:25:49.234594+00:00 (producer assertion, context-file)
+  build.url: absent → https://ci.example.org/juice-shop-demo/runs/local-20261001T182549Z (producer assertion, context-file)
+  source.ref: absent → refs/tags/v20.2.0 (producer assertion, context-file)
+  source.revision: absent → 5658473cf8814459bf89000ce373b20ed0b4eb37 (producer assertion, context-file)
+  source.workspace: absent → dirty (producer assertion, context-file)
+  /metadata/component/supplier: absent → {"name":"rebaze demo distribution"} (producer assertion, manifest)
+  gate=fail mode=fail schema=pass findings=559
+
+frontend → security (http://127.0.0.1:52840): unattempted
+  project=from normalized-subject (resolved at execution) transport=http TLS=not recorded verification=not-applicable
+excluded: artifact=backend target= reason=artifact-filter scope= rule=
+exception: gate-failed
+
+Valid structure and internal consistency; unsigned recorded assertions/observations.
+HTTP acceptance does not prove ingestion or retained content.
+JSON sha256=4fab5354eb0e58e812272582f71736ef376fbe0179db2a26adb8003d8a2e7097 bytes=4104

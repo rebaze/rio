@@ -1,0 +1,42 @@
+{
+  "bomFormat": "CycloneDX",
+  "components": [],
+  "metadata": {
+    "component": {
+      "name": "synthetic-signing-app",
+      "purl": "pkg:generic/synthetic-signing-app@1.0.0",
+      "type": "application",
+      "version": "1.0.0"
+    },
+    "properties": [
+      {
+        "name": "rebaze:normalize:artifact-id",
+        "value": "app"
+      },
+      {
+        "name": "rebaze:normalize:input-sha256",
+        "value": "c2ede1cf8790d1e26a41ae6c10ec6058d0d550a4622bc31b11afb9934f7cf1a1"
+      },
+      {
+        "name": "rebaze:normalize:manifest-sha256",
+        "value": "c20bf1fb05242016716d84be01507e831905179ad3954b6923c2deb5a330d220"
+      },
+      {
+        "name": "rebaze:normalize:tool",
+        "value": "rio 0.7.0"
+      }
+    ],
+    "tools": {
+      "components": [
+        {
+          "group": "rebaze",
+          "name": "rio",
+          "type": "application",
+          "version": "0.7.0"
+        }
+      ]
+    }
+  },
+  "specVersion": "1.6",
+  "version": 1
+}

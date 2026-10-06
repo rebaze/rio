@@ -1,0 +1,7 @@
+version: 1
+artifacts:
+  - id: sample
+    sbom: bom.json
+    transforms:
+      - repair-purl:
+          ecosystem: p2

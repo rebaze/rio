@@ -930,7 +930,8 @@ func TestSyntheticMavenNamespaceIsInScope(t *testing.T) {
 		}
 		// The Change is what the pipeline turns into the repair record and the
 		// identity evidence, so every field of it is load bearing (§4.3).
-		wantChange := transform.Change{ComponentIndex: 0, Field: "purl", From: purl, To: want}
+		wantChange := transform.Change{ComponentIndex: 0, Field: "purl", From: purl, To: want,
+			Resolution: &transform.Resolution{Kind: "built-in-entry", Selector: "/entries/com.google.gson", SHA256: "af86c16bc31cd69da8488b7fbc5595bd8a90b8930eade7f6f406ecce025ca639", Metadata: map[string]json.RawMessage{}}}
 		if diff := cmp.Diff([]transform.Change{wantChange}, res.Changes); diff != "" {
 			t.Fatalf("Changes (-want +got):\n%s", diff)
 		}

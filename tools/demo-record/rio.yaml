@@ -1,0 +1,20 @@
+version: 1
+artifacts:
+  - id: application
+    sbom: bom.json
+    context:
+      file: context.json
+      require: [source.repository, source.revision, build.url]
+  - id: without-context
+    sbom: without-context.json
+output:
+  specVersionFloor: "1.6"
+gate:
+  require: [name, version]
+delivery:
+  targets:
+    security:
+      type: dependency-track
+      url: http://127.0.0.1:PORT
+      allowHTTP: true
+      apiKeyEnv: RIO_SYNTHETIC_KEY

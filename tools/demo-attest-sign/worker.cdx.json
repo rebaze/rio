@@ -1,0 +1,14 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "application",
+      "name": "synthetic-signing-worker",
+      "version": "1.0.0",
+      "purl": "pkg:generic/synthetic-signing-worker@1.0.0"
+    }
+  },
+  "components": []
+}

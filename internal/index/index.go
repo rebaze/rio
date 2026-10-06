@@ -43,10 +43,11 @@ var ErrNilIndex = errors.New("no index to write")
 
 // Index is the whole of index.json.
 type Index struct {
-	SchemaVersion int        `json:"schemaVersion"`
-	Tool          Tool       `json:"tool"`
-	Manifest      FileRef    `json:"manifest"`
-	Artifacts     []Artifact `json:"artifacts"`
+	SchemaVersion      int                 `json:"schemaVersion"`
+	NormalizationScope *NormalizationScope `json:"normalizationScope,omitempty"`
+	Tool               Tool                `json:"tool"`
+	Manifest           FileRef             `json:"manifest"`
+	Artifacts          []Artifact          `json:"artifacts"`
 }
 
 // Tool identifies the rio build that produced the index.
@@ -95,10 +96,23 @@ type GateFinding struct {
 	Missing []string `json:"missing"`
 }
 
+// Selection records filesystem membership, not build or software provenance.
+// Paths are relative to the manifest and always forward-slashed.
+type Selection struct {
+	Version int    `json:"version"`
+	Kind    string `json:"kind"`
+	Source  string `json:"source"`
+	Module  string `json:"module"`
+	Marker  string `json:"marker"`
+}
+
 // Artifact is one manifest artifact's row in the index. ID is the stable key
 // (§4.2).
 type Artifact struct {
 	ID              string            `json:"id"`
+	Checks          *EffectiveChecks  `json:"checks,omitempty"`
+	Normalization   *Normalization    `json:"normalization,omitempty"`
+	Selection       *Selection        `json:"selection,omitempty"`
 	Input           FileRef           `json:"input"`
 	Output          FileRef           `json:"output"`
 	SpecVersion     SpecVersions      `json:"specVersion"`
@@ -116,6 +130,11 @@ type Artifact struct {
 	// carries no integrityFindings key at all, and the key's presence is
 	// itself the signal that something needs looking at.
 	IntegrityFindings []sbom.IntegrityFinding `json:"integrityFindings,omitempty"`
+
+	// Enrichment is additive producer-assertion provenance, omitted when unused.
+	Enrichment *sbom.EnrichmentRecord `json:"enrichment,omitempty"`
+	// Context is the active producer assertion attached to this artifact.
+	Context *sbom.ContextRecord `json:"context,omitempty"`
 }
 
 // Gate is an artifact's gate result. Exactly two values are legal (§4.2).
@@ -243,6 +262,9 @@ func (idx *Index) Validate() error {
 	if idx == nil {
 		return ErrNilIndex
 	}
+	if err := idx.NormalizationScope.Validate(idx); err != nil {
+		return err
+	}
 	seen := make(map[string]int, len(idx.Artifacts))
 	for i, a := range idx.Artifacts {
 		if a.ID == "" {
@@ -252,6 +274,15 @@ func (idx *Index) Validate() error {
 			return fmt.Errorf("artifacts[%d]: duplicate id %q, already used by artifacts[%d]", i, a.ID, first)
 		}
 		seen[a.ID] = i
+		if err := a.Checks.Validate(a); err != nil {
+			return fmt.Errorf("artifact %q: %w", a.ID, err)
+		}
+		if err := a.Normalization.validateComponentTargets(a.Components); err != nil {
+			return fmt.Errorf("artifact %q: %w", a.ID, err)
+		}
+		if err := a.Normalization.Validate(); err != nil {
+			return fmt.Errorf("artifact %q: %w", a.ID, err)
+		}
 		if !a.Gate.Valid() {
 			return fmt.Errorf("artifacts[%d] %q: gate is %q, want %q or %q", i, a.ID, string(a.Gate), GateOK, GateFail)
 		}

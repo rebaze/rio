@@ -1,0 +1,10 @@
+version: 1
+artifacts:
+  - id: sample
+    sbom: bom.json
+    transforms:
+      - repair-purl:
+          ecosystem: p2
+          table: table.json
+output:
+  specVersionFloor: "1.6"

@@ -1,0 +1,6 @@
+# These CycloneDX documents are synthetic test inputs, not rio dependencies.
+# Keep this exception next to the fixtures: it must not apply to root go.mod
+# or to SBOMs outside this directory. See SECURITY.md for the scan/close loop.
+[[IgnoredVulns]]
+id = "GHSA-j288-q9x7-2f5v" # CVE-2025-48924
+reason = "Commons Lang 3.12.0/3.14.0 appears only as metadata in synthetic CycloneDX fixtures. rio is a Go binary and neither builds nor executes this Java dependency. Preserve the original fixture inputs for normalization tests."

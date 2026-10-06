@@ -1,0 +1,158 @@
+{
+  "_type": "https://in-toto.io/Statement/v1",
+  "subject": [
+    {
+      "name": "app.cdx.json",
+      "digest": {
+        "sha256": "2dabb170c7d4c239a43d47b8e8614ef404ec6c9ce26c4c018d2f335057ec774d"
+      }
+    }
+  ],
+  "predicateType": "https://rebaze.com/attestation/sbom-normalization/v1",
+  "predicate": {
+    "tool": {
+      "name": "rio",
+      "version": "0.7.0"
+    },
+    "manifest": {
+      "path": "rio.yaml",
+      "sha256": "c20bf1fb05242016716d84be01507e831905179ad3954b6923c2deb5a330d220"
+    },
+    "artifact": {
+      "id": "app",
+      "checks": {
+        "version": 1,
+        "mode": "fail",
+        "componentScope": "all components including nested",
+        "componentCount": 0,
+        "componentRequirements": [
+          "name",
+          "version",
+          "purl"
+        ],
+        "componentEvaluation": "not-evaluated",
+        "evaluations": [
+          {
+            "scope": "subject",
+            "requirement": "name",
+            "evaluated": 1,
+            "failed": 0,
+            "outcome": "pass"
+          },
+          {
+            "scope": "subject",
+            "requirement": "version",
+            "evaluated": 1,
+            "failed": 0,
+            "outcome": "pass"
+          },
+          {
+            "scope": "components",
+            "requirement": "name",
+            "evaluated": 0,
+            "failed": 0,
+            "outcome": "not-evaluated"
+          },
+          {
+            "scope": "components",
+            "requirement": "version",
+            "evaluated": 0,
+            "failed": 0,
+            "outcome": "not-evaluated"
+          },
+          {
+            "scope": "components",
+            "requirement": "purl",
+            "evaluated": 0,
+            "failed": 0,
+            "outcome": "not-evaluated"
+          }
+        ],
+        "schemaValidation": "pass",
+        "graphCheck": "dangling-dependency-references",
+        "graphFindings": 0
+      },
+      "normalization": {
+        "version": 1,
+        "changes": [],
+        "bookkeeping": [
+          {
+            "target": "/metadata/properties/0",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:artifact-id",
+              "value": "app"
+            }
+          },
+          {
+            "target": "/metadata/properties/1",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:input-sha256",
+              "value": "c2ede1cf8790d1e26a41ae6c10ec6058d0d550a4622bc31b11afb9934f7cf1a1"
+            }
+          },
+          {
+            "target": "/metadata/properties/2",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:manifest-sha256",
+              "value": "c20bf1fb05242016716d84be01507e831905179ad3954b6923c2deb5a330d220"
+            }
+          },
+          {
+            "target": "/metadata/properties/3",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:tool",
+              "value": "rio 0.7.0"
+            }
+          },
+          {
+            "target": "/metadata/tools",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "components": [
+                {
+                  "group": "rebaze",
+                  "name": "rio",
+                  "type": "application",
+                  "version": "0.7.0"
+                }
+              ]
+            }
+          }
+        ],
+        "unmapped": [],
+        "skipped": []
+      },
+      "input": {
+        "path": "app.cdx.json",
+        "sha256": "c2ede1cf8790d1e26a41ae6c10ec6058d0d550a4622bc31b11afb9934f7cf1a1"
+      },
+      "output": {
+        "path": "app.cdx.json",
+        "sha256": "2dabb170c7d4c239a43d47b8e8614ef404ec6c9ce26c4c018d2f335057ec774d"
+      },
+      "specVersion": {
+        "input": "1.6",
+        "output": "1.6"
+      },
+      "schemaValidated": true,
+      "components": 0,
+      "transforms": [],
+      "gate": "ok",
+      "gateFindings": []
+    }
+  }
+}

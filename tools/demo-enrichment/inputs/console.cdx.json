@@ -1,0 +1,54 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2025-01-15T12:00:00Z",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "synthetic-demo-generator",
+          "version": "1.0.0"
+        }
+      ]
+    },
+    "component": {
+      "type": "application",
+      "bom-ref": "subject-console",
+      "name": "console"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "dependency-tiny-json",
+      "group": "org.thirdparty",
+      "name": "tiny-json",
+      "version": "2.0.0",
+      "purl": "pkg:maven/org.thirdparty/tiny-json@2.0.0",
+      "supplier": {
+        "name": "Third Party Example"
+      },
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "subject-console",
+      "dependsOn": [
+        "dependency-tiny-json"
+      ]
+    },
+    {
+      "ref": "dependency-tiny-json",
+      "dependsOn": []
+    }
+  ]
+}

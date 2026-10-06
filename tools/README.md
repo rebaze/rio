@@ -3,18 +3,92 @@
 Things that support rio without being part of it. Nothing here ships in the binary, nothing here is
 covered by rio's compatibility promises, and rio never calls any of it.
 
-These tools handle network services and external signing dependencies around rio. Keeping them
-out of the binary lets rio stay static, `CGO_ENABLED=0`, and run identically on a build agent
-with no egress. The table builder and uploader make network calls; the signing tool uses local
-keys and explicitly disables public transparency-log upload.
+Supporting network-facing helpers live here. **Normalization and planning stay offline**;
+root pipeline execution and explicit native delivery/reconciliation may use network clients. Rio stays static,
+`CGO_ENABLED=0`. Offline demos also live here: they exercise the binary with inspectable example
+inputs and remain separate from its runtime.
 
 | tool | what it does | when you run it |
 |---|---|---|
-| [`build-p2-table.py`](#build-p2-tablepy) | builds the bundle-symbolic-name → Maven coordinate table rio repairs purls with | occasionally, on a workstation |
-| [`rio-dtrack-upload.sh`](#rio-dtrack-uploadsh) | uploads normalized SBOMs to DependencyTrack | after every `rio normalize`, in a pipeline |
+| [Test binary workflow](#temporary-linux-test-binaries) | builds a selected revision as a temporary Linux download | when reproducing a problem or testing a fix |
 | [`rio-attest-sign.sh`](#signing-and-verifying-normalization-attestations) | signs and verifies normalization statements with a local key | after `rio normalize --attest` |
+| [`build-p2-table.py`](#build-p2-tablepy) | builds the bundle-symbolic-name → Maven coordinate table rio repairs purls with | occasionally, on a workstation |
+| [`demo-delivery/`](demo-delivery/) | demonstrates native Dependency-Track delivery and batch evidence | with Rio 0.7.0+ and Python 3.9+ |
+| [`demo-dtrack-tls/`](demo-dtrack-tls/) | demonstrates verified TLS and explicit certificate bypass with recorded policy | with Rio 0.7.0+ and Python 3.9+ |
+| [`demo-oci/`](demo-oci/) | demonstrates native standalone and attached OCI delivery | with Rio 0.7.0+ and Python 3.9+ |
+| [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | with Rio 0.7.0+ and Python 3.9+ |
+| [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, refusals and owned-claim replacement | with Rio 0.7.0+ and Python 3.9+ |
+| [`demo-artifact-sets/`](#artifact-sets-demo) | discovers module SBOMs, refuses missing/overlapping inputs and retains offline scope/check evidence | with Rio 0.7.0+ and Python 3.9+ |
+| [`demo-batch-evidence/`](demo-batch-evidence/) | demonstrates partial delivery, compact scope, explicit retry and offline crash recovery | with Rio 0.7.0+ and Python 3.9+ |
+| [`demo-record/`](#consolidated-record-demo) | inspects independent pipeline, retry and reconciliation receipts | when retaining normalization and selected delivery facts |
+| [`demo-normalization-evidence/`](demo-normalization-evidence/) | explains repair sources, exact changes and offline retention | with an installed release containing normalization evidence |
+| [`demo-repair/`](#first-repair-sample) | shows optional p2 repair with an unchanged input and an audit record | when evaluating Eclipse/OSGi coordinate repair |
+| [`demo-agent-integration/`](#agent-integration-examples) | tests project onboarding configurations and a one-command CI receipt step | with Rio 0.7.0+ and Python 3.9+ |
+| [`rio-context.py`](#rio-contextpy) | emits one explicit build-context entry bound to original SBOM bytes | in a producing CI job |
+| [`feature-video/`](#feature-video) | records, narrates and encodes the context feature walkthrough | when the feature or its demo changes |
 
 ---
+
+## Temporary Linux test binaries
+
+Use [Actions → Test binary](https://github.com/rebaze/rio/actions/workflows/test-binary.yaml)
+to share a diagnostic build without publishing a GitHub Release or updating Homebrew.
+Repository write access is required to start a run.
+
+1. Click **Run workflow**, keeping **Use workflow from: main**.
+2. Set **Source branch, tag or commit to build** to your fix branch or exact commit
+   (default `main`). Choose Linux `amd64` or `arm64` (default `amd64`).
+3. Open the completed run and follow **Download artifact** in its summary, or select the
+   `rio-test-linux-…` artifact at the bottom of the run page.
+
+The source must be in this repository and support the current `cmd/rio` build layout and repair
+example. The workflow resolves the chosen revision once and records its full commit SHA.
+Each architecture builds and runs its smoke test on a native Linux runner. It performs a static
+build, checks the reported version/commit, and runs the synthetic normalization/repair example.
+This fast workflow does not wait for the full CI suite or perform the official release checks.
+
+The same flow with the GitHub CLI:
+
+```sh
+gh workflow run test-binary.yaml --repo rebaze/rio --ref main \
+  -f ref=YOUR_FIX_BRANCH_OR_COMMIT -f architecture=amd64
+gh run list --repo rebaze/rio --workflow test-binary.yaml --limit 5
+gh run watch RUN_ID --repo rebaze/rio --exit-status
+gh run download RUN_ID --repo rebaze/rio --name ARTIFACT_NAME --dir rio-test
+```
+
+Replace `YOUR_FIX_BRANCH_OR_COMMIT` and `RUN_ID` with the desired source and the run ID shown
+by `gh run list`, and `ARTIFACT_NAME` with the artifact name shown on that run. The run summary
+provides the complete download and verification commands with these values filled in. Specifying
+`--name` extracts directly into `rio-test`, rather than an artifact-name subdirectory.
+Share the run URL with the tester. GitHub requires sign-in and repository read
+access to download artifacts, including those from public repositories. Downloads expire after
+14 days; a new run produces a new artifact and build identity.
+
+After downloading (and unzipping the artifact if using the browser), run on the matching Linux
+architecture:
+
+```sh
+cd rio-test
+sha256sum -c SHA256SUMS
+tar -xzf rio-test-linux-amd64.tar.gz  # use arm64 for that architecture
+./rio --version
+sh example/run.sh "$PWD/rio"
+```
+
+The archive preserves executable permissions and contains `rio`, `version.txt`, `build-info.json`
+and `example/` with synthetic fixtures. The example runs offline, needs no Go toolchain, preserves
+its input, and prints the temporary directory containing its output and repair evidence.
+
+`rio --version` reports `test-<short-commit>.<run-id>.<attempt>`, the full source commit and build
+time. `build-info.json` also records the requested source, workflow commit, architecture, Go
+version, run URL, binary SHA-256 and validation scope. An outer copy is available without
+extracting the archive. `SHA256SUMS` covers both the archive and that metadata file.
+
+These are unsigned, smoke-tested diagnostic builds. Checksums detect changed download bytes;
+they do not provide the signature and attestation guarantees of official releases. No tag or
+release is created. In particular, do not push a `v…-rc` tag for this purpose: the existing release
+workflow runs on every `v*` tag. Use the regular release process after the fix passes full CI.
 
 ## build-p2-table.py
 
@@ -266,63 +340,52 @@ CI runs it on Python 3.9, the version the tool advertises, whenever a `.py` file
 
 ---
 
-## rio-dtrack-upload.sh
+<a id="rio-dtrack-uploadsh"></a>
 
-Uploads the SBOMs from a `rio normalize` run to DependencyTrack, reading `index.json` to find them.
+## Migrating to native Dependency-Track delivery
 
-```sh
-mvn -B verify
-rio normalize --gate fail
-DTRACK_URL=https://dtrack.example.com DTRACK_API_KEY=... \
-  ./tools/rio-dtrack-upload.sh target/rio/index.json
-```
+The retired `rio-dtrack-upload.sh` is replaced by configured native delivery. Add a Dependency-Track target to `rio.yaml`, name the API-key environment variable, then run `rio` once. [Complete native configuration](../docs/delivery.md) and [quick start](../docs/quick-start.md).
 
-It ships as an example, and it is deliberately not part of rio: rio does not upload anywhere. It
-needs `DTRACK_URL` and `DTRACK_API_KEY` and stops immediately without either. The API key needs the
-`BOM_UPLOAD`, `PROJECT_CREATION_UPLOAD` and `VIEW_PORTFOLIO` permissions. The comment block at the
-top of the script lists every variable it reads.
+The old prefix-plus-artifact-ID project convention is not inferred: configure explicit project names/versions or UUIDs when needed. Project creation requires `autoCreate: true`. Parent-project hierarchy remains a receiver administration concern. Explicit `--allow-failed-gate` belongs to standalone delivery; root uses its effective gate policy.
 
-### Nesting artifacts under one project
-
-So that a product and its parts hang together in the portfolio, name the parent:
-
-```sh
-DTRACK_URL=https://dtrack.example.com DTRACK_API_KEY=... \
-DTRACK_PARENT_NAME="RCP Product" DTRACK_PARENT_VERSION=2026.1 \
-  ./tools/rio-dtrack-upload.sh target/rio/index.json
-```
-
-`DTRACK_PARENT_UUID` addresses the parent directly and is unambiguous. Set one or the other, not
-both, since DependencyTrack ignores the name when a uuid is present.
-
-Two things about parents are DependencyTrack's behaviour rather than the script's, and the script
-reports both rather than letting them pass as silence:
-
-- **The parent must already exist.** DependencyTrack looks it up and answers 404 rather than
-  creating it.
-- **The parent is applied only when the child is created.** Re-uploading a project that already
-  exists leaves its place in the hierarchy alone, whatever the parent settings say. The script
-  checks first and warns when that is about to happen.
-
-### Tests
-
-`rio-dtrack-upload_test.sh` covers the script offline — no DependencyTrack instance, no network:
-
-```sh
-./tools/rio-dtrack-upload_test.sh
-```
-
-CI runs it, along with `shellcheck`, whenever a `.sh` file changes.
-
----
+Uploads return acceptance/unknown/rejection facts. Optional native reconciliation uses `/api/v1/event/token`; no processing observed does not prove ingestion. Reuse of an existing standalone journal is refused, and possible duplicates require explicit retry authorization. See the [installed-binary fault matrix](demo-delivery/README.md), [TLS policy demo](demo-dtrack-tls/README.md), and [owned real-server harness](demo-delivery/integration/README.md).
 
 ## Signing and verifying normalization attestations
 
 `rio normalize --attest` writes unsigned `<artifact-id>.intoto.json` statements beside the
-normalized SBOMs. The [statement contract](../README.md#normalization-attestations) describes
-their subjects, digests and normalization evidence. The rio binary remains self-contained and
-makes no network calls. The optional `rio-attest-sign.sh` tool signs these existing statements
+normalized SBOMs. The [statement contract](../docs/output.md#normalization-attestations) describes
+their subjects, digests and normalization evidence. Normalization remains offline. The optional `rio-attest-sign.sh` tool signs these existing statements
 and verifies each bundle before publishing it beside its SBOM.
+
+### Synthetic preview and runnable example
+
+Actual output from the helper using an installed **Rio v0.7.0** and cosign v3.0.6:
+
+```text
+Verified app.sigstore.json
+Verified worker.sigstore.json
+PASS: recipient verification, unchanged inputs, overwrite refusal, altered SBOM/statement refusal.
+PASS: wrong trusted key, legacy bundle and mixed-format bundle refused.
+```
+
+Inspect the generated [signed bundle](demo-attest-sign/example/app.sigstore.json),
+[statement](demo-attest-sign/example/app.intoto.json), [SBOM](demo-attest-sign/example/app.cdx.json)
+and [synthetic public key](demo-attest-sign/example/SYNTHETIC-ONLY.pub).
+These are synthetic test data; this public key is not a production trust anchor.
+Copy [rio-attest-sign.sh](rio-attest-sign.sh) and [rio-attest-verify.sh](rio-attest-verify.sh) together.
+
+Run the [demonstration](demo-attest-sign/) with an installed Rio 0.7.0+, Python 3.9+,
+Bash, jq and cosign v3.0.6. No Go toolchain is needed:
+
+```sh
+python3 tools/demo-attest-sign/run.py /path/to/rio
+```
+
+The runner copies fixtures into a private temporary directory, generates a disposable test key,
+normalizes two SBOMs, signs both statements and verifies each bundle as a recipient would.
+It checks unchanged inputs, refusal to overwrite evidence, and rejection of changed SBOM bytes
+or a changed signed statement. The private test key is deleted even on failure; public evidence
+remains available for inspection. This test identity must never sign customer data.
 
 ### Requirements and identity
 
@@ -350,9 +413,10 @@ as `COSIGN_PASSWORD`, using your CI secret store or a prompt on a workstation:
 read -r -s -p 'Signing key password: ' COSIGN_PASSWORD; printf '\n'
 export COSIGN_PASSWORD
 
-rio normalize --attest --out target/rio
+result=$(rio normalize --attest --out target/rio --json)
+run_directory=$(printf '%s' "$result" | jq -r .runDirectory)
 ./tools/rio-attest-sign.sh \
-  --key /secure/signer.key --public-key /trusted/signer.pub target/rio
+  --key /secure/signer.key --public-key /trusted/signer.pub "$run_directory"
 unset COSIGN_PASSWORD
 ```
 
@@ -379,7 +443,8 @@ Each `<artifact-id>.sigstore.json` contains the original statement in a signed D
 its verification material. Statements, SBOMs and `index.json` are unchanged; `index.json` is not
 signed. Bundles have owner-only permissions. The tool stages copies in the output directory,
 verifies each bundle, and publishes it without replacing an existing file. Allow disk space for
-copies of the input files and do not run normalization concurrently with signing.
+copies of the input files. Pass the exact `runDirectory` returned by `rio normalize --json`,
+not the parent `--out` directory. The automatic execution receipt remains unsigned.
 
 Exit codes are 0 when every bundle verifies, 2 for usage or preflight errors, and 1 for signing,
 verification or publication errors. Signals also fail the run and remove staging files. If a later
@@ -388,19 +453,20 @@ fresh normalization output directory; existing evidence is never overwritten.
 
 ### Recipient verification
 
-A recipient needs cosign v3.0.6, the normalized SBOM, its bundle, and an independently trusted
-public key. No rio installation, checkout, unsigned statement or `index.json` is needed:
+A recipient needs Bash 3.2+, jq, cosign v3.0.6, the normalized SBOM, its bundle, an independently
+trusted public key, and a copy of [rio-attest-verify.sh](rio-attest-verify.sh). No Rio installation,
+checkout, unsigned statement or `index.json` is needed:
 
 ```sh
-cosign verify-blob-attestation \
-  --key signer.pub \
-  --bundle rcp-client.sigstore.json \
-  --type https://rebaze.com/attestation/sbom-normalization/v1 \
-  --insecure-ignore-tlog \
-  rcp-client.cdx.json
+bash rio-attest-verify.sh --public-key signer.pub \
+  --bundle rcp-client.sigstore.json rcp-client.cdx.json
 ```
 
-This is the same verification the signing tool performs. The command checks the signature,
+This is the same verification the signing tool performs. It snapshots the public key, bundle and
+SBOM before checking the accepted v0.3 DSSE format and invoking cosign on those same bytes. Legacy
+and mixed-format bundles are refused: cosign v3.0.6 can otherwise use an embedded legacy key in
+place of the recipient's `--key`, even with `--new-bundle-format=true`. Do not use a bare cosign
+command to verify arbitrary bundles with this pinned version. The verifier checks the signature,
 predicate type and SBOM digest. `--insecure-ignore-tlog` deliberately skips transparency-log
 verification for this private mode; cosign prints a warning. It does **not** skip signature or
 subject-digest verification. A key supplied only alongside an untrusted bundle is not an
@@ -421,6 +487,379 @@ file and failure handling without contacting Fulcio or Rekor:
 ./tools/rio-attest-sign_test.sh
 ```
 
-CI runs it with the other offline shell tests and checks both scripts with ShellCheck. Real-cosign
-verification should also be exercised with disposable keys and synthetic SBOMs when changing the
-pinned version or signing commands.
+CI runs it with the other offline shell tests and checks all three scripts with ShellCheck. The
+binary checks install the same pinned cosign as the release workflow and run the real-cosign
+demonstration, including independent recipient verification and tamper refusals.
+
+
+## Testing dependency auto-merge
+
+`dependabot-auto-merge_test.py` executes the merge workflow's actual shell policy against
+local GitHub API fixtures. It checks eligible patch/minor security groups and rejects routine
+or major updates, upstream maintainer changes, missing metadata, edited commits, stale heads,
+retargeted PRs, body edits before/during the run, and incomplete or failed required checks. The test replaces `gh` and polling sleeps locally: it makes no
+network calls and cannot merge a real PR. Requires Python 3.9+, bash, and jq.
+
+```sh
+python3 tools/dependabot-auto-merge_test.py
+```
+
+CI runs it when Python tools or the merge workflow change. The live update and alert-closure
+policy is documented in [SECURITY.md](../SECURITY.md#dependency-updates-and-alert-closure).
+
+
+## Pinned Go vulnerability scanner
+
+`tools/security/go.mod` and `go.sum` pin govulncheck and its dependencies separately from
+rio's runtime module. Dependabot maintains both module directories. CI runs the scanner
+against the rio module while continuing to fetch current Go vulnerability advisories:
+
+```sh
+go -C tools/security tool govulncheck -C ../.. -format text ./...
+```
+
+To intentionally change the scanner version, run `go -C tools/security get -tool
+golang.org/x/vuln/cmd/govulncheck@<version>` and `go -C tools/security mod tidy`, then review
+the module changes through a PR. Scanner code does not change merely because a new version
+is published.
+
+`python3 tools/ci-changes_test.py` checks that edits to every workflow and either module
+trigger the Go checks. It also verifies the narrower triggers for the other CI checks.
+Like the merge-policy tests, it runs offline and is included in CI's Python tests.
+
+## Verify release assets before publication
+
+`release-publish.py` is the publication guard used by Rio's own release workflow
+([issue #51](https://github.com/rebaze/rio/issues/51)). It requires Python 3.9+, `gh` and
+`cosign`; the workflow supplies GitHub credentials and pins its signing tools.
+
+The workflow builds with GoReleaser's `--skip=publish,announce,homebrew`. It then stages
+archives, their checksums and signature, the source CycloneDX SBOM, and the changelog.
+The staging command writes a SHA-256 inventory last and refuses existing output paths,
+so an interrupted run cannot silently reuse an earlier inventory.
+
+```sh
+python3 tools/release-publish.py stage \
+  --dist dist --stage release-assets --inventory release-inventory.json \
+  --tag "$TAG" --repo "$GITHUB_REPOSITORY"
+```
+
+The GitHub attestation actions consume these staged files. The workflow combines their
+bundles into `release-attestations.jsonl`, outside the frozen asset directory, then runs:
+
+```sh
+python3 tools/release-publish.py publish \
+  --stage release-assets --inventory release-inventory.json \
+  --bundle release-attestations.jsonl --tag "$TAG" --repo "$GITHUB_REPOSITORY"
+```
+
+Before creating a draft, the guard checks the asset inventory, archive checksums, both
+provenance and CycloneDX attestations for each archive, provenance for the checksum file,
+and the checksum signature. It constrains the signer to this repository's release workflow
+at the requested tag. The verified CycloneDX predicate must match the staged source SBOM.
+The source SBOM describes the repository; attaching it to an archive does not establish a
+complete inventory of that archive's assembled binary.
+
+Verification and upload use the same private copy of the staged bytes. The guard downloads
+the draft's assets and compares their names and SHA-256 digests before publishing the
+identified draft. Homebrew runs only after successful publication and receives the staged
+checksums. Prereleases keep their prerelease designation and do not update the tap.
+
+An existing release **or draft** for the tag blocks creation. Lookup and verification errors
+also block it. Failure after draft creation leaves the draft unpublished; the tool never
+deletes tags, replaces assets, or recreates a release. Inspect the failure and use a new patch
+tag for a corrected release. Do not rerun this tool to overwrite an existing tag's release.
+The workflow serializes runs per tag. Its credentials, staging directory, inventory and
+other release writers remain a trust boundary: this is not protection against an administrator
+or another authorized process deliberately changing a draft during the final API calls.
+
+### Run the offline terminal demo
+
+```sh
+python3 tools/demo-release-gate.py --out /tmp/rio-release-demo
+python3 tools/release-publish_test.py
+```
+
+Use a new output directory for each run. The demo executes the production guard with synthetic
+files and explicit offline substitutes for GitHub and signature verification. It performs real
+hashing, inventory checks, byte comparisons and publication decisions, but does not authenticate
+signatures or create a GitHub release. Four cases show an unchanged candidate proceeding and
+replaced bytes, missing attestations and rejected verification stopping publication.
+
+The output directory retains each scenario's files, inventories, service-call log, exact shell
+commands, raw output, `results.json`, and a structured JSON/text transcript. The guided recording
+inspects real demo archives, records fingerprints, and confirms publication side effects. The `remote/` directory and `published`
+marker are the offline publisher's observable output. The fixtures live under
+`tools/testdata/release/`; they must never be used as production verification tools.
+
+To render that actual transcript as a short captioned MP4, install Pillow in a Python environment
+and make `ffmpeg` available, then run:
+
+```sh
+python3 tools/render-release-demo.py \
+  /tmp/rio-release-demo/transcript.json /tmp/rio-release-demo.mp4
+```
+
+The renderer uses Menlo on macOS or DejaVu Sans Mono on Linux; `--font /path/to/font.ttf`
+selects another monospace font. On macOS, add `--voice Samantha` for spoken explanations.
+Each case has a setup card, animated typing of the full commands, captured output, an explanation
+and a distinct end card. MP4 chapters allow navigation between cases. The renderer writes scene
+PNGs and a timeline alongside the video for visual inspection.
+Only the optional renderer needs Pillow and ffmpeg; the demo and guard tests use the standard
+Python library (the demo also uses bash, tar and shasum). The video preserves command output
+and slows playback for reading; it clearly labels the offline service substitutes. Commands remain
+on screen above their output. Version 2 transcripts require a fresh run of the demo capture command.
+
+## Manifest enrichment demo
+
+The [standalone enrichment demo](demo-enrichment/README.md) includes synthetic CycloneDX 1.6
+SBOMs, three manifests and a shell runner. It uses a real installed rio release containing #61;
+Python 3.9+ reads structured results; no Go toolchain, source build, jq or network access is needed. Copy `demo-enrichment/`
+with its inputs from the matching tagged source archive, or use it from a checkout:
+
+```sh
+./tools/demo-enrichment/run.sh
+# Or select an installed binary:
+RIO_BIN=/absolute/path/to/rio ./tools/demo-enrichment/run.sh
+```
+
+Two products inherit organization and product defaults while supplying their own identities and
+documentation URLs. A separate case refuses a conflicting existing subject with exit 2 and no new
+output files; an explicit `replace` list then permits just the named fields to change. The runner
+shows plans and subject before/after values and retains the complete inputs, plans, conflict log,
+SBOMs, indexes and unsigned statements in a fresh temporary directory printed at exit. See the
+[demo README](demo-enrichment/README.md) for expected values, inspection paths and limits.
+
+## CI build context demo
+
+The [standalone context demo](demo-context/README.md) contains two synthetic CycloneDX SBOMs
+from different repositories, a shared context JSON file, three refusal cases, a prior-claim
+replacement case and a POSIX shell runner. Use an installed Rio release containing #62 and the
+matching tagged source archive; Python 3.9+ reads structured results; no Go toolchain, source build, jq or network is needed:
+
+```sh
+./tools/demo-context/run.sh
+RIO_BIN=/absolute/path/to/rio ./tools/demo-context/run.sh
+```
+
+The runner first plans while the context file is absent, then normalizes both artifacts, reruns
+to compare output bytes, checks stale-digest/missing-required-field/prior-revision refusals, and
+applies explicit replacement for revision plus omitted workspace and build ID. It retains every
+input, plan, output and diagnostic in a unique temporary directory printed at exit.
+
+## rio-context.py
+
+`rio-context.py` is an optional Python 3.9+ standard-library helper for a CI producer. It hashes
+the **original local SBOM bytes** and prints one complete `contextVersion: 1` document containing
+one artifact entry. The caller supplies every asserted value explicitly as flags. There is no
+Git, CI-provider or environment discovery, clock default, network call, JSON merge, or call to
+Rio. Redirect stdout to a temporary file and move it into place after the command succeeds:
+
+```sh
+set -eu
+if python3 tools/rio-context.py \
+  --artifact-id console --sbom target/console.cdx.json \
+  --source-repository "$CI_SOURCE_URL" --source-revision "$CI_REVISION" \
+  --source-workspace "$CI_WORKSPACE" --build-url "$CI_RUN_URL" \
+  --build-id "$CI_RUN_ID" --generator-name 'CycloneDX Gradle Plugin' \
+  > build-context.tmp.json; then
+  mv build-context.tmp.json build-context.json
+else
+  rm -f build-context.tmp.json
+  exit 1
+fi
+rio normalize --manifest rio.yaml
+```
+
+Pass only variables your CI job has actually established; the helper never reads these names
+itself. For multiple artifacts, call it per artifact and have a producer assemble the one strict
+JSON file required by Rio, or author that file directly with a JSON encoder. The helper does not
+merge entries. Available flags cover all v1 leaves: `--source-repository`,
+`--source-revision`, `--source-subdirectory`, `--source-ref`, `--source-workspace`,
+`--build-url`, `--build-id`, `--build-timestamp`, `--build-system-name`,
+`--build-system-version`, `--generator-name`, `--generator-version`, and `--lifecycle`.
+`--artifact-id` and `--sbom` are mandatory. The helper checks obvious format errors before
+writing any JSON; Rio remains the final validator of the context and manifest binding. See
+the [native context contract](../docs/context.md) for field meaning and
+authority limits.
+
+## feature-video
+
+The [feature-video tooling](feature-video/README.md) builds the narrated walkthrough of the
+CI context feature: it runs the demo's commands for real, synthesizes the narration, draws a
+split-screen terminal replay and checks the encoded result. Five steps, kept apart because
+they fail for unrelated reasons and only one of them costs money:
+
+```sh
+python3 tools/feature-video/capture.py     # run the commands, record what they printed
+python3 tools/feature-video/narrate.py     # synthesize the narration (about $0.16 a pass)
+python3 tools/feature-video/render.py      # draw the frames and encode
+python3 tools/feature-video/verify.py      # check the result is worth publishing
+python3 tools/feature-video/bundle.py      # assemble the portable viewing folder
+```
+
+Outputs land in `target/feature-video/`, which is not tracked: the video is tens of megabytes
+and regenerable, so what is committed is the thing that regenerates it.
+
+Authoring needs Pillow, ffmpeg, a Go toolchain for the capture, and — for narration only —
+the 1Password CLI and a paid Google Gemini key. None of them is a rio runtime dependency, and
+none is needed to watch the video or to run the
+[demo it walks through](demo-context/README.md).
+
+The narration voice is a recorded decision: Google Gemini `gemini-3.1-flash-tts-preview`,
+voice `Charon`, under fixed director instructions. The tool refuses to substitute another
+model rather than quietly producing a video in the wrong voice. Clips are cached by a digest
+of provider, model, voice, direction and the line itself, so editing one sentence re-buys one
+sentence. `python3 tools/feature-video/narrate.py --dry-run` prints the estimate before
+anything is spent.
+
+`python3 tools/feature-video/feature_video_test.py` covers the pacing rules, the cache, the
+audio decoding and the failure paths. It runs in CI, makes no network calls and reads no
+credentials — the synthesizer is stubbed, so a test run never spends anything.
+
+## Artifact sets demo
+
+[`demo-artifact-sets/`](demo-artifact-sets/) supplies synthetic marker files, SBOMs, manifests and a
+POSIX-shell runner. Use an installed Rio release containing #71, a shell and standard utilities;
+Python 3.9+ is required; no Go toolchain, Maven, jq or network is needed:
+
+```sh
+./tools/demo-artifact-sets/run.sh
+# Or choose the installed binary explicitly:
+./tools/demo-artifact-sets/run.sh /path/to/rio
+```
+
+The runner copies fixtures into a temporary directory and retains the inputs, logs and outputs
+for inspection. Every normalize run uses a fresh output directory. It checks explicit-only,
+sets-only and mixed manifests; excludes a client through the marker selector; adds a server
+without changing `rio.yaml`; removes only that server's SBOM to demonstrate exit 2 in both plan
+and normalize; removes the marker to demonstrate absence from the new index; applies an explicit
+marker exclusion; and refuses overlapping sets before output.
+
+The copied reporting SBOM deliberately keeps its original subject: directory names define Rio
+output IDs, not software identity. Markers are selected by filename; their XML is never parsed.
+See [manifest semantics and limitations](../docs/manifest.md#discovering-module-artifacts), including
+context/transform path rules and stale-file behavior. The current `index.json`, rather than every
+file in a reused directory, defines membership.
+
+## Agent integration examples
+
+The [integration guide](../docs/agent-integration.md) and [examples](demo-agent-integration/) cover explicit inputs, discovered modules, mixed configuration, missing producers and ambiguous membership. Synthetic producers copy fixture SBOMs; they do not generate a real project's inventory.
+
+Run with an installed Rio 0.7.0+, Python 3.9+, POSIX shell and standard utilities:
+
+```sh
+./tools/demo-agent-integration/run.sh /path/to/rio
+RIO_BIN=/path/to/rio python3 tools/demo-agent-integration/test.py
+```
+
+No Go/Maven toolchain or network is required for these offline fixtures. Each execution uses its returned `runDirectory` and automatic receipt. Tests retain exact membership, deterministic SBOM/index, configured metadata and failed-run output checks.
+
+### Copyable CI step
+
+Copy [ci.sh](demo-agent-integration/ci.sh) into an existing producer pipeline and pass its actual build command:
+
+```sh
+sh ci/rio.sh /path/to/rio sh ci/build-and-sbom.sh
+```
+
+It stops on producer failure, previews the configuration, then runs the configured root pipeline once. Connect the printed automatic receipt path to the existing CI artifact collector. No client bundle is assembled, and failed runs are not presented as completed work. Configured targets may use the network. Producer freshness remains the build's responsibility.
+
+### Automated checks
+
+The onboarding checks cover literal path handling, ordered membership, existing settings, inclusion/exclusion, producer/gate failures and independent run/receipt isolation. The [evaluation procedure](demo-agent-integration/EVALUATION.md) separately evaluates an agent's configuration decisions; it is not a claim about a live agent run.
+
+## First repair sample
+
+[demo-repair/](demo-repair/) is a specialist offline example: one synthetic CycloneDX SBOM with a Gson P2 URL, a manifest selecting repair, and before/after evidence. It requires Rio 0.7.0+, Python 3.9+, POSIX shell and ordinary utilities, without Go, Maven, jq or a mapping-table download.
+
+```sh
+./tools/demo-repair/run.sh /path/to/rio
+```
+
+The example verifies unchanged input bytes, the repaired Maven URL, counts, schema and gate. It finds SBOM/index/receipt through the structured run result and leaves its temporary output available for inspection. [Repair semantics](../docs/p2-repair.md).
+
+## Native verified delivery
+
+The product's [delivery reference](../docs/delivery.md) explains Dependency-Track configuration, scoped credentials, projects, TLS/HTTP policy, native journals, explicit retries and observations. Normal root use is one `rio` invocation; deliberate stage commands each produce an honestly scoped receipt.
+
+Synthetic installed-binary demonstrations require Python 3.9+:
+
+```sh
+python3 tools/demo-delivery/run.py /path/to/rio
+python3 tools/demo-dtrack-tls/run.py /path/to/rio
+```
+
+The first exercises one root pipeline, exact bytes, indexed membership, fan-out/exclusions, preflight refusal, partial delivery, lost responses, explicit retry, gate override and unsupported-schema reporting. The TLS demo checks verified custom CA, explicit bypass, policy drift refusal and source-free receipt rendering. Runtime secret canaries must not appear in retained output.
+
+These local receiver simulations are not real-server compatibility claims. The existing [Dependency-Track integration harness](demo-delivery/integration/README.md) provisions pinned disposable services with scoped synthetic credentials and verifies uploaded bytes/projects/tokens. Existing CI runs this separately from synthetic demos. Do not treat a skipped integration as a pass.
+
+## Consolidated record demo
+
+The directory name is historical; the current [receipt demo](demo-record/README.md) demonstrates separate compact receipts rather than an assembled history bundle:
+
+```sh
+python3 tools/demo-record/run.py /path/to/rio
+```
+
+It exercises one root pipeline, a lost-response attempt, explicit retry and three independent reconciliation invocations. Earlier public receipts remain byte-identical. After receiver shutdown and source removal, it inspects/renders each receipt and refuses dangling references and contradictory acknowledgment claims. Requires Rio 0.7.0+ and Python 3.9+; no Go or external receiver is needed.
+
+## Native OCI delivery
+
+The [OCI product reference](../docs/delivery.md#oci-registries) covers repository configuration, authentication, attachment and response meanings. The [installed-binary demonstration](demo-oci/README.md) is runnable with Python 3.9+:
+
+```sh
+python3 tools/demo-oci/run.py /path/to/rio
+```
+
+It preserves standalone/attached graph checks, exact submitted representations, mixed DTrack/OCI routing, credential/policy boundaries, already-present read-back, failed gate/tampered bytes, unusable receipts, lost responses, content mismatch and an actual killed delivery process. Automatic receipts stay separate by invocation and remain inspectable after the receiver and source workspace are gone.
+
+The [real-registry harness](demo-oci/integration/README.md) uses the existing disposable Distribution/Zot/Nexus paths. Historical committed observation JSON is labeled as historical adapter evidence, not verification of a new candidate. Final integration must identify the exact tested candidate and actual native/archive execution scope.
+
+## Client evidence demos
+
+[Juice Shop hands-on walkthrough](demo-juice-shop/README.md): preview the [backend receipt](demo-juice-shop/example/backend-record.json) and [frontend gate-failure report](demo-juice-shop/example/frontend-report.html), then build Juice Shop from source in Docker and show enrichment, delivery and quality gates with local Dependency-Track. The supplier and example CI URL are synthetic demo assertions.
+
+**Start here:** [actual generated JSON](demo-client-record/example/record.json), [offline HTML](demo-client-record/example/report.html), and [complete runnable ZIP](demo-client-record/example/example.zip). The standard receipt is 5,729 readable UTF-8 bytes, including full digests, URLs, timestamps and tokens. Its SBOMs, receiver and tokens are explicitly synthetic.
+
+```sh
+python3 tools/demo-client-record/run.py /path/to/rio
+python3 tools/demo-batch-evidence/run.py /path/to/rio
+python3 tools/demo-normalization-evidence/run.py /path/to/rio
+```
+
+All require an installed Rio 0.7.0+ and Python 3.9+; none requires a Go toolchain. The client example makes one root invocation per case, verifies exact context fields and multipart bytes/projects, then removes source state and stops the receiver before receipt-only inspection/rendering. The batch demo covers partial/unattempted/excluded pairs, explicit retry and actual process interruption with offline recovery **without lock breaking or upload replay**. The normalization demo keeps repair provenance and uplift in a specialist setting, with compact counts in the receipt and detailed local normalized outputs.
+
+Each normal execution automatically publishes one `rio-run-receipt`, schema version 1. No `--evidence`, collection step, embedded source archive or legacy format reader remains. A retry/reconciliation has its own receipt with prior references, not a merged account of work from different invocations. See the [field guide, bounds and recovery semantics](../docs/output.md).
+
+## Authored release notes
+
+`release-notes.py` selects `docs/releases/<tag>.md` before `release-publish.py stage` freezes the
+release inventory. The first line must identify the exact tag (`# Rio v0.6.0`, optionally followed
+by a title), and the body must be nonempty. Exact bytes are copied into `dist/CHANGELOG.md`, which
+remains inside the existing verification/publication boundary.
+
+Tags v0.6.0 and newer, including prereleases, refuse missing, empty or mismatched authored notes.
+For tags below v0.6.0, a missing authored file explicitly permits the nonempty generated GoReleaser
+changelog; an authored file that exists still must validate. Existing tags/releases remain immutable.
+
+## Published-release verification
+
+`verify-release.py` downloads the complete stable OS/architecture asset set into a fresh directory,
+checks archive checksums, the Sigstore checksum bundle, and GitHub build/SBOM attestations against
+the exact repository, release workflow/tag and source commit. The downloaded source SBOM must match
+the signed predicate, and the public non-draft release body must match the supplied authored notes.
+Only after those checks does it extract and execute the native binary, assert version/commit, and
+run the complete client-record demo. It does not install or replace a user's Rio binary.
+
+```sh
+python3 tools/verify-release.py --tag v0.7.0 --commit FULL_VERIFIED_COMMIT \
+  --notes docs/releases/v0.7.0.md --output /absolute/new/private/verification
+```
+
+Requires Python 3.9+, `gh` and `cosign`. The manual `Verify published release` workflow runs the same
+checks with native Linux/macOS/Windows binaries and installs the Homebrew cask only on a disposable
+macOS runner. Its input commit is the exact verified integrated commit. Architecture execution is
+reported explicitly; verifying an archive is not a claim that its binary ran natively.
+`--legacy-smoke` permits version-only execution for older releases before v0.6.0, which lack this
+client demo. It is refused for v0.6.0 and newer, so it cannot waive this release's client gate.

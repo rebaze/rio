@@ -1,0 +1,18 @@
+version: 1
+enrichment:
+  subject:
+    group: com.example
+    version: "1.0.0"
+    type: application
+artifacts:
+  - id: console
+    sbom: inputs/legacy-console.cdx.json
+    enrichment:
+      replace: [subject.name, subject.version, subject.purl]
+      subject:
+        name: console
+        purl: pkg:maven/com.example/console@1.0.0
+output:
+  specVersionFloor: "1.6"
+gate:
+  require: [name, version, purl]

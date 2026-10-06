@@ -1,0 +1,145 @@
+name: Test binary
+run-name: Test Linux ${{ inputs.architecture }} binary from ${{ inputs.ref }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Source branch, tag or commit to build
+        required: true
+        default: main
+        type: string
+      architecture:
+        description: Linux architecture
+        required: true
+        default: amd64
+        type: choice
+        options:
+          - amd64
+          - arm64
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 15
+    steps:
+      # Keep the smoke fixture on the workflow revision so older source revisions
+      # need not contain this workflow or its supporting example.
+      - name: Check out workflow and smoke fixture
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: workflow
+          persist-credentials: false
+
+      - name: Check out selected source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          path: source
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: source/go.mod
+          # A selected development revision must not populate main's Go cache.
+          cache: false
+
+      - name: Build and smoke-test the selected revision
+        id: build
+        working-directory: source
+        shell: bash
+        env:
+          ARCH: ${{ inputs.architecture }}
+          SOURCE_REF: ${{ inputs.ref }}
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          case "$ARCH" in amd64|arm64) ;; *) echo 'Unsupported Linux architecture' >&2; exit 1 ;; esac
+          test "$(go env GOHOSTOS)" = linux
+          test "$(go env GOHOSTARCH)" = "$ARCH"
+          export SOURCE_COMMIT BUILD_DATE TEST_VERSION ARTIFACT_NAME
+          SOURCE_COMMIT=$(git rev-parse HEAD)
+          BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          TEST_VERSION="test-${SOURCE_COMMIT:0:12}.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
+          ARTIFACT_NAME="rio-test-linux-${ARCH}-${SOURCE_COMMIT:0:12}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          bundle="$RUNNER_TEMP/rio-test-bundle"
+          mkdir -p "$bundle/example" "$GITHUB_WORKSPACE/download"
+          GOOS=linux GOARCH="$ARCH" go build -trimpath \
+            -ldflags "-s -w -X github.com/rebaze/rio/internal/cli.version=$TEST_VERSION -X github.com/rebaze/rio/internal/cli.commit=$SOURCE_COMMIT -X github.com/rebaze/rio/internal/cli.date=$BUILD_DATE" \
+            -o "$bundle/rio" ./cmd/rio
+          "$bundle/rio" --version | tee "$bundle/version.txt"
+          grep -F "$TEST_VERSION" "$bundle/version.txt"
+          grep -F "$SOURCE_COMMIT" "$bundle/version.txt"
+          cp "$GITHUB_WORKSPACE/workflow/tools/demo-repair/"{run.sh,rio.yaml,bom.json} "$bundle/example/"
+          sh "$bundle/example/run.sh" "$bundle/rio"
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          bundle = pathlib.Path(os.environ['RUNNER_TEMP']) / 'rio-test-bundle'
+          metadata = {
+              'schemaVersion': 1, 'kind': 'rio-test-build',
+              'version': os.environ['TEST_VERSION'],
+              'sourceRef': os.environ['SOURCE_REF'],
+              'sourceCommit': os.environ['SOURCE_COMMIT'],
+              'workflowCommit': os.environ['GITHUB_SHA'],
+              'platform': 'linux/' + os.environ['ARCH'],
+              'builtAt': os.environ['BUILD_DATE'],
+              'goVersion': subprocess.check_output(['go', 'version'], text=True).strip(),
+              'runURL': os.environ['GITHUB_SERVER_URL'] + '/' + os.environ['GITHUB_REPOSITORY'] + '/actions/runs/' + os.environ['GITHUB_RUN_ID'],
+              'runAttempt': int(os.environ['GITHUB_RUN_ATTEMPT']),
+              'binarySHA256': hashlib.sha256((bundle / 'rio').read_bytes()).hexdigest(),
+              'validation': 'version identity and synthetic normalization/repair smoke test',
+              'release': False,
+          }
+          (bundle / 'build-info.json').write_text(json.dumps(metadata, indent=2) + '\n')
+          PY
+          cp "$bundle/build-info.json" "$GITHUB_WORKSPACE/download/"
+          cd "$GITHUB_WORKSPACE/download"
+          tar -czf "rio-test-linux-${ARCH}.tar.gz" -C "$bundle" rio version.txt build-info.json example
+          sha256sum "rio-test-linux-${ARCH}.tar.gz" build-info.json > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          {
+            echo "artifact-name=$ARTIFACT_NAME"
+            echo "source-commit=$SOURCE_COMMIT"
+            echo "version=$TEST_VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload temporary test binary
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.build.outputs.artifact-name }}
+          path: download/
+          retention-days: 14
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Show download and build identity
+        env:
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+          ARTIFACT_NAME: ${{ steps.build.outputs.artifact-name }}
+          ARCH: ${{ inputs.architecture }}
+          SOURCE_COMMIT: ${{ steps.build.outputs.source-commit }}
+          TEST_VERSION: ${{ steps.build.outputs.version }}
+        run: |
+          {
+            echo "### Linux test binary"
+            echo "[Download artifact]($ARTIFACT_URL) (GitHub sign-in required; retained for 14 days)."
+            echo ""
+            echo "Version: $TEST_VERSION"
+            echo "Source commit: $SOURCE_COMMIT"
+            echo ""
+            echo '```sh'
+            printf 'gh run download %s --repo %s --name %s --dir rio-test\n' "$GITHUB_RUN_ID" "$GITHUB_REPOSITORY" "$ARTIFACT_NAME"
+            echo 'cd rio-test'
+            echo 'sha256sum -c SHA256SUMS'
+            printf 'tar -xzf rio-test-linux-%s.tar.gz\n' "$ARCH"
+            echo './rio --version'
+            echo 'sh example/run.sh ./rio'
+            echo '```'
+            echo ""
+            echo "Includes SHA256SUMS, build-info.json and a runnable synthetic example."
+            echo "Unsigned diagnostic build; smoke-tested only. Full validation belongs to CI and official releases."
+          } >> "$GITHUB_STEP_SUMMARY"

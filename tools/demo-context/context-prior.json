@@ -1,0 +1,18 @@
+{
+  "contextVersion": 1,
+  "artifacts": [
+    {
+      "id": "console",
+      "sbom": {
+        "sha256": "e05f6fd69ae2ac8fd316119e39efcd5aae0241ec49952c080c17ef1f895c6802"
+      },
+      "source": {
+        "repository": "https://code.example.org/widgets/console",
+        "revision": "1111111111111111111111111111111111111111"
+      },
+      "build": {
+        "url": "https://ci.example.org/widgets/runs/42"
+      }
+    }
+  ]
+}

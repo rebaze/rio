@@ -137,8 +137,7 @@ while IFS= read -r id; do
     --bundle "$bundle" --yes --tlog-upload=false --use-signing-config=false \
     "$stage/$id.cdx.json" </dev/null >/dev/null || failed "$id: signing failed"
   [ -s "$bundle" ] || failed "$id: cosign produced no bundle"
-  cosign verify-blob-attestation --key "$public_key" --bundle "$bundle" \
-    --type "$predicate_type" --insecure-ignore-tlog \
+  bash "$(dirname "$0")/rio-attest-verify.sh" --public-key "$public_key" --bundle "$bundle" \
     "$stage/$id.cdx.json" </dev/null >/dev/null || failed "$id: verification failed"
   if ! cmp -s "$stage/index.json" "$directory/index.json" ||
     ! cmp -s "$stage/$id.intoto.json" "$directory/$id.intoto.json" ||

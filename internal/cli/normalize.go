@@ -11,7 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/rebaze/rio/internal/discover"
+	"github.com/rebaze/rio/internal/buildcontext"
 	"github.com/rebaze/rio/internal/gate"
 	"github.com/rebaze/rio/internal/index"
 	"github.com/rebaze/rio/internal/manifest"
@@ -29,86 +29,87 @@ const (
 )
 
 func newNormalizeCommand(opts *globalOptions, stdout, stderr io.Writer) *cobra.Command {
-	var gateMode string
-	var attest bool
-
-	cmd := &cobra.Command{
-		Use:   "normalize",
-		Short: "Level the spec version, repair identity, and check quality",
-		Long: "normalize reads the manifest, resolves each artifact's SBOM, raises it to\n" +
-			"the spec version floor, applies the configured transforms, checks the gate,\n" +
-			"and writes one normalized document per artifact plus index.json.\n\n" +
-			"With --attest, also write one unsigned in-toto Statement per artifact.\n\n" +
-			"Run it from the repository root, after the build has produced SBOMs.",
-		Args: cobra.NoArgs,
-		RunE: func(*cobra.Command, []string) error {
-			return runNormalize(opts, gateMode, attest, stdout, stderr)
-		},
-	}
-	// Local to normalize; the persistent flags live on the root (§8).
-	cmd.Flags().StringVar(&gateMode, "gate", gateWarn, `"warn" or "fail"`)
-	cmd.Flags().BoolVar(&attest, "attest", false, "write an unsigned in-toto Statement per artifact")
+	o := pipelineOptions{operation: "normalize"}
+	cmd := &cobra.Command{Use: "normalize", Short: "Normalize and check SBOMs offline; write a scoped run receipt", Args: cobra.NoArgs}
+	f := cmd.Flags()
+	f.StringVar(&o.receipt, "receipt", "", "new receipt destination; default inside the isolated run directory")
+	f.StringVar(&o.gate, "gate", "", "gate policy: flag > manifest > warn (standalone default)")
+	f.StringArrayVar(&o.artifacts, "artifact", nil, "artifact ID filter (repeatable; default all)")
+	f.BoolVar(&o.attest, "attest", false, "write an unsigned in-toto Statement per artifact")
+	f.BoolVar(&o.json, "json", false, "print structured run result and receipt location")
+	cmd.RunE = func(cmd *cobra.Command, _ []string) error { return runPipeline(cmd, opts, o, stdout, stderr) }
 	return cmd
 }
 
 // artifact is one manifest artifact carried through the five steps of §5.
 type artifact struct {
+	prepared   bool
+	selection  *index.Selection
 	spec       manifest.Artifact
 	transforms []transform.Transform
 
 	inputPath string // absolute
 	inputRel  string // relative to the manifest directory, for index.json
+	inputSize int64
 	inputSHA  string
 	inputSpec string
 	doc       *sbom.Document
 
-	outputSpec      string
-	schemaValidated bool
-	components      int
-	stats           []index.TransformResult
-	gate            gate.Result
-	integrity       []sbom.IntegrityFinding
-	output          []byte
+	outputSpec       string
+	schemaValidated  bool
+	components       int
+	stats            []index.TransformResult
+	gate             gate.Result
+	integrity        []sbom.IntegrityFinding
+	enrichment       *sbom.EnrichmentRecord
+	contextResolved  *buildcontext.Resolved
+	context          *sbom.ContextRecord
+	checks           *index.EffectiveChecks
+	normalization    *index.Normalization
+	evidenceSnapshot map[string]any
+	output           []byte
 }
 
-func runNormalize(opts *globalOptions, gateMode string, attest bool, stdout, stderr io.Writer) error {
-	if gateMode != gateWarn && gateMode != gateFail {
-		return usageErrorf("--gate must be %q or %q, got %q", gateWarn, gateFail, gateMode)
-	}
-
-	man, err := manifest.Load(opts.manifest)
+// normalizeArtifact is shared by root orchestration and standalone normalization.
+func normalizeArtifact(man *manifest.Manifest, input resolvedArtifact, mode string, contextFiles map[string]*buildcontext.File) (*artifact, error) {
+	a, err := prepare(man, input)
 	if err != nil {
-		return usageErrorf("%v", err)
+		return a, err
 	}
-
-	// Steps 1 to 4 for every artifact before anything is written. Exit 2
-	// conditions abort the whole run before any file is created (§5, §10).
-	artifacts := make([]*artifact, 0, len(man.Artifacts))
-	for _, spec := range man.Artifacts {
-		a, err := prepare(man, spec)
+	if cfg := input.Spec.Context; cfg != nil {
+		path := cfg.File
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(man.Dir, path)
+		}
+		path, err = filepath.Abs(path)
 		if err != nil {
-			return err
+			return a, usageErrorf("context path: %v", err)
 		}
-		if err := process(man, a); err != nil {
-			return err
+		path = filepath.Clean(path)
+		file := contextFiles[path]
+		if file == nil {
+			file, err = buildcontext.Read(man.Dir, path)
+			if err != nil {
+				return a, usageErrorf("artifact %q: %v", input.Spec.ID, err)
+			}
+			contextFiles[path] = file
 		}
-		artifacts = append(artifacts, a)
+		a.contextResolved, err = file.Resolve(input.Spec.ID, a.inputSHA, *cfg)
+		if err != nil {
+			return a, usageErrorf("artifact %q: %v", input.Spec.ID, err)
+		}
 	}
-
-	outDir, err := filepath.Abs(opts.out)
-	if err != nil {
-		return internalErrorf("resolving --out %q: %w", opts.out, err)
+	if err = process(man, a); err != nil {
+		return a, err
 	}
-	if err := writeAll(man, artifacts, outDir, attest); err != nil {
-		return err
-	}
-
-	return report(artifacts, gateMode, opts.quiet, stdout, stderr)
+	a.checks = effectiveChecks(man, a, mode)
+	return a, nil
 }
 
-// prepare is step 1: resolve the glob, read the file, hash it, and decode it.
-func prepare(man *manifest.Manifest, spec manifest.Artifact) (*artifact, error) {
-	a := &artifact{spec: spec}
+// prepare reads, hashes and decodes a concrete input from shared preflight.
+func prepare(man *manifest.Manifest, input resolvedArtifact) (*artifact, error) {
+	spec := input.Spec
+	a := &artifact{spec: spec, selection: input.Selection}
 
 	// Build the transforms first: an unknown transform name or a bad transform
 	// config is a configuration error, and finding it before touching the
@@ -116,31 +117,29 @@ func prepare(man *manifest.Manifest, spec manifest.Artifact) (*artifact, error) 
 	for _, ts := range spec.Transforms {
 		t, err := transform.New(ts.Name, ts.Config, man.Dir)
 		if err != nil {
-			return nil, usageErrorf("%s: artifact %q: %v", man.Path, spec.ID, err)
+			return a, usageErrorf("%s: artifact %q: %v", man.Path, spec.ID, err)
 		}
 		a.transforms = append(a.transforms, t)
 	}
 
-	path, err := discover.Resolve(man.Dir, spec.ID, spec.SBOM)
-	if err != nil {
-		return nil, usageErrorf("%v", err)
-	}
+	path := input.Input
 	a.inputPath = path
 	rel, err := index.RelPath(man.Dir, path)
 	if err != nil {
-		return nil, usageErrorf("artifact %q: %v", spec.ID, err)
+		return a, usageErrorf("artifact %q: %v", spec.ID, err)
 	}
 	a.inputRel = rel
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, usageErrorf("artifact %q: reading %s: %v", spec.ID, path, err)
+		return a, usageErrorf("artifact %q: reading %s: %v", spec.ID, path, err)
 	}
 	a.inputSHA = index.SHA256Bytes(data)
+	a.inputSize = int64(len(data))
 
 	doc, err := sbom.Load(data)
 	if err != nil {
-		return nil, usageErrorf("artifact %q: %s: %v", spec.ID, a.inputRel, err)
+		return a, usageErrorf("artifact %q: %s: %v", spec.ID, a.inputRel, err)
 	}
 	a.doc = doc
 	a.inputSpec = doc.SpecVersion()
@@ -154,15 +153,16 @@ func prepare(man *manifest.Manifest, spec manifest.Artifact) (*artifact, error) 
 		case errors.As(err, &noSchema):
 			// Above the highest embedded schema: pass through (§3).
 		case errors.As(err, &invalid):
-			return nil, usageErrorf(
+			return a, usageErrorf(
 				"artifact %q: %s is not valid CycloneDX %s as generated, before rio touched it.\n"+
 					"This is a finding about the input, not a rio bug: fix the generator or the document, then run rio again.\n%v",
 				spec.ID, a.inputRel, a.inputSpec, invalid)
 		default:
-			return nil, internalErrorf("artifact %q: validating %s: %w", spec.ID, a.inputRel, err)
+			return a, internalErrorf("artifact %q: validating %s: %w", spec.ID, a.inputRel, err)
 		}
 	}
 
+	a.prepared = true
 	return a, nil
 }
 
@@ -170,12 +170,18 @@ func prepare(man *manifest.Manifest, spec manifest.Artifact) (*artifact, error) 
 func process(man *manifest.Manifest, a *artifact) error {
 	doc := a.doc
 	a.components = doc.ComponentCount()
+	if err := a.captureChanges("", nil, nil); err != nil {
+		return internalErrorf("capturing normalization: %w", err)
+	}
 
 	upliftApplied, upliftFrom, err := doc.Uplift(man.Output.SpecVersionFloor)
 	if err != nil {
 		return usageErrorf("%s: %v", man.Path, err)
 	}
 	a.outputSpec = doc.SpecVersion()
+	if err := a.captureChanges("spec-uplift", nil, nil); err != nil {
+		return internalErrorf("capturing uplift: %w", err)
+	}
 
 	// Step 3: transforms, in the order the manifest gave them.
 	for _, t := range a.transforms {
@@ -196,6 +202,14 @@ func process(man *manifest.Manifest, a *artifact) error {
 		}
 
 		a.stats = append(a.stats, recordTransform(doc, t.ID(), result))
+		repairs := map[string]*transform.Resolution{}
+		for _, c := range result.Changes {
+			repairs[fmt.Sprintf("/components/%d/%s", c.ComponentIndex, c.Field)] = c.Resolution
+		}
+		if err := a.captureChanges(t.ID(), nil, repairs); err != nil {
+			return internalErrorf("capturing repair: %w", err)
+		}
+		a.captureOutcomes(t.ID(), result)
 	}
 
 	// Subject override before the gate, since the gate reads what ends up in
@@ -204,6 +218,32 @@ func process(man *manifest.Manifest, a *artifact) error {
 		oldName, oldVersion := doc.SetSubject(s.Name, s.Version)
 		doc.AddMetadataProperty(sbom.PropertyPrefix+"subject-override",
 			fmt.Sprintf("from=%s@%s | to=%s@%s", oldName, oldVersion, s.Name, s.Version))
+	}
+
+	if err := a.captureChanges("subject-override", &transform.Resolution{Kind: "manifest", Selector: "artifacts/" + a.spec.ID + "/subject", SHA256: man.SHA256}, nil); err != nil {
+		return internalErrorf("capturing subject: %w", err)
+	}
+
+	// Enrichment is a separate metadata phase: it never changes dependency membership.
+	if a.spec.Enrichment != nil {
+		record, err := doc.Enrich(a.spec.Enrichment, filepath.Base(man.Path), man.SHA256)
+		if err != nil {
+			return usageErrorf("%s: artifact %q: %v", man.Path, a.spec.ID, err)
+		}
+		a.enrichment = record
+		if err := a.captureChanges("enrichment", &transform.Resolution{Kind: "manifest", Selector: "effective enrichment for " + a.spec.ID, SHA256: man.SHA256}, nil); err != nil {
+			return internalErrorf("capturing enrichment: %w", err)
+		}
+	}
+	if a.contextResolved != nil {
+		record, err := doc.ApplyContext(a.contextResolved)
+		if err != nil {
+			return usageErrorf("%s: artifact %q: context %s: %v", man.Path, a.spec.ID, a.contextResolved.Selector, err)
+		}
+		a.context = record
+		if err := a.captureChanges("context", &transform.Resolution{Kind: "context-file", Selector: record.Selector, SHA256: record.File.SHA256}, nil); err != nil {
+			return internalErrorf("capturing context: %w", err)
+		}
 	}
 
 	// Run metadata (§4.3a).
@@ -218,6 +258,9 @@ func process(man *manifest.Manifest, a *artifact) error {
 	}
 
 	doc.Finalize()
+	if err := a.captureChanges("rio-bookkeeping", nil, nil); err != nil {
+		return internalErrorf("capturing bookkeeping: %w", err)
+	}
 
 	a.integrity = doc.IntegrityFindings()
 
@@ -267,7 +310,7 @@ func recordTransform(doc *sbom.Document, id string, result transform.Result) ind
 			fmt.Sprintf("rule=%s | from=%s | to=%s", id, c.From, c.To))
 
 		if comp := doc.Component(c.ComponentIndex); comp != nil {
-			comp.AppendIdentityEvidence(c.Field, 0.9, fmt.Sprintf("rio %s: %s", id, c.From))
+			comp.AppendIdentityAssertion(c.Field, c.To)
 		}
 		stat.Applied++
 	}
@@ -320,6 +363,12 @@ func writeAll(man *manifest.Manifest, artifacts []*artifact, outDir string, atte
 		SHA256: man.SHA256,
 	})
 
+	scope, err := normalizationScope(man, artifacts)
+	if err != nil {
+		return internalErrorf("describing normalization: %w", err)
+	}
+	idx.NormalizationScope = scope
+
 	for _, a := range artifacts {
 		name := a.spec.ID + ".cdx.json"
 		path := filepath.Join(outDir, name)
@@ -337,6 +386,9 @@ func writeAll(man *manifest.Manifest, artifacts []*artifact, outDir string, atte
 
 		idx.Artifacts = append(idx.Artifacts, index.Artifact{
 			ID:                a.spec.ID,
+			Normalization:     a.normalization,
+			Checks:            a.checks,
+			Selection:         a.selection,
 			Input:             index.FileRef{Path: a.inputRel, SHA256: a.inputSHA},
 			Output:            index.FileRef{Path: name, SHA256: sum},
 			SpecVersion:       index.SpecVersions{Input: a.inputSpec, Output: a.outputSpec},
@@ -346,6 +398,8 @@ func writeAll(man *manifest.Manifest, artifacts []*artifact, outDir string, atte
 			Gate:              gateStatus(a.gate),
 			GateFindings:      gateFindings(a.gate),
 			IntegrityFindings: a.integrity,
+			Enrichment:        a.enrichment,
+			Context:           a.context,
 		})
 	}
 

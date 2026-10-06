@@ -1,0 +1,36 @@
+{
+  "revision": "5658473cf8814459bf89000ce373b20ed0b4eb37",
+  "node": "v24.18.0",
+  "platform": "linux",
+  "architecture": "arm64",
+  "workspace": "dirty",
+  "buildToolPins": {
+    "@angular/build": "22.0.1",
+    "@angular/cli": "22.0.1"
+  },
+  "npm": "11.16.0",
+  "generators": {
+    "backend": "4.2.1",
+    "frontend": "1.4.4"
+  },
+  "repository": "https://github.com/juice-shop/juice-shop",
+  "ref": "refs/tags/v20.2.0",
+  "builderImage": "node:24.18.0-bookworm@sha256:5711a0d445a1af54af9589066c646df387d1831a608226f4cd694fc59e745059",
+  "buildId": "local-20261001T182549Z",
+  "startedAt": "2026-10-01T18:25:49.234594+00:00",
+  "finishedAt": "2026-10-01T18:28:00.453935+00:00",
+  "sboms": {
+    "backend": {
+      "generatedPath": "bom.json",
+      "sha256": "29915c58273b72ee1ef63c0c2fb76d66accd82e5b0a1ddbbb43b1e98cec8319e"
+    },
+    "frontend": {
+      "generatedPath": "frontend/dist/bom/bom.json",
+      "sha256": "e971f9fad4d73801c6f30d07394dfb3f00225d6e01131f370f2b52d002f186c1"
+    }
+  },
+  "lockfiles": {
+    "package-lock.json": "0198f3d8c8b99bd568d612ed5a11290be21afd5da32ef36264ffba721f4dbd02",
+    "frontend/package-lock.json": "7c03c736592baf1c0164d08a7d7f0a43c4d3829ed23795c975c9eec2a8d6ed5b"
+  }
+}

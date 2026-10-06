@@ -60,7 +60,19 @@ type Result struct {
 	// Findings is the subject finding first, if any, then the failing
 	// components in document order. Never nil, so index.json carries an empty
 	// array rather than null.
-	Findings []Finding
+	Findings       []Finding
+	Evaluations    []Evaluation
+	ComponentCount int
+}
+
+// Evaluation counts actual requirement evaluations, independently of findings.
+// Empty component requirements therefore produce no component evaluations.
+type Evaluation struct {
+	Scope       string `json:"scope"`
+	Requirement string `json:"requirement"`
+	Evaluated   int    `json:"evaluated"`
+	Failed      int    `json:"failed"`
+	Outcome     string `json:"outcome"`
 }
 
 // OK reports whether the artifact passed.
@@ -76,9 +88,10 @@ func (r Result) OK() bool { return len(r.Findings) == 0 }
 func Check(doc *sbom.Document, require []Requirement) Result {
 	findings := []Finding{}
 	if doc == nil {
-		return Result{Findings: findings}
+		return Result{Findings: findings, Evaluations: []Evaluation{}}
 	}
 
+	result := Result{Findings: findings, Evaluations: []Evaluation{}, ComponentCount: len(doc.EveryComponent())}
 	if f, failed := checkSubject(doc); failed {
 		findings = append(findings, f)
 	}
@@ -95,7 +108,7 @@ func Check(doc *sbom.Document, require []Requirement) Result {
 		}
 	}
 	if !wantName && !wantVersion && !wantPURL {
-		return Result{Findings: findings}
+		return evaluatedResult(result, findings, require)
 	}
 
 	// Every component, including components nested under another: a nested
@@ -119,7 +132,48 @@ func Check(doc *sbom.Document, require []Requirement) Result {
 		}
 	}
 
-	return Result{Findings: findings}
+	return evaluatedResult(result, findings, require)
+}
+
+func evaluatedResult(result Result, findings []Finding, require []Requirement) Result {
+	result.Findings = findings
+	for _, scope := range []string{"subject", "components"} {
+		for _, req := range All() {
+			selected := scope == "subject" && req != RequirePURL
+			if scope == "components" {
+				for _, r := range require {
+					if req == r {
+						selected = true
+					}
+				}
+			}
+			if !selected {
+				continue
+			}
+			count := 1
+			if scope == "components" {
+				count = result.ComponentCount
+			}
+			e := Evaluation{Scope: scope, Requirement: string(req), Evaluated: count, Outcome: "pass"}
+			for _, f := range findings {
+				if f.Subject != (scope == "subject") {
+					continue
+				}
+				for _, missing := range f.Missing {
+					if missing == string(req) {
+						e.Failed++
+					}
+				}
+			}
+			if count == 0 {
+				e.Outcome = "not-evaluated"
+			} else if e.Failed > 0 {
+				e.Outcome = "fail"
+			}
+			result.Evaluations = append(result.Evaluations, e)
+		}
+	}
+	return result
 }
 
 // checkSubject verifies metadata.component carries both a name and a version.

@@ -1,0 +1,20 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "application",
+      "name": "example-orders-server",
+      "version": "1.0.0"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "tiny-library",
+      "version": "2.0.0",
+      "purl": "pkg:maven/org.example/tiny-library@2.0.0"
+    }
+  ]
+}

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<meta name="description" content="{{DESCRIPTION}}">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #080e18; --panel: #121e2e; --terminal: #0c1421; --border: #26384e;
+    --ink: #e9eff8; --muted: #91a4bc; --mint: #73e1bb;
+    --gutter: 16px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 1120px; margin: 0 auto; padding: 32px var(--gutter) 72px; }
+  header { border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 28px; }
+  .eyebrow { color: var(--mint); font-size: 13px; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; }
+  h1 { font-size: clamp(26px, 4vw, 38px); margin: 10px 0 6px; line-height: 1.2; }
+  .sub { color: var(--muted); margin: 0; }
+  video { width: 100%; height: auto; display: block; background: #000; border-radius: 12px; border: 1px solid var(--border); }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; align-items: start; }
+  @media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  h2 { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
+  .chapters { list-style: none; margin: 0; padding: 0; }
+  .chapters li { margin-bottom: 2px; }
+  .chapters button {
+    display: flex; gap: 12px; width: 100%; text-align: left; cursor: pointer;
+    background: transparent; border: 0; border-radius: 8px; padding: 9px 10px;
+    color: var(--ink); font: inherit; font-size: 15px; line-height: 1.35;
+  }
+  .chapters button:hover, .chapters button:focus-visible { background: var(--panel); }
+  .chapters button[aria-current="true"] { background: var(--panel); box-shadow: inset 2px 0 0 var(--mint); }
+  .chapters time { color: var(--mint); font-variant-numeric: tabular-nums; font-size: 14px; flex: none; }
+  section { margin-top: 40px; }
+  .note { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--mint); border-radius: 10px; padding: 16px 18px; color: var(--muted); }
+  .note strong { color: var(--ink); }
+  .files { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 10px; }
+  .files a {
+    display: inline-block; padding: 9px 14px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel); color: var(--ink); text-decoration: none; font-size: 15px;
+  }
+  .files a:hover, .files a:focus-visible { border-color: var(--mint); color: var(--mint); }
+  details { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 0 18px; }
+  summary { cursor: pointer; padding: 16px 0; font-weight: 600; }
+  pre {
+    background: var(--terminal); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px; overflow-x: auto; font-size: 13.5px; line-height: 1.55;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 14px; }
+  a { color: var(--mint); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">Rio · {{FEATURE}}</p>
+    <h1>{{TITLE}}</h1>
+    <p class="sub">{{DESCRIPTION}}</p>
+  </header>
+
+  <div class="layout">
+    <div>
+      <video id="player" controls preload="metadata" poster="poster.png" playsinline>
+        <source src="{{BASE}}.mp4" type="video/mp4">
+        <track id="captions" kind="captions" src="{{BASE}}.vtt" srclang="en" label="English" default>
+        Your browser cannot play this video. The MP4 file is next to this page.
+      </video>
+    </div>
+    <nav aria-label="Chapters">
+      <h2>Chapters</h2>
+      <ul class="chapters" id="chapters">{{CHAPTERS}}</ul>
+    </nav>
+  </div>
+
+  <section>
+    <p class="note">
+      <strong>Real commands, paced replay.</strong> Every command and every line of output was
+      captured from an actual run; the typing and the pauses are paced so they can be read.
+      The example data is synthetic. The narration is synthesized speech
+      ({{VOICE}}). What the walkthrough shows are <strong>producer assertions</strong> — not
+      authenticated build provenance, and not proof about compiled artifact bytes.
+    </p>
+  </section>
+
+  <section>
+    <h2>Files</h2>
+    <ul class="files">
+      <li><a href="{{BASE}}.mp4" download>Video (MP4)</a></li>
+      <li><a href="{{BASE}}.vtt" download>Captions (WebVTT)</a></li>
+      <li><a href="{{BASE}}.srt" download>Captions (SRT)</a></li>
+      <li><a href="commands.sh" download>Commands</a></li>
+      <li><a href="command-output.txt" download>Command output</a></li>
+      <li><a href="narration.txt" download>Narration transcript</a></li>
+      <li><a href="SHA256SUMS" download>Checksums</a></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Narration transcript</h2>
+    <details>
+      <summary>Read the spoken script</summary>
+      <pre>{{TRANSCRIPT}}</pre>
+    </details>
+  </section>
+
+  <footer>
+    <p>{{META}}</p>
+    <p>Captions are served from a separate file. Opening this page straight from disk can leave
+    a browser refusing to load them; serving the folder
+    (<code>python3 -m http.server</code>) shows the page as intended.</p>
+  </footer>
+</main>
+
+<script>
+  // Chapter buttons seek the video, and the list follows playback. Without JavaScript the
+  // video still plays and every asset above is still a plain link.
+  (function () {
+    var video = document.getElementById('player');
+    var buttons = Array.prototype.slice.call(
+      document.querySelectorAll('#chapters button'));
+    buttons.forEach(function (button) {
+      button.addEventListener('click', function () {
+        video.currentTime = parseFloat(button.dataset.start);
+        video.play();
+      });
+    });
+    function highlight() {
+      var at = video.currentTime;
+      var current = null;
+      buttons.forEach(function (button) {
+        if (parseFloat(button.dataset.start) <= at + 0.01) { current = button; }
+      });
+      buttons.forEach(function (button) {
+        button.setAttribute('aria-current', button === current ? 'true' : 'false');
+      });
+    }
+    video.addEventListener('timeupdate', highlight);
+    highlight();
+  }());
+</script>
+</body>
+</html>

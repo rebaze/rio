@@ -27,6 +27,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/rebaze/rio/internal/buildcontext"
+	"github.com/rebaze/rio/internal/delivery"
+	"github.com/rebaze/rio/internal/enrichment"
 	"github.com/rebaze/rio/internal/sbom"
 	"github.com/rebaze/rio/internal/transform"
 )
@@ -50,15 +53,17 @@ func DefaultRequire() []string { return []string{RequireName, RequireVersion, Re
 const DefaultSpecVersionFloor = "1.6"
 
 // idPattern is the artifact id rule (§2). Ids become output filenames and
-// DependencyTrack project names, so they must be filesystem and URL safe.
+// artifact selectors; receiver project names are resolved separately.
 var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 
 // Manifest is a loaded, validated rio.yaml.
 type Manifest struct {
-	Version   int
-	Artifacts []Artifact
-	Output    Output
-	Gate      Gate
+	Delivery     yaml.Node
+	Version      int
+	Artifacts    []Artifact
+	ArtifactSets []ArtifactSet
+	Output       Output
+	Gate         Gate
 
 	// Path is the manifest path exactly as the caller gave it, which is what
 	// index.json records (§4.2).
@@ -75,10 +80,16 @@ type Manifest struct {
 type Artifact struct {
 	ID   string
 	SBOM string
+	// Context optionally binds producer-supplied build assertions to this
+	// artifact. Loading a manifest validates this declaration but never opens
+	// the context file.
+	Context *buildcontext.Binding
 	// Subject overrides metadata.component when the generator described the
 	// building module rather than the shipped artifact (§4.3d). Nil when the
 	// manifest does not override it.
 	Subject *Subject
+	// Enrichment contains resolved metadata values and their declaration sources.
+	Enrichment *enrichment.Resolved
 	// Transforms are applied in the order given (§5 step 3).
 	Transforms []TransformSpec
 }
@@ -101,12 +112,15 @@ type TransformSpec struct {
 
 // Output is the output section.
 type Output struct {
+	Directory        string
 	SpecVersionFloor string
 }
 
 // Gate is the gate section.
 type Gate struct {
-	Require []string
+	ModeExplicit bool
+	Mode         string
+	Require      []string
 }
 
 // Requires reports whether field is one of the gate's required fields.
@@ -147,6 +161,29 @@ func Load(path string) (*Manifest, error) {
 
 	l := loader{path: path, src: data}
 
+	// Validate the raw delivery subtree before typed decoding can echo its scalar values.
+	var document yaml.Node
+	if err := yaml.Unmarshal(data, &document); err != nil && bytes.Contains(data, []byte("delivery")) {
+		return nil, l.errf("delivery", "invalid YAML document")
+	}
+	if len(document.Content) == 1 && document.Content[0].Kind == yaml.MappingNode {
+		root := document.Content[0]
+		found := false
+		for i := 0; i < len(root.Content); i += 2 {
+			if root.Content[i].Tag == "!!merge" && mergedDelivery(root.Content[i+1], map[*yaml.Node]bool{}) {
+				return nil, l.errf("delivery", "must be a literal root field; delivery through YAML merges is ambiguous")
+			}
+			if root.Content[i].Value == "delivery" {
+				if found {
+					return nil, l.errf("delivery", "duplicate field")
+				}
+				found = true
+				if _, err := delivery.ParseConfig(*root.Content[i+1], m.Dir, m.SHA256); err != nil {
+					return nil, fmt.Errorf("%s: delivery: %w", l.path, err)
+				}
+			}
+		}
+	}
 	var f fileSection
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	// Unknown keys are errors: a misspelled key would otherwise be dropped
@@ -171,10 +208,18 @@ func Load(path string) (*Manifest, error) {
 		return nil, l.yamlError(err)
 	}
 
+	m.Delivery = f.Delivery
+	if err := l.strictStringTypes(); err != nil {
+		return nil, err
+	}
+
 	if err := l.version(&f, m); err != nil {
 		return nil, err
 	}
 	if err := l.artifacts(&f, m); err != nil {
+		return nil, err
+	}
+	if err := l.artifactSets(&f, m); err != nil {
 		return nil, err
 	}
 	if err := l.output(&f, m); err != nil {
@@ -190,18 +235,23 @@ func Load(path string) (*Manifest, error) {
 // validated result cannot express states the validation rejected, and so
 // "absent" is distinguishable from "present and empty".
 type fileSection struct {
+	Delivery yaml.Node `yaml:"delivery"`
 	// Version is a Node rather than an int so a missing version and a
 	// non-numeric one both get a message naming the field.
-	Version   yaml.Node         `yaml:"version"`
-	Artifacts []artifactSection `yaml:"artifacts"`
-	Output    *outputSection    `yaml:"output"`
-	Gate      *gateSection      `yaml:"gate"`
+	Version      yaml.Node            `yaml:"version"`
+	Artifacts    []artifactSection    `yaml:"artifacts"`
+	ArtifactSets []artifactSetSection `yaml:"artifactSets"`
+	Output       *outputSection       `yaml:"output"`
+	Gate         *gateSection         `yaml:"gate"`
+	Enrichment   *enrichment.Config   `yaml:"enrichment"`
 }
 
 type artifactSection struct {
-	ID      string          `yaml:"id"`
-	SBOM    string          `yaml:"sbom"`
-	Subject *subjectSection `yaml:"subject"`
+	ID         string                `yaml:"id"`
+	SBOM       string                `yaml:"sbom"`
+	Context    *buildcontext.Binding `yaml:"context"`
+	Subject    *subjectSection       `yaml:"subject"`
+	Enrichment *enrichment.Config    `yaml:"enrichment"`
 	// Transforms stay as nodes: each entry is a single-key mapping whose key
 	// is the transform name, which no Go struct describes.
 	Transforms []yaml.Node `yaml:"transforms"`
@@ -213,12 +263,14 @@ type subjectSection struct {
 }
 
 type outputSection struct {
+	Directory *string `yaml:"directory"`
 	// A pointer separates "not given" (use the default) from an explicit
 	// empty string (a mistake worth reporting).
 	SpecVersionFloor *string `yaml:"specVersionFloor"`
 }
 
 type gateSection struct {
+	Mode    *string   `yaml:"mode"`
 	Require *[]string `yaml:"require"`
 }
 
@@ -262,8 +314,8 @@ func (l loader) version(f *fileSection, m *Manifest) error {
 }
 
 func (l loader) artifacts(f *fileSection, m *Manifest) error {
-	if len(f.Artifacts) == 0 {
-		return l.errf("artifacts", "at least one artifact is required")
+	if len(f.Artifacts) == 0 && len(f.ArtifactSets) == 0 {
+		return l.errf("artifacts", "at least one artifact is required in artifacts or artifactSets")
 	}
 
 	seen := make(map[string]int, len(f.Artifacts))
@@ -276,7 +328,7 @@ func (l loader) artifacts(f *fileSection, m *Manifest) error {
 		case a.ID == "":
 			return l.errf(field+".id", "is required")
 		case !idPattern.MatchString(a.ID):
-			// Ids become filenames and DependencyTrack project names.
+			// Ids become output filenames and artifact selectors.
 			return l.errf(field+".id", "%q does not match %s", a.ID, idPattern)
 		}
 		if first, dup := seen[a.ID]; dup {
@@ -289,6 +341,24 @@ func (l loader) artifacts(f *fileSection, m *Manifest) error {
 		}
 
 		out := Artifact{ID: a.ID, SBOM: a.SBOM}
+		if err := buildcontext.ValidateBinding(a.Context); err != nil {
+			return l.errf(field+".context", "%v", err)
+		}
+		if a.Context != nil {
+			out.Context = &buildcontext.Binding{
+				File:    a.Context.File,
+				Require: append([]string(nil), a.Context.Require...),
+				Replace: append([]string(nil), a.Context.Replace...),
+			}
+		}
+		resolved, err := enrichment.Resolve(f.Enrichment, a.Enrichment, field)
+		if err != nil {
+			return l.errf("", "%v", err)
+		}
+		if err := sbom.ValidateEnrichmentConfig(resolved); err != nil {
+			return l.errf(field+".enrichment", "%v", err)
+		}
+		out.Enrichment = resolved
 
 		if a.Subject != nil {
 			// Both halves are required: the override replaces
@@ -318,6 +388,12 @@ func (l loader) artifacts(f *fileSection, m *Manifest) error {
 }
 
 func (l loader) output(f *fileSection, m *Manifest) error {
+	if f.Output != nil && f.Output.Directory != nil {
+		if strings.TrimSpace(*f.Output.Directory) == "" {
+			return l.errf("output.directory", "must be a nonempty path")
+		}
+		m.Output.Directory = *f.Output.Directory
+	}
 	m.Output.SpecVersionFloor = DefaultSpecVersionFloor
 	if f.Output == nil || f.Output.SpecVersionFloor == nil {
 		return nil
@@ -333,6 +409,14 @@ func (l loader) output(f *fileSection, m *Manifest) error {
 }
 
 func (l loader) gate(f *fileSection, m *Manifest) error {
+	m.Gate.Mode = "fail"
+	if f.Gate != nil && f.Gate.Mode != nil {
+		if *f.Gate.Mode != "fail" && *f.Gate.Mode != "warn" {
+			return l.errf("gate.mode", "must be fail or warn")
+		}
+		m.Gate.Mode = *f.Gate.Mode
+		m.Gate.ModeExplicit = true
+	}
 	if f.Gate == nil || f.Gate.Require == nil {
 		m.Gate.Require = DefaultRequire()
 		return nil
@@ -408,21 +492,35 @@ var yamlTargets = map[string]struct {
 	"[]manifest.artifactSection": {field: "artifacts", shape: "a list of artifact entries",
 		where: regexp.MustCompile(`^artifacts$`)},
 	"manifest.artifactSection": {field: "artifacts[]", shape: "a mapping with id and sbom",
-		where: regexp.MustCompile(`^artifacts\[[0-9]+\]$`)},
+		where: regexp.MustCompile(`^(?:artifacts|artifactSets)\[[0-9]+\]$`)},
+	"[]manifest.artifactSetSection": {field: "artifactSets", shape: "a list of artifact set entries", where: regexp.MustCompile(`^artifactSets$`)},
+	"manifest.artifactSetSection":   {field: "artifactSets[]", shape: "a mapping with modules, sbom and idFrom", where: regexp.MustCompile(`^artifactSets\[[0-9]+\]$`)},
 	"manifest.subjectSection": {field: "subject", shape: "a mapping with name and version",
-		where: regexp.MustCompile(`^artifacts\[[0-9]+\]\.subject$`)},
+		where: regexp.MustCompile(`^(?:artifacts|artifactSets)\[[0-9]+\]\.subject$`)},
+	"buildcontext.Binding": {field: "context", shape: "a mapping with file",
+		where: regexp.MustCompile(`^(?:artifacts|artifactSets)\[[0-9]+\]\.context$`)},
+	"enrichment.Config": {field: "enrichment", shape: "a mapping",
+		where: regexp.MustCompile(`^((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment$`)},
+	"enrichment.Subject": {field: "enrichment.subject", shape: "a mapping",
+		where: regexp.MustCompile(`^((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment\.subject$`)},
+	"enrichment.Organization": {field: "enrichment organization", shape: "a mapping",
+		where: regexp.MustCompile(`^((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment\.(producer|subject\.(manufacturer|supplier))$`)},
+	"[]enrichment.Contact": {field: "enrichment contact", shape: "a list of contacts",
+		where: regexp.MustCompile(`^((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment\.(producer|subject\.(manufacturer|supplier))\.contact$`)},
+	"enrichment.Contact": {field: "enrichment contact", shape: "a mapping with name, email or phone",
+		where: regexp.MustCompile(`^((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment\.(producer|subject\.(manufacturer|supplier))\.contact\[[0-9]+\]$`)},
 	"manifest.outputSection": {field: "output", shape: "a mapping",
 		where: regexp.MustCompile(`^output$`)},
 	"manifest.gateSection": {field: "gate", shape: "a mapping",
 		where: regexp.MustCompile(`^gate$`)},
 	"[]yaml.Node": {field: "transforms", shape: "a list of transforms",
-		where: regexp.MustCompile(`^artifacts\[[0-9]+\]\.transforms$`)},
+		where: regexp.MustCompile(`^(?:artifacts|artifactSets)\[[0-9]+\]\.transforms$`)},
 	"[]string": {field: "gate.require", shape: "a list of strings",
-		where: regexp.MustCompile(`^gate\.require$`)},
+		where: regexp.MustCompile(`^(artifactSets\[[0-9]+\]\.exclude|gate\.require|(?:artifacts|artifactSets)\[[0-9]+\]\.context\.(require|replace)|((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment\.(replace|(producer|subject\.(manufacturer|supplier))\.url))$`)},
 	// The one type several keys share, which is why it names none of them
 	// when the lookup below cannot tell which one was meant.
 	"string": {shape: "a string", where: regexp.MustCompile(
-		`^(artifacts\[[0-9]+\]\.(id|sbom|subject\.(name|version))|output\.specVersionFloor|gate\.require\[[0-9]+\])$`)},
+		`^((?:artifacts|artifactSets)\[[0-9]+\]\.(id|modules|idFrom|sbom|exclude\[[0-9]+\]|subject\.(name|version)|context\.file)|output\.specVersionFloor|gate\.require\[[0-9]+\]|(?:artifacts|artifactSets)\[[0-9]+\]\.context\.(require|replace)\[[0-9]+\]|((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment\..+)$`)},
 }
 
 // yamlDetail reduces a decode failure to go-yaml's own words, without the
@@ -643,4 +741,102 @@ func describe(n *yaml.Node) string {
 		// An alias (version: *anchor) is the only kind that reaches here.
 		return "an unexpected value"
 	}
+}
+
+// strictStringTypes prevents YAML from silently converting numbers and
+// booleans inside strict extension mappings. The typed decoder still owns
+// shape and unknown-key checks.
+func (l loader) strictStringTypes() error {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(l.src, &doc); err != nil {
+		return l.yamlError(err)
+	}
+	var invalid error
+	var visit func(*yaml.Node, string, bool, bool, int)
+	visit = func(n *yaml.Node, path string, inside, merged bool, depth int) {
+		if invalid != nil {
+			return
+		}
+		if depth > 100 {
+			invalid = l.errf(path, "YAML aliases are too deeply nested")
+			return
+		}
+		if n.Kind == yaml.AliasNode {
+			visit(n.Alias, path, inside, merged, depth+1)
+			return
+		}
+		if inside && n.Kind == yaml.ScalarNode && n.Tag != strTag {
+			invalid = l.errf(path, "must be a string, got %s", describe(n))
+			return
+		}
+		switch n.Kind {
+		case yaml.DocumentNode:
+			for _, child := range n.Content {
+				visit(child, path, inside, false, depth+1)
+			}
+		case yaml.MappingNode:
+			for i := 0; i+1 < len(n.Content); i += 2 {
+				key, value := n.Content[i], n.Content[i+1]
+				if key.Tag == mergeTag {
+					// Merged keys belong to the receiving mapping. Keeping its
+					// path also activates strict strings for inherited blocks.
+					visit(value, path, inside, true, depth+1)
+					continue
+				}
+				child := key.Value
+				if path != "" {
+					child = path + "." + key.Value
+				}
+				// Set selector strings and existing extension mappings are strict.
+				enabled := inside || (path == "output" && key.Value == "directory") || (path == "gate" && key.Value == "mode") || (path == "" && key.Value == "artifactSets") || ((key.Value == "enrichment" || key.Value == "context") && artifactStrictParent.MatchString(path))
+				if key.Value == "transforms" && strings.HasPrefix(path, "artifactSets[") {
+					enabled = false
+				}
+				visit(value, child, enabled, false, depth+1)
+			}
+		case yaml.SequenceNode:
+			for i, child := range n.Content {
+				if merged {
+					// YAML permits <<: [*first, *second]; both mappings merge
+					// into the same parent rather than into indexed children.
+					visit(child, path, inside, true, depth+1)
+				} else {
+					visit(child, fmt.Sprintf("%s[%d]", path, i), inside, false, depth+1)
+				}
+			}
+		}
+	}
+	visit(&doc, "", false, false, 0)
+	return invalid
+}
+
+var artifactStrictParent = regexp.MustCompile(`^(|(?:artifacts|artifactSets)\[[0-9]+\])$`)
+
+// mergedDelivery follows only mapping inheritance, preserving historical intake
+// merges while preventing delivery from bypassing literal-node validation.
+func mergedDelivery(n *yaml.Node, seen map[*yaml.Node]bool) bool {
+	if n == nil || seen[n] {
+		return false
+	}
+	seen[n] = true
+	switch n.Kind {
+	case yaml.AliasNode:
+		return mergedDelivery(n.Alias, seen)
+	case yaml.SequenceNode:
+		for _, v := range n.Content {
+			if mergedDelivery(v, seen) {
+				return true
+			}
+		}
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			if n.Content[i].Value == "delivery" {
+				return true
+			}
+			if n.Content[i].Tag == "!!merge" && mergedDelivery(n.Content[i+1], seen) {
+				return true
+			}
+		}
+	}
+	return false
 }

@@ -1,0 +1,55 @@
+{
+  "contextVersion": 1,
+  "artifacts": [
+    {
+      "id": "console",
+      "sbom": {
+        "sha256": "f3fc7209de8aa6e28a61bf7728da672416cc133c7cc5797d4126177ed44bf7a7"
+      },
+      "source": {
+        "repository": "https://code.example.org/widgets/console",
+        "revision": "1111111111111111111111111111111111111111",
+        "subdirectory": "apps/console",
+        "ref": "refs/heads/main",
+        "workspace": "clean"
+      },
+      "build": {
+        "url": "https://ci.example.org/widgets/runs/42",
+        "id": "42",
+        "timestamp": "2026-01-01T12:00:00Z",
+        "system": {
+          "name": "Gradle",
+          "version": "8.14"
+        }
+      },
+      "generator": {
+        "name": "CycloneDX Gradle Plugin",
+        "version": "3.0.0"
+      },
+      "lifecycle": "build"
+    },
+    {
+      "id": "agent",
+      "sbom": {
+        "sha256": "3e298630a18fd364ffd67c2ccadbd8863024664a41dfc24f87a6e826235af068"
+      },
+      "source": {
+        "repository": "https://code.example.org/agents/agent",
+        "revision": "2222222222222222222222222222222222222222"
+      },
+      "build": {
+        "url": "https://ci.example.org/agents/runs/7",
+        "id": "7",
+        "system": {
+          "name": "Maven",
+          "version": "3.9"
+        }
+      },
+      "generator": {
+        "name": "CycloneDX Maven Plugin",
+        "version": "2.9.1"
+      },
+      "lifecycle": "pre-build"
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+{"contextVersion":1,"artifacts":[{"id":"application","sbom":{"sha256":"SBOM_SHA"},"source":{"repository":"https://code.example.org/synthetic/app","revision":"1111111111111111111111111111111111111111"},"build":{"url":"https://ci.example.org/synthetic/runs/42","id":"42","system":{"name":"Synthetic demo","version":"1"}},"lifecycle":"build"}]}

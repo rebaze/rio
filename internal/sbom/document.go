@@ -420,6 +420,37 @@ func (c *Component) AppendIdentityEvidence(field string, confidence float64, val
 	}
 }
 
+// AppendIdentityAssertion records a conclusion without inventing a probability.
+// CycloneDX methods require a numeric confidence, so categorical repair sources
+// belong to the index ledger and metadata repair property instead. Existing input
+// evidence is preserved. 1.5 allows only one identity object, which is never replaced.
+func (c *Component) AppendIdentityAssertion(field, conclusion string) {
+	if c.raw == nil {
+		return
+	}
+	evidence, ok := c.raw["evidence"].(map[string]any)
+	if !ok {
+		evidence = map[string]any{}
+		c.raw["evidence"] = evidence
+	}
+	entry := map[string]any{"field": field}
+	if compareSpecVersions(c.doc.SpecVersion(), "1.6") < 0 {
+		if _, exists := evidence["identity"]; !exists {
+			evidence["identity"] = entry
+		}
+		return
+	}
+	entry["concludedValue"] = conclusion
+	switch identity := evidence["identity"].(type) {
+	case []any:
+		evidence["identity"] = append(identity, entry)
+	case map[string]any:
+		evidence["identity"] = []any{identity, entry}
+	default:
+		evidence["identity"] = []any{entry}
+	}
+}
+
 func formatConfidence(c float64) string {
 	s := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.2f", c), "0"), ".")
 	if s == "" || s == "-" {

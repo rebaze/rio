@@ -5,9 +5,10 @@ Guidance for coding agents working in this repository. This file is the single s
 
 ## Project Overview
 
-`rio` is a Go CLI distributed as a single static binary. It reads a manifest, resolves each declared
-artifact's SBOM, levels the CycloneDX spec version, repairs p2 coordinates to Maven coordinates,
-checks a quality gate, and writes the results plus an `index.json`.
+`rio` is a Go CLI distributed as a single static binary. One root invocation runs the pipeline in
+`rio.yaml`: consume SBOMs, enrich metadata, check quality, deliver to configured targets, and write
+one compact run receipt. Normalization includes spec leveling and optional p2 coordinate repairs.
+Each invocation owns an isolated run directory; delivery journals remain internal recovery state.
 
 `rio plan` describes that same run without performing it, and `--json` makes it a contract. It is how
 a tool learns the manifest's wiring without parsing YAML: `tools/build-p2-table.py` reads it to find
@@ -33,9 +34,10 @@ tools/                          Supporting tools that are not rio; see tools/REA
 ```
 
 Anything that supports rio without being part of it goes in `tools/`, together with its own
-documentation in `tools/README.md`. The rule of thumb is the network: rio makes no network calls, so
-work that needs one — building the p2 mapping table, uploading to DependencyTrack — is a tool rather
-than a feature. The main `README.md` points at `tools/README.md` and does not document the tools
+documentation in `tools/README.md`. Normalization, plan, delivery plan, delivery inspection, record inspection and reporting remain offline.
+Intake and delivery configuration share one rio.yaml; deliver plans from verified index members.
+Root pipeline execution, explicit native deliver and delivery reconcile operations may construct
+network clients and resolve credentials. Read-only operations never create execution receipts. Supporting network work such as building the p2 mapping table remains a tool. The main `README.md` points at `tools/README.md` and does not document the tools
 itself, so that rio's own documentation stays about rio.
 
 ## Build & Run
@@ -53,6 +55,21 @@ make vet                        # go vet ./...
 - Standard `internal/` package layout for non-exported packages
 - Version, commit, and build date injected via ldflags at build time (see `cmd/root.go`)
 - The binary must stay self-contained: `CGO_ENABLED=0`, no runtime dependencies on external tools
+
+## Feature Demonstrations
+
+Every feature includes synthetic example data and a runnable demo that works with an installed
+Rio release binary. Users must not need a Go toolchain or a source build to run it. Keep supporting
+demo scripts and fixtures under `tools/`, document them in `tools/README.md`, and link there from
+the main README. Exercise the demo against the built binary during verification.
+
+## First impression: Time to Wow
+
+Lead the README and release notes with a concrete example of the output users receive, before
+setup instructions or feature inventories. For new artifacts, include an actual generated preview
+and a directly inspectable or downloadable sample. Readers should see the result without first
+running a demo. Lead with the common consumed → enriched → delivered → acknowledged workflow;
+keep specialized normalization repairs secondary. Keep the preview faithful to output from a released binary and label synthetic data.
 
 ## Task Tracking
 
@@ -81,3 +98,7 @@ CycloneDX source SBOM, verifies the attestations, and then publishes the Homebre
 - **NEVER delete tags** — tags are immutable, even if a release is broken
 - **NEVER re-create releases** on existing tags — instead, bump the version and create a new release
 - When fixing a broken release, increment the micro (patch) version by default (e.g. `v0.1.0` → `v0.1.1`) unless told otherwise
+
+For v0.6.0 and newer, commit authored notes at `docs/releases/<tag>.md` before tagging.
+The heading must identify the exact tag (`# Rio <tag>`) and the body must be nonempty;
+the release pipeline freezes these notes into its verified staged inventory before publication.

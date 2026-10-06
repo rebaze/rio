@@ -5,21 +5,36 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '45 5 * * *' # Recheck unchanged dependencies against new advisories.
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
   cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+
+      # Keep this inside the existing required build check so vulnerable
+      # upgrades cannot pass branch protection via a separate optional job.
+      - name: Review dependency changes
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: low
+          fail-on-scopes: runtime, development, unknown
+          license-check: false
+          comment-summary-in-pr: never
 
       - name: Detect changed file types
         id: changes
@@ -41,16 +56,18 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED"
           go=false
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then go=true; fi
           goreleaser=false
           shell=false
           python=false
           # Fixtures, golden files and the embedded CycloneDX schemas are
           # inputs to the test suite, so a change to any of them has to run it.
           # Missing that is how a stale golden file reaches main.
-          if grep -E '(\.go$|^go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$)' <<<"$CHANGED" >/dev/null; then go=true; fi
+          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery|record|oci|dtrack-tls|normalization-evidence|batch-evidence|client-record|juice-shop|attest-sign)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$|^tools/rio-attest-(sign(_test)?|verify)\.sh$)' <<<"$CHANGED" >/dev/null; then go=true; fi
+          if grep -E '^\.github/workflows/.*\.ya?ml$' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.goreleaser\.yaml$' <<<"$CHANGED" >/dev/null; then goreleaser=true; fi
           if grep -E '\.sh$' <<<"$CHANGED" >/dev/null; then shell=true; fi
-          if grep -E '\.py$' <<<"$CHANGED" >/dev/null; then python=true; fi
+          if grep -E '(\.py$|^\.github/workflows/(dependabot-auto-merge|release)\.yaml$)' <<<"$CHANGED" >/dev/null; then python=true; fi
           if grep -E '^\.github/workflows/ci\.yaml$' <<<"$CHANGED" >/dev/null; then go=true; goreleaser=true; shell=true; python=true; fi
           echo "go=$go" >> "$GITHUB_OUTPUT"
           echo "goreleaser=$goreleaser" >> "$GITHUB_OUTPUT"
@@ -62,7 +79,20 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-          cache-dependency-path: go.sum
+          cache-dependency-path: |
+            go.sum
+            tools/security/go.sum
+
+      # Pin the scanner and its dependencies in a separate tools module.
+      # Dependabot updates that module; the vulnerability database stays live.
+      # Text output exits nonzero when reachable vulnerabilities are found.
+      - name: Scan Go dependencies for reachable vulnerabilities
+        if: steps.changes.outputs.go == 'true'
+        run: |
+          go -C tools/security mod tidy -diff
+          go -C tools/security mod verify
+          go -C tools/security tool govulncheck -C ../.. -format text ./...
+          go -C tools/security tool govulncheck -format text golang.org/x/vuln/cmd/govulncheck
 
       - name: Check formatting
         if: steps.changes.outputs.go == 'true'
@@ -97,9 +127,8 @@ jobs:
         run: go test -race ./...
 
       # rio must stay a self-contained static binary with no runtime
-      # dependency on external tools, and it must make no network calls
-      # (§8, and the "no network access anywhere in the binary" acceptance
-      # criterion). Building with CGO off is the part CI can enforce.
+      # dependency on external tools. Normalization/planning stay offline;
+      # explicit delivery may construct clients. Build with CGO off.
       - name: Build the release binary the way GoReleaser does
         if: steps.changes.outputs.go == 'true'
         env:
@@ -110,6 +139,25 @@ jobs:
           ./rio version
           ./rio normalize --help > /dev/null
           ./rio plan --help > /dev/null
+          ./tools/demo-repair/run.sh "$PWD/rio"
+          ./tools/demo-enrichment/run.sh "$PWD/rio"
+          ./tools/demo-context/run.sh "$PWD/rio"
+          ./tools/demo-artifact-sets/run.sh "$PWD/rio"
+          ./tools/demo-agent-integration/run.sh "$PWD/rio"
+          RIO_BIN="$PWD/rio" python3 tools/demo-agent-integration/test.py
+          RIO_BIN="$PWD/rio" python3 tools/rio-context_test.py
+          python3 tools/demo-juice-shop/verify.py "$PWD/rio"
+          RIO_BIN="$PWD/rio" python3 tools/demo-juice-shop/verify_test.py
+
+      - name: Install pinned cosign for synthetic signing checks
+        if: steps.changes.outputs.go == 'true'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
+
+      - name: Sign and independently verify synthetic normalization statements
+        if: steps.changes.outputs.go == 'true'
+        run: python3 tools/demo-attest-sign/run.py "$PWD/rio"
 
       - name: Lint shell scripts
         if: steps.changes.outputs.shell == 'true'
@@ -121,15 +169,16 @@ jobs:
             sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
           fi
           shellcheck --version
-          shellcheck -s sh install.sh
-          shellcheck tools/rio-dtrack-upload.sh install_test.sh tools/rio-dtrack-upload_test.sh tools/rio-attest-sign.sh tools/rio-attest-sign_test.sh
+          shellcheck -s sh tools/demo-repair/run.sh tools/demo-agent-integration/*.sh tools/demo-agent-integration/projects/*/build.sh tools/demo-artifact-sets/run.sh install.sh tools/demo-enrichment/run.sh tools/demo-context/run.sh tools/demo-context/check-replacement.sh
+          shellcheck install_test.sh
+          shellcheck tools/demo-juice-shop/build.sh
+          shellcheck tools/rio-attest-sign.sh tools/rio-attest-sign_test.sh tools/rio-attest-verify.sh
 
-      - name: Test the shell scripts offline
+      - name: Test the installer offline
         if: steps.changes.outputs.shell == 'true'
         run: |
           set -euo pipefail
           ./install_test.sh
-          ./tools/rio-dtrack-upload_test.sh
           ./tools/rio-attest-sign_test.sh
 
       # build-p2-table.py advertises "Python 3.9+ and nothing else", and that
@@ -137,7 +186,7 @@ jobs:
       # rough guess. Pinning the floor here is what keeps it true: on the
       # runner's own newer python, a 3.10-only expression would pass and only
       # fail on the workstation it was written for.
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         if: steps.changes.outputs.python == 'true'
         with:
           python-version: "3.9"
@@ -148,6 +197,16 @@ jobs:
           set -euo pipefail
           python3 --version
           python3 tools/build-p2-table_test.py
+          python3 tools/dependabot-auto-merge_test.py
+          python3 tools/ci-changes_test.py
+          python3 tools/rio-context_test.py
+          python3 tools/feature-video/feature_video_test.py
+          python3 tools/feature-video/tooling_test.py
+          python3 tools/release-publish_test.py
+          python3 tools/release-notes_test.py
+          python3 tools/verify-release_test.py
+          python3 tools/demo-delivery/integration/setup_test.py
+          python3 tools/demo-juice-shop/demo_test.py
 
       - name: Install GoReleaser
         if: steps.changes.outputs.goreleaser == 'true'
@@ -159,3 +218,145 @@ jobs:
       - name: Validate GoReleaser config
         if: steps.changes.outputs.goreleaser == 'true'
         run: goreleaser check
+
+  delivery-platforms:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      # Golden files and raw-byte fixture digests require an unchanged LF checkout.
+      - name: Preserve fixture bytes on Windows
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.9"
+      - name: Native delivery and evidence tests
+        run: go test ./internal/delivery/... ./internal/receipt/... ./internal/manifest ./internal/index ./internal/cli ./cmd/rio
+      - name: Static build and installed-binary demo
+        shell: bash
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          go env GOOS GOARCH
+          go build -trimpath -o rio-demo.exe ./cmd/rio
+          python tools/demo-delivery/run.py "$PWD/rio-demo.exe"
+          python tools/demo-dtrack-tls/run.py "$PWD/rio-demo.exe"
+          python tools/demo-record/run.py "$PWD/rio-demo.exe"
+          python tools/demo-normalization-evidence/run.py "$PWD/rio-demo.exe"
+          python tools/demo-batch-evidence/run.py "$PWD/rio-demo.exe"
+          python tools/demo-client-record/run.py "$PWD/rio-demo.exe"
+          python tools/demo-oci/run.py "$PWD/rio-demo.exe"
+          python tools/demo-juice-shop/verify.py "$PWD/rio-demo.exe"
+
+
+  oci-distribution:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.9"
+      - name: Create disposable TLS and Basic-auth fixtures
+        run: python tools/demo-oci/integration/setup.py "$RUNNER_TEMP/rio-oci"
+      - name: Start pinned real Distribution and zot
+        env:
+          RIO_OCI_FIXTURE_ROOT: ${{ runner.temp }}/rio-oci
+        run: docker compose -p rio-oci-ci -f tools/demo-oci/integration/compose.yaml --profile zot up -d
+      - name: Real Distribution TLS/auth, read-back, required-API refusal and recovery
+        env:
+          RIO_OCI_FIXTURE_ROOT: ${{ runner.temp }}/rio-oci
+          RIO_OCI_TEST_EVIDENCE: ${{ runner.temp }}/rio-oci-distribution-evidence.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source "$RUNNER_TEMP/rio-oci/test.env"
+          set +a
+          docker compose -p rio-oci-ci -f tools/demo-oci/integration/compose.yaml exec -T distribution /bin/registry --version
+          go test ./internal/delivery/oci -list '^TestIntegrationOCI$' | grep -x TestIntegrationOCI
+          go test ./internal/delivery/oci -run '^TestIntegrationOCI$' -count=1 -v
+      - name: Real zot TLS/auth, positive Referrers and crash recovery
+        env:
+          RIO_OCI_FIXTURE_ROOT: ${{ runner.temp }}/rio-oci
+          RIO_OCI_TEST_EVIDENCE: ${{ runner.temp }}/rio-oci-zot-evidence.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source "$RUNNER_TEMP/rio-oci/test.env"
+          set +a
+          export RIO_OCI_TEST_REGISTRY=127.0.0.1:15001
+          export RIO_OCI_TEST_PRODUCT=zot
+          export RIO_OCI_TEST_VERSION=2.1.21
+          export RIO_OCI_TEST_IMAGE_DIGEST=sha256:8258443838e95989c13c891f78a02bc1c391b5a00591ffef24cb8c17cde28038
+          export RIO_OCI_TEST_REFERRERS=required
+          docker compose -p rio-oci-ci -f tools/demo-oci/integration/compose.yaml exec -T zot /usr/local/bin/zot-linux-amd64 --version
+          go test ./internal/delivery/oci -run '^TestIntegrationOCI$' -count=1 -v
+      - name: Retain sanitized real-registry observations
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: oci-registry-evidence
+          path: ${{ runner.temp }}/rio-oci-*-evidence.json
+          if-no-files-found: warn
+      - name: Remove only this job's disposable registry and volume
+        if: always()
+        env:
+          RIO_OCI_FIXTURE_ROOT: ${{ runner.temp }}/rio-oci
+        run: docker compose -p rio-oci-ci -f tools/demo-oci/integration/compose.yaml --profile zot down -v
+
+
+  dependency-track:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.9"
+      - name: Create and start only this job's disposable receiver
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/demo-delivery/integration/setup.py create "$RUNNER_TEMP/rio-dtrack"
+          python tools/demo-delivery/integration/setup.py start "$RUNNER_TEMP/rio-dtrack"
+      - name: Real adapter contracts and installed-binary client handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/rio-integration" ./cmd/rio
+          python tools/demo-delivery/integration/exercise.py "$RUNNER_TEMP/rio-dtrack" "$RUNNER_TEMP/rio-integration" --adapter-tests
+      - name: Retain only sanitized real-server evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dependency-track-evidence
+          path: |
+            ${{ runner.temp }}/rio-dtrack/exercise-*/verification.json
+            ${{ runner.temp }}/rio-dtrack/exercise-*/adapter-*-observations.json
+            ${{ runner.temp }}/rio-dtrack/exercise-*/adapter-*.log
+            ${{ runner.temp }}/rio-dtrack/exercise-*/record-*.json
+            ${{ runner.temp }}/rio-dtrack/exercise-*/report.html
+          if-no-files-found: warn
+      - name: Remove only this job's owned containers and volumes
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/rio-dtrack/state.json" ]; then
+            python tools/demo-delivery/integration/setup.py stop "$RUNNER_TEMP/rio-dtrack"
+          fi

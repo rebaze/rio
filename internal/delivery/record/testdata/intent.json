@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "sequence": 0,
+  "attemptId": "00000000000000000000000000000000",
+  "observedAt": "2026-09-24T12:00:00Z",
+  "kind": "intent",
+  "data": {
+    "rioVersion": "test",
+    "source": {
+      "indexSHA256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "artifactId": "app",
+      "outputSHA256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "gate": "ok",
+      "schemaValidated": false,
+      "allowFailedGate": false
+    },
+    "payloads": [
+      {
+        "role": "sbom",
+        "mediaType": "application/vnd.cyclonedx+json",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "size": 10,
+        "sourceSHA256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "transformation": "identity"
+      }
+    ],
+    "binding": "app-security",
+    "destination": {
+      "type": "test",
+      "destinationName": "security",
+      "identity": {
+        "object": "a"
+      },
+      "options": {},
+      "credentialRefs": [],
+      "capabilities": [
+        "submit"
+      ]
+    },
+    "configSHA256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+}
