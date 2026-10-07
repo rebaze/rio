@@ -5,28 +5,30 @@
 ## Why Rio exists
 
 Rio began with Eclipse RCP builds whose p2 package identities prevented downstream tools from
-matching dependencies to Maven packages. It now also normalizes CycloneDX spec versions, checks
-required fields, selects module SBOMs, and records supplied product and build metadata.
+matching dependencies to Maven packages. It now runs a manifest-driven SBOM workflow: select and
+consume SBOMs, normalize/enrich metadata, evaluate configured handoff checks, deliver to selected
+targets, and compile the actual results into one compact receipt for that invocation.
 
-The goal is to make build evidence easier to inspect and use in release decisions. Today's CLI
-handles SBOM normalization. A passing SBOM gate does not establish that software is safe to release.
+Rio is an evidence compiler for this SBOM workflow. The recipient can inspect what was consumed,
+what changed, which checks ran, where delivery was attempted and what the receiver acknowledged.
+Supplied source/build metadata remains a producer assertion. A passing SBOM gate does not establish
+that software is safe to release, and an acknowledgment does not establish ingestion.
 
 ## Direction
 
-Future work is tracked in GitHub issues, separate from the current command contract:
+Future work and priorities are tracked in [GitHub issues](https://github.com/rebaze/rio/issues),
+separate from the current command contract. Proposed extensions need a concrete producer input,
+a demonstrated gap in current SBOM workflow evidence, a recipient task and explicit verification
+limits before they become implementation commitments.
 
-| Area | Work |
-|---|---|
-| Validate the next consumer workflow | [#47](https://github.com/rebaze/rio/issues/47) |
-| Strengthen SBOM handoff, repair provenance, requirements and retention | [#43](https://github.com/rebaze/rio/issues/43), [#44](https://github.com/rebaze/rio/issues/44), [#45](https://github.com/rebaze/rio/issues/45), [#46](https://github.com/rebaze/rio/issues/46) |
-| Bind artifacts to SBOM evidence | [#52](https://github.com/rebaze/rio/issues/52) |
-| Import artifact-level test results | [#53](https://github.com/rebaze/rio/issues/53) |
-| Evaluate release requirements and scoped exceptions | [#54](https://github.com/rebaze/rio/issues/54), [#55](https://github.com/rebaze/rio/issues/55) |
-| Demonstrate refusal of tested-A/shipped-B | [#56](https://github.com/rebaze/rio/issues/56) |
+Keep the one-invocation, one-compact-receipt contract. Evidence describes actual work, scoped
+checks and observations; it preserves missing, failed and unknown results. Producers own build
+execution and SBOM generation. External tools own optional input retention and signing.
 
-These are planned compiler capabilities. Rio does not currently compile release evaluations,
-external test results, exceptions or deployment records. Deployment systems remain the source for
-what is running. Rio's own release pipeline separately [checks staged assets before publication](../tools/README.md#verify-release-assets-before-publication).
+Test-result ingestion, product release-eligibility evaluation, approval/exception engines and
+publication enforcement are outside Rio's roadmap. Release consumers apply their own policies
+to the evidence; deployment systems remain the source for what is running. Rio's own release
+pipeline separately [checks staged assets before publication](../tools/README.md#verify-release-assets-before-publication).
 
 ## Scope
 
@@ -38,9 +40,10 @@ exact-subject discovery, with acknowledgment and current content verification ke
 [tools/README.md](../tools/README.md).
 
 Current exclusions include SBOM merging, component filtering, reading assembled release artifacts,
-drift comparison, SPDX conversion, license normalization/scoring, vulnerability lookup, signing,
-and general-purpose remote storage or querying. Rio preserves dependency component membership. Release policy,
-scanner execution and deployment tracking belong to the surrounding systems.
+drift comparison, SPDX conversion, license normalization/scoring, vulnerability lookup, signing
+inside the binary, full-input/diagnostic-bundle export, and general-purpose remote storage or
+querying. Rio preserves dependency component membership. Release policy, scanner execution and
+deployment tracking belong to the surrounding systems.
 
 ## Rio and rebaze
 

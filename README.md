@@ -316,9 +316,9 @@ self-contained HTML report. Keep the JSON alongside the report for machine inspe
 
 The records provide evidence for later release controls: which SBOM was processed, what changed,
 which supplied build assertions belong to it, and what is known about each delivery attempt.
-Rio's gate checks SBOM fields; broader
-[release-rule evaluation is planned](docs/project.md#direction). SBOM generation and vulnerability
-scanning remain separate steps.
+Rio's gate enforces configured SBOM handoff checks. The surrounding release system decides whether
+to publish using these facts and its own policy. SBOM generation, test execution and vulnerability
+scanning remain separate steps. See [project scope](docs/project.md#direction).
 
 ### Where the evidence lives
 

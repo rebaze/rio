@@ -101,7 +101,7 @@ arrays as well as the logical removal. Pre-existing references, unrelated refere
 references subsequently augmented with comments or hashes remain. Earlier v1 context records
 without `ownedReferences` are accepted: Rio derives ownership only from an explicit native
 addition in their change audit; otherwise it preserves the reference because ownership is
-unknown. This extends the unreleased context record; context input files remain unchanged.
+unknown. This extends the context record; context input files remain unchanged.
 
 The generator claim describes the producer's reported generator. Rio preserves original
 `metadata.tools` and separately records itself as the normalizer; it never re-labels the
