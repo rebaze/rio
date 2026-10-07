@@ -864,3 +864,6 @@ macOS runner. Its input commit is the exact verified integrated commit. Architec
 reported explicitly; verifying an archive is not a claim that its binary ran natively.
 `--legacy-smoke` permits version-only execution for older releases before v0.6.0, which lack this
 client demo. It is refused for v0.6.0 and newer, so it cannot waive this release's client gate.
+
+Historical acceptance evidence is retained in the [v0.6.0 release verification report](../docs/release-verification/v0.6.0.md),
+including exact-commit workflow results, published downloads, native execution and Homebrew installation.
