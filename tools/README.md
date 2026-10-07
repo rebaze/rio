@@ -442,7 +442,8 @@ and does not imply the gate passed.
 Each `<artifact-id>.sigstore.json` contains the original statement in a signed DSSE envelope and
 its verification material. Statements, SBOMs and `index.json` are unchanged; `index.json` is not
 signed. Bundles have owner-only permissions. The tool stages copies in the output directory,
-verifies each bundle, and publishes it without replacing an existing file. Allow disk space for
+verifies each bundle, and publishes it without replacing an existing file. Before returning success,
+it rechecks the entire selected input set and each published bundle against private snapshots. Allow disk space for
 copies of the input files. Pass the exact `runDirectory` returned by `rio normalize --json`,
 not the parent `--out` directory. The automatic execution receipt remains unsigned.
 

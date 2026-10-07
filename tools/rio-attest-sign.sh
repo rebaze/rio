@@ -91,6 +91,7 @@ stage=$(mktemp -d "$directory/.rio-attest-XXXXXX") || refuse 'cannot create stag
 trap 'rm -rf "$stage"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+mkdir "$stage/verified" || refuse 'cannot create verified snapshot directory'
 cp "$directory/index.json" "$stage/index.json"
 jq -e -s '
   length == 1 and (.[0] |
@@ -144,9 +145,26 @@ while IFS= read -r id; do
     ! cmp -s "$stage/$id.cdx.json" "$directory/$id.cdx.json"; then
     failed "$id: inputs changed during signing"
   fi
+  # The publication link shares an inode with bundle. Keep a separate verified
+  # copy so changes through that public link cannot alter the final comparison.
+  cp "$bundle" "$stage/verified/$id.sigstore.json" || failed "$id: cannot retain verified bundle snapshot"
   # Same-filesystem hard link publishes atomically and never replaces old evidence.
   # Pass the parent directory: a raced destination directory must not receive
   # a nested bundle (ln treats a full destination path differently).
   ln "$bundle" "$directory/" || failed "$id: cannot publish verified bundle"
   printf 'Verified %s.sigstore.json\n' "$id"
+done <<< "$ids"
+
+# A later artifact's signing must not hide changes to an earlier input/bundle.
+if ! regular "$directory/index.json" || ! cmp -s "$stage/index.json" "$directory/index.json"; then
+  failed 'index changed during signing'
+fi
+while IFS= read -r id; do
+  for suffix in cdx.json intoto.json sigstore.json; do
+    snapshot="$stage/$id.$suffix"
+    if [ "$suffix" = sigstore.json ]; then snapshot="$stage/verified/$id.sigstore.json"; fi
+    if ! regular "$directory/$id.$suffix" || ! cmp -s "$snapshot" "$directory/$id.$suffix"; then
+      failed "$id: input or published bundle changed during signing"
+    fi
+  done
 done <<< "$ids"

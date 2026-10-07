@@ -48,6 +48,12 @@ case "$1" in
     fi
     if [ "${INTERRUPT:-0}" = 1 ]; then kill -TERM "$PPID"; fi
     if [ "${CHANGE_INPUT:-0}" = 1 ]; then printf changed > "$WORK/output with spaces/a.cdx.json"; fi
+    if [ "${CHANGE_EARLIER_INPUT:-0}" = 1 ] && [ "$(basename "$statement")" = b.intoto.json ]; then
+      printf changed > "$WORK/output with spaces/a.cdx.json"
+    fi
+    if [ "${CHANGE_EARLIER_BUNDLE:-0}" = 1 ] && [ "$(basename "$statement")" = b.intoto.json ]; then
+      printf changed > "$WORK/output with spaces/a.sigstore.json"
+    fi
     case "${CREATE_DESTINATION:-0}" in
       file) printf previous > "$WORK/output with spaces/a.sigstore.json" ;;
       directory) mkdir "$WORK/output with spaces/a.sigstore.json" ;;
@@ -79,6 +85,8 @@ edit() { jq "$2" "$1" > "$work/edit" && mv "$work/edit" "$1"; }
 run() {
   out="$(WORK="$work" PATH="$work/bin:$PATH" COSIGN_PASSWORD=FIXTURE-SECRET \
     INTERRUPT="${INTERRUPT:-0}" CHANGE_INPUT="${CHANGE_INPUT:-0}" CREATE_DESTINATION="${CREATE_DESTINATION:-0}" \
+    CHANGE_EARLIER_INPUT="${CHANGE_EARLIER_INPUT:-0}" \
+    CHANGE_EARLIER_BUNDLE="${CHANGE_EARLIER_BUNDLE:-0}" \
     VERSION="${VERSION:-v3.0.6}" KEY_FAIL="${KEY_FAIL:-0}" SIGN_FAIL="${SIGN_FAIL:-}" VERIFY_FAIL="${VERIFY_FAIL:-}" \
     BUNDLE_FORMAT="${BUNDLE_FORMAT:-}" \
     bash "$script" "$@" 2>&1)"
@@ -213,7 +221,7 @@ check test "${out#*COSIGN_PASSWORD}" != "$out"
 # Exercise the portable shasum fallback with sha256sum absent from PATH.
 workspace
 mkdir "$work/fallback"
-for tool in bash jq cosign shasum awk cat basename dirname cp mktemp rm tr ln cmp; do
+for tool in bash jq cosign shasum awk cat basename dirname cp mktemp mkdir rm tr ln cmp; do
   if [ "$tool" = cosign ]; then source_path="$work/bin/cosign"; else source_path=$(command -v "$tool"); fi
   ln -s "$source_path" "$work/fallback/$tool"
 done
@@ -249,7 +257,41 @@ check test "$code" -eq 143
 check test ! -e "$dir/a.sigstore.json"
 check test "$(find "$dir" -name '.rio-attest-*' | wc -l | tr -d ' ')" = 0
 
-# A later verification failure preserves earlier evidence but fails the run.
+# Internal snapshots cannot collide with valid dotted artifact IDs.
+for order in first last; do
+  workspace
+  edit "$dir/index.json" '.artifacts += [(.artifacts[0] | .id="a.verified" | .output.path="a.verified.cdx.json")]'
+  if [ "$order" = first ]; then edit "$dir/index.json" '.artifacts |= reverse'; fi
+  statement a.verified
+  cp "$dir/a.cdx.json" "$dir/a.verified.cdx.json"
+  normal
+  check test "$code" -eq 0
+  # jq binds $statement through --slurpfile; it is not a shell substitution.
+  # shellcheck disable=SC2016
+  check jq -e --slurpfile statement "$dir/a.intoto.json" '(.dsseEnvelope.payload|@base64d|fromjson) == $statement[0]' "$dir/a.sigstore.json"
+  # shellcheck disable=SC2016
+  check jq -e --slurpfile statement "$dir/a.verified.intoto.json" '(.dsseEnvelope.payload|@base64d|fromjson) == $statement[0]' "$dir/a.verified.sigstore.json"
+done
+
+# A later mutation preserves published evidence but fails the run.
+workspace
+edit "$dir/index.json" '.artifacts += [(.artifacts[0] | .id="b" | .output.path="b.cdx.json")]'
+statement b
+cp "$dir/a.cdx.json" "$dir/b.cdx.json"
+CHANGE_EARLIER_INPUT=1 normal
+check test "$code" -eq 1
+check test -s "$dir/a.sigstore.json"
+check test -s "$dir/b.sigstore.json"
+
+workspace
+edit "$dir/index.json" '.artifacts += [(.artifacts[0] | .id="b" | .output.path="b.cdx.json")]'
+statement b
+cp "$dir/a.cdx.json" "$dir/b.cdx.json"
+CHANGE_EARLIER_BUNDLE=1 normal
+check test "$code" -eq 1
+check test -s "$dir/a.sigstore.json"
+check test -s "$dir/b.sigstore.json"
+
 workspace
 edit "$dir/index.json" '.artifacts += [(.artifacts[0] | .id="b" | .output.path="b.cdx.json")]'
 statement b

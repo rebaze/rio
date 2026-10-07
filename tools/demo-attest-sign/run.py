@@ -20,6 +20,7 @@ def main():
     verifier = fixture.parent / "rio-attest-verify.sh"
     root = Path(tempfile.mkdtemp(prefix="rio-attest-sign-demo-"))
     root.chmod(0o700)
+    print("Synthetic example directory:", root, flush=True)
     env = dict(os.environ, COSIGN_PASSWORD="")
 
     def run(*command, expected=0):
@@ -101,7 +102,7 @@ def main():
             key.unlink()
         if (root / "wrong.key").exists():
             (root / "wrong.key").unlink()
-    print("Synthetic private key deleted. Retained public key and evidence:", root)
+        print("Synthetic private key deleted. Retained public key and evidence:", root, flush=True)
 
 
 if __name__ == "__main__":
