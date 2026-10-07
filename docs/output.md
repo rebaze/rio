@@ -215,7 +215,7 @@ unchanged and does not change the gate: a gate failure still writes every statem
 under `--gate warn` and exit 1 under `--gate fail`. Usage or input errors (exit 2) write nothing.
 Without the flag, rio writes no statements and preserves its existing output bytes.
 
-rio does not sign statements or make network calls. An unsigned statement records a claim; it
+Rio writes normalization statements offline and does not sign them. An unsigned statement records a claim; it
 is not cryptographic proof of who made it. Signing and verification belong to the surrounding
 pipeline. A signature can authenticate a statement without proving its assertions true; see
-[the planned signing tools](../tools/README.md#signing-and-verifying-normalization-attestations).
+[the signing tools](../tools/README.md#signing-and-verifying-normalization-attestations).

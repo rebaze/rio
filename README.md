@@ -329,6 +329,9 @@ scanning remain separate steps.
 | `record.json` (automatic for each invocation) | Compact input/output identities, meaningful changes, checks, delivery facts and coverage |
 | `<run-directory>/deliveries/<pair-key>/`, or an explicit `--record` directory | Separate journal events for delivery intent, receipt when available, and later reconciliation observations |
 
+Optional [signing and recipient verification](tools/README.md#signing-and-verifying-normalization-attestations)
+adds a per-artifact bundle outside Rio, using a local key with public-log upload disabled.
+
 Delivery history is not added to `index.json` or the normalization statements. These records
 support traceability; they do not authenticate the producer or prove successful ingestion.
 `rio delivery inspect` reads a journal offline; `rio delivery reconcile` queries the destination

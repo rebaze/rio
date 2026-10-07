@@ -1,0 +1,8 @@
+version: 1
+artifacts:
+  - id: app
+    sbom: app.cdx.json
+  - id: worker
+    sbom: worker.cdx.json
+gate:
+  mode: fail

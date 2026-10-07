@@ -63,7 +63,7 @@ jobs:
           # Fixtures, golden files and the embedded CycloneDX schemas are
           # inputs to the test suite, so a change to any of them has to run it.
           # Missing that is how a stale golden file reaches main.
-          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery|record|oci|dtrack-tls|normalization-evidence|batch-evidence|client-record|juice-shop)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$)' <<<"$CHANGED" >/dev/null; then go=true; fi
+          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery|record|oci|dtrack-tls|normalization-evidence|batch-evidence|client-record|juice-shop|attest-sign)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$|^tools/rio-attest-(sign(_test)?|verify)\.sh$)' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.github/workflows/.*\.ya?ml$' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.goreleaser\.yaml$' <<<"$CHANGED" >/dev/null; then goreleaser=true; fi
           if grep -E '\.sh$' <<<"$CHANGED" >/dev/null; then shell=true; fi
@@ -149,6 +149,16 @@ jobs:
           python3 tools/demo-juice-shop/verify.py "$PWD/rio"
           RIO_BIN="$PWD/rio" python3 tools/demo-juice-shop/verify_test.py
 
+      - name: Install pinned cosign for synthetic signing checks
+        if: steps.changes.outputs.go == 'true'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
+
+      - name: Sign and independently verify synthetic normalization statements
+        if: steps.changes.outputs.go == 'true'
+        run: python3 tools/demo-attest-sign/run.py "$PWD/rio"
+
       - name: Lint shell scripts
         if: steps.changes.outputs.shell == 'true'
         run: |
@@ -162,12 +172,14 @@ jobs:
           shellcheck -s sh tools/demo-repair/run.sh tools/demo-agent-integration/*.sh tools/demo-agent-integration/projects/*/build.sh tools/demo-artifact-sets/run.sh install.sh tools/demo-enrichment/run.sh tools/demo-context/run.sh tools/demo-context/check-replacement.sh
           shellcheck install_test.sh
           shellcheck tools/demo-juice-shop/build.sh
+          shellcheck tools/rio-attest-sign.sh tools/rio-attest-sign_test.sh tools/rio-attest-verify.sh
 
       - name: Test the installer offline
         if: steps.changes.outputs.shell == 'true'
         run: |
           set -euo pipefail
           ./install_test.sh
+          ./tools/rio-attest-sign_test.sh
 
       # build-p2-table.py advertises "Python 3.9+ and nothing else", and that
       # is a promise about the interpreter a client already has rather than a

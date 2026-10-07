@@ -11,6 +11,7 @@ inputs and remain separate from its runtime.
 | tool | what it does | when you run it |
 |---|---|---|
 | [Test binary workflow](#temporary-linux-test-binaries) | builds a selected revision as a temporary Linux download | when reproducing a problem or testing a fix |
+| [`rio-attest-sign.sh`](#signing-and-verifying-normalization-attestations) | signs and verifies normalization statements with a local key | after `rio normalize --attest` |
 | [`build-p2-table.py`](#build-p2-tablepy) | builds the bundle-symbolic-name → Maven coordinate table rio repairs purls with | occasionally, on a workstation |
 | [`demo-delivery/`](demo-delivery/) | demonstrates native Dependency-Track delivery and batch evidence | with Rio 0.7.0+ and Python 3.9+ |
 | [`demo-dtrack-tls/`](demo-dtrack-tls/) | demonstrates verified TLS and explicit certificate bypass with recorded policy | with Rio 0.7.0+ and Python 3.9+ |
@@ -353,13 +354,143 @@ Uploads return acceptance/unknown/rejection facts. Optional native reconciliatio
 
 `rio normalize --attest` writes unsigned `<artifact-id>.intoto.json` statements beside the
 normalized SBOMs. The [statement contract](../docs/output.md#normalization-attestations) describes
-their subjects, digests and normalization evidence. rio produces these files locally; signing
-and verification belong to the surrounding pipeline.
+their subjects, digests and normalization evidence. Normalization remains offline. The optional `rio-attest-sign.sh` tool signs these existing statements
+and verifies each bundle before publishing it beside its SBOM.
 
-Signing and verification tooling is planned in [issue #14](https://github.com/rebaze/rio/issues/14).
-No signing or verification script ships here yet. An unsigned statement is a claim, not
-cryptographic proof of its origin. Its paths are local references, not download URIs, and
-independently verifying the recorded input digests requires retaining the original files.
+### Synthetic preview and runnable example
+
+Actual output from the helper using an installed **Rio v0.7.0** and cosign v3.0.6:
+
+```text
+Verified app.sigstore.json
+Verified worker.sigstore.json
+PASS: recipient verification, unchanged inputs, overwrite refusal, altered SBOM/statement refusal.
+PASS: wrong trusted key, legacy bundle and mixed-format bundle refused.
+```
+
+Inspect the generated [signed bundle](demo-attest-sign/example/app.sigstore.json),
+[statement](demo-attest-sign/example/app.intoto.json), [SBOM](demo-attest-sign/example/app.cdx.json)
+and [synthetic public key](demo-attest-sign/example/SYNTHETIC-ONLY.pub).
+These are synthetic test data; this public key is not a production trust anchor.
+Copy [rio-attest-sign.sh](rio-attest-sign.sh) and [rio-attest-verify.sh](rio-attest-verify.sh) together.
+
+Run the [demonstration](demo-attest-sign/) with an installed Rio 0.7.0+, Python 3.9+,
+Bash, jq and cosign v3.0.6. No Go toolchain is needed:
+
+```sh
+python3 tools/demo-attest-sign/run.py /path/to/rio
+```
+
+The runner copies fixtures into a private temporary directory, generates a disposable test key,
+normalizes two SBOMs, signs both statements and verifies each bundle as a recipient would.
+It checks unchanged inputs, refusal to overwrite evidence, and rejection of changed SBOM bytes
+or a changed signed statement. The private test key is deleted even on failure; public evidence
+remains available for inspection. This test identity must never sign customer data.
+
+### Requirements and identity
+
+The signing tool needs Bash 3.2+, jq, **cosign v3.0.6** (the same version as `release.yaml`), and
+`sha256sum` or `shasum`. It rejects other cosign versions so a dependency upgrade cannot silently
+change the signing defaults. Install cosign from its
+[v3.0.6 release](https://github.com/sigstore/cosign/releases/tag/v3.0.6).
+
+Supply a local private key and the corresponding PEM public key explicitly. The tool checks that
+they match and unlocks the private key before signing anything. It does not generate keys or
+fall back to OIDC or an interactive browser. The same interface works on a workstation and in CI;
+no `id-token: write` permission is needed.
+
+If you need a new key pair, generate it once in a secure directory:
+
+```sh
+cosign generate-key-pair --output-key-prefix signer
+```
+
+Keep `signer.key` private and distribute `signer.pub` through a trusted channel. Supply its password
+as `COSIGN_PASSWORD`, using your CI secret store or a prompt on a workstation:
+
+```sh
+# Bash: read the password without echoing it or putting it in shell history.
+read -r -s -p 'Signing key password: ' COSIGN_PASSWORD; printf '\n'
+export COSIGN_PASSWORD
+
+result=$(rio normalize --attest --out target/rio --json)
+run_directory=$(printf '%s' "$result" | jq -r .runDirectory)
+./tools/rio-attest-sign.sh \
+  --key /secure/signer.key --public-key /trusted/signer.pub "$run_directory"
+unset COSIGN_PASSWORD
+```
+
+`COSIGN_PASSWORD` must be set; explicitly empty is allowed for a key with an empty password.
+The script never prints it and never prompts for it. Key files, passwords and customer outputs
+should not be committed to this repository.
+
+### Privacy and output
+
+This tool uses **key-based signing with public transparency-log upload disabled**. It passes
+`--tlog-upload=false --use-signing-config=false` explicitly to the pinned cosign version. There
+is no public-log opt-in or keyless mode in this version. Private Rekor and keyless signing with a
+trusted timestamp authority require separate service and trust configuration and are not supported.
+In cosign v3.0.6 the log flag still works but is deprecated; revisit these flags when changing the pin.
+
+For every artifact in `index.json`, the tool checks that the statement's type, subject and complete
+predicate match that run, and hashes the actual SBOM. Missing or stale extra statements, malformed
+JSON, mismatched digests, symlinks and existing destination bundles are refused before signing.
+The accepted layout is rio's flat `<artifact-id>.cdx.json` / `<artifact-id>.intoto.json` layout.
+A statement recording a failed quality gate can still be signed: the signature records that result,
+and does not imply the gate passed.
+
+Each `<artifact-id>.sigstore.json` contains the original statement in a signed DSSE envelope and
+its verification material. Statements, SBOMs and `index.json` are unchanged; `index.json` is not
+signed. Bundles have owner-only permissions. The tool stages copies in the output directory,
+verifies each bundle, and publishes it without replacing an existing file. Before returning success,
+it rechecks the entire selected input set and each published bundle against private snapshots. Allow disk space for
+copies of the input files. Pass the exact `runDirectory` returned by `rio normalize --json`,
+not the parent `--out` directory. The automatic execution receipt remains unsigned.
+
+Exit codes are 0 when every bundle verifies, 2 for usage or preflight errors, and 1 for signing,
+verification or publication errors. Signals also fail the run and remove staging files. If a later
+artifact fails, earlier verified bundles remain and the command reports failure. To retry, use a
+fresh normalization output directory; existing evidence is never overwritten.
+
+### Recipient verification
+
+A recipient needs Bash 3.2+, jq, cosign v3.0.6, the normalized SBOM, its bundle, an independently
+trusted public key, and a copy of [rio-attest-verify.sh](rio-attest-verify.sh). No Rio installation,
+checkout, unsigned statement or `index.json` is needed:
+
+```sh
+bash rio-attest-verify.sh --public-key signer.pub \
+  --bundle rcp-client.sigstore.json rcp-client.cdx.json
+```
+
+This is the same verification the signing tool performs. It snapshots the public key, bundle and
+SBOM before checking the accepted v0.3 DSSE format and invoking cosign on those same bytes. Legacy
+and mixed-format bundles are refused: cosign v3.0.6 can otherwise use an embedded legacy key in
+place of the recipient's `--key`, even with `--new-bundle-format=true`. Do not use a bare cosign
+command to verify arbitrary bundles with this pinned version. The verifier checks the signature,
+predicate type and SBOM digest. `--insecure-ignore-tlog` deliberately skips transparency-log
+verification for this private mode; cosign prints a warning. It does **not** skip signature or
+subject-digest verification. A key supplied only alongside an untrusted bundle is not an
+independent trust anchor: authenticate the public key through your established distribution process.
+
+A valid signature proves that the corresponding private key signed the statement. Without a
+transparency log or trusted timestamp it does not establish a trusted signing time. It also does
+not independently prove the recorded normalization was performed correctly. The statement's paths
+are local references, not download URIs; checking the recorded input and manifest digests requires
+retaining those original files.
+
+### Tests
+
+The shell suite replaces cosign with a PATH shim and exercises the real argument, JSON, digest,
+file and failure handling without contacting Fulcio or Rekor:
+
+```sh
+./tools/rio-attest-sign_test.sh
+```
+
+CI runs it with the other offline shell tests and checks all three scripts with ShellCheck. The
+binary checks install the same pinned cosign as the release workflow and run the real-cosign
+demonstration, including independent recipient verification and tamper refusals.
 
 
 ## Testing dependency auto-merge

@@ -88,6 +88,18 @@ class ChangesTest(unittest.TestCase):
             with self.subTest(leaf=leaf):
                 self.assertEqual(detect("tools/demo-juice-shop/" + leaf)["go"], "true")
 
+    def test_signing_helper_and_demo_run_binary_checks(self):
+        for path in (
+            "tools/rio-attest-sign.sh",
+            "tools/rio-attest-sign_test.sh",
+            "tools/rio-attest-verify.sh",
+            "tools/demo-attest-sign/run.py",
+            "tools/demo-attest-sign/rio.yaml",
+            "tools/demo-attest-sign/bom.json",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(detect(path)["go"], "true")
+
     def test_record_demo_files_run_binary_checks(self):
         paths = [str(p.relative_to(ROOT)) for p in (ROOT / "tools/demo-record").rglob("*") if p.is_file()]
         paths.append("tools/demo-record/future-fixture.json")
