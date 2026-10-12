@@ -41,8 +41,9 @@ resolves somewhere it should not, that is in scope and we want to hear about it.
 
 Two properties are worth stating because a break in either is a security finding in itself:
 
-- **rio makes no network calls.** Resolution happens against data it already has. A build of rio that
-  reaches the network is a bug, and CI enforces this.
+- **read-only operations and normalization remain offline.** Root pipeline execution, explicit
+  delivery and reconciliation may contact configured receivers and resolve credentials. Planning,
+  normalization and receipt inspection/reporting must not do so.
 - **rio is self-contained.** It runs with `CGO_ENABLED=0` and shells out to nothing at runtime.
 
 ## Verifying a release
@@ -57,8 +58,7 @@ This policy covers vulnerabilities in rio's first-party code. Issues in upstream
 be reported to their respective maintainers; if a dependency issue affects rio specifically, tell us
 as well so we can bump or work around it.
 
-Supporting tools under `tools/` are not part of the rio binary and are not covered by the no-network
-property above. Report issues in those as ordinary bugs unless they expose credentials or
+Supporting tools under `tools/` are not part of the rio binary and may perform their documented network operations. Report issues in those as ordinary bugs unless they expose credentials or
 compromise a release.
 
 ## Dependency updates and alert closure
@@ -108,3 +108,15 @@ The CycloneDX files directly under `testdata/` are synthetic input documents, no
 inventory. `testdata/osv-scanner.toml` records the verified Commons Lang fixture finding by
 advisory ID and reason. That exception applies only beside those fixtures; real dependencies
 in `go.mod` remain scanned, and new fixture advisories still surface for review.
+
+The captured v0.7.0 client-record example also contains synthetic Commons Lang 3.17.0
+metadata in `tools/demo-client-record/example/` and its `normalized/` directory. Each directory
+has its own advisory-specific `osv-scanner.toml`: the scanner does not apply the parent
+exception to nested SBOMs. These are preserved input/output bytes bound to published sample
+receipts, not installed Java libraries. No receipt, SBOM or digest is rewritten to silence a scan.
+
+Verified on 2026-10-12 with Scorecard v5.5.0: after patching Go/x/text, scanning the repository
+reported this one Commons Lang advisory; adding the two example-local dispositions produced
+zero findings. The original `testdata/` exception alone was insufficient. This does not
+suppress the advisory in other directories, other advisories, or actual module dependencies.
+Re-run Scorecard after merging; local results do not close the hosted alert.

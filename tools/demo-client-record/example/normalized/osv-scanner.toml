@@ -1,0 +1,5 @@
+# Synthetic SBOM metadata in this example is not an installed Java dependency.
+# Scope this exception to the captured example and its normalized SBOMs only.
+[[IgnoredVulns]]
+id = "GHSA-j288-q9x7-2f5v" # CVE-2025-48924
+reason = "Commons Lang 3.17.0 appears only in synthetic input/output CycloneDX documents captured with Rio v0.7.0. No Java library is installed or executed. Preserve the receipt-bound SBOM bytes; this exception does not cover Rio modules or other demos."
