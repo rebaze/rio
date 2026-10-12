@@ -10,7 +10,11 @@ on:
   schedule:
     - cron: '15 4 * * 3' # Wednesday 04:15 UTC
 
-permissions: read-all
+# Keep reusable-workflow requirements within the release caller's grant.
+permissions:
+  contents: read
+  actions: read
+  security-events: write
 
 concurrency:
   group: codeql-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
