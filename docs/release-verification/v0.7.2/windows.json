@@ -1,0 +1,30 @@
+{
+  "tag": "v0.7.2",
+  "commit": "a9cd092bf3f763162efa68c9acfd29285f4d73e3",
+  "repo": "rebaze/rio",
+  "releaseURL": "https://github.com/rebaze/rio/releases/tag/v0.7.2",
+  "assetSHA256": {
+    "checksums.txt": "8b50b27bbb7132752ab33c2bbd4d7e25a5b7cf801c1eef68065326e92f3bb1e9",
+    "checksums.txt.sigstore.json": "13433feccca9af4dee8bdcdd2a68dccc2ab5745f7ab5268b317aca1204d1d3c0",
+    "rio-v0.7.2-source.cdx.json": "819143f001b9c49b508f6566a0f09af636ec2b0470d360adaf777494516717e2",
+    "rio-v0.7.2.intoto.jsonl": "16d813d0f92d95743cd1ecfd11df1aeef1442aa6698d965051e358934f8cedb6",
+    "rio_0.7.2_darwin_amd64.tar.gz": "bdc85822078903ddb71733928b7b244da874082c959e4e86dd4788533a4227ef",
+    "rio_0.7.2_darwin_arm64.tar.gz": "b2fdba95f150309a9383cd1e8b34cfa6303b0cb7a0b811a417c0d1e134f2b8c7",
+    "rio_0.7.2_linux_amd64.tar.gz": "e6ba50a7a2f0890a96acaa2d6d3cf900a07e0462d0e46a5e4bdbc146e5208d8e",
+    "rio_0.7.2_linux_arm64.tar.gz": "457bef705539039ed1c4f850c4c664e20d769c0c0a969a82a0d8f2d06140aabd",
+    "rio_0.7.2_windows_amd64.zip": "efc0c0712506276273071327f92064d45fbaeb98f4ddfc108bbc686c57d1643f",
+    "rio_0.7.2_windows_arm64.zip": "473d095df22ca42bacb5ca02efbb387702c86bcbdb0f7a97bcdea495647c7f45"
+  },
+  "notesSHA256": "d4e17d6fde42e78f5a98e6276257ebcfe19854ba5227eacb59b392a028dc159f",
+  "cosignVerified": true,
+  "attestedSourceCommitVerified": true,
+  "nativeExecution": {
+    "os": "windows",
+    "arch": "amd64",
+    "binarySHA256": "b22dd65403f41c63a5725077c0392f93130a06fcde6a352bdf359158e5cdc91d",
+    "version": "rio 0.7.2 (commit: a9cd092bf3f763162efa68c9acfd29285f4d73e3, built: 2026-10-12T19:28:32Z)"
+  },
+  "clientDemoPassed": true,
+  "legacyVersionOnly": false,
+  "otherArchitectures": "verified archives; not executed by this host"
+}
