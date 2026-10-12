@@ -71,7 +71,7 @@ The required CI `build` check reviews every PR for newly introduced vulnerable d
 any severity, including development dependencies. Changes to Go code, dependencies, or CI also
 run `govulncheck` against both rio and the scanner itself, the tests, vet, and a static build. The scanner and its dependencies are
 pinned in `tools/security/go.mod` and `go.sum`, which Dependabot also maintains. A daily CI run and manual dispatch repeat
-the Go checks so newly published advisories can be detected without a code change. Scheduled,
+the full validation suite so newly published advisories can be detected without a code change. Scheduled,
 manual, and push runs have separate concurrency groups so they cannot cancel each other. The Go scan
 uses the compiler selected by `go.mod`; it reports reachable vulnerabilities in that build,
 not a guarantee about every platform or previously released binary.
@@ -79,7 +79,7 @@ not a guarantee about every platform or previously released binary.
 Dependabot groups patch/minor security fixes separately for Go and GitHub Actions. The
 `Auto-merge security updates` workflow checks the bot's verified single commit, security-group
 metadata, and every dependency's update type. It waits for the required `build` and
-`Analyze Go` checks to pass, then merges only that exact commit without bypassing branch
+`Analyze Go` checks plus the `CI complete` aggregate to pass, then merges only that exact commit without bypassing branch
 protection. The REST merge endpoint either merges that SHA immediately or refuses; it never
 queues native auto-merge authorization that could survive a later edit.
 Major updates, ordinary version updates, upstream maintainer changes, unknown metadata,

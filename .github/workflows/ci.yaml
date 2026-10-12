@@ -8,6 +8,11 @@ on:
   schedule:
     - cron: '45 5 * * *' # Recheck unchanged dependencies against new advisories.
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      full_validation:
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -56,10 +61,12 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED"
           go=false
-          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then go=true; fi
           goreleaser=false
           shell=false
           python=false
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ inputs.full_validation || false }}" = "true" ]; then
+            go=true; goreleaser=true; shell=true; python=true
+          fi
           # Fixtures, golden files and the embedded CycloneDX schemas are
           # inputs to the test suite, so a change to any of them has to run it.
           # Missing that is how a stale golden file reaches main.
@@ -199,6 +206,7 @@ jobs:
           python3 tools/build-p2-table_test.py
           python3 tools/dependabot-auto-merge_test.py
           python3 tools/ci-changes_test.py
+          python3 tools/ci-complete_test.py
           python3 tools/rio-context_test.py
           python3 tools/feature-video/feature_video_test.py
           python3 tools/feature-video/tooling_test.py
@@ -360,3 +368,20 @@ jobs:
           if [ -f "$RUNNER_TEMP/rio-dtrack/state.json" ]; then
             python tools/demo-delivery/integration/setup.py stop "$RUNNER_TEMP/rio-dtrack"
           fi
+
+  complete:
+    name: CI complete
+    if: always()
+    needs: [build, delivery-platforms, oci-distribution, dependency-track]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require every validation job
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        shell: bash
+        run: |
+          jq -e '
+            (keys == ["build", "delivery-platforms", "dependency-track", "oci-distribution"]) and
+            all(.[]; .result == "success")
+          ' <<<"$NEEDS_JSON"

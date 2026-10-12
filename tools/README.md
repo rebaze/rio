@@ -867,3 +867,25 @@ client demo. It is refused for v0.6.0 and newer, so it cannot waive this release
 
 Historical acceptance evidence is retained in the [v0.6.0 release verification report](../docs/release-verification/v0.6.0.md),
 including exact-commit workflow results, published downloads, native execution and Homebrew installation.
+
+## Full candidate validation
+
+Run `gh workflow run ci.yaml --ref BRANCH` and `gh workflow run codeql.yaml --ref BRANCH`
+for the candidate branch. Manual and scheduled CI run all check groups regardless of the
+previous diff: Go/security/race/vet, shell and installer checks, Python tools, signing demo,
+GoReleaser configuration, three native platforms and real OCI/Dependency-Track receivers.
+The `CI complete` job fails unless every CI job succeeds. Ordinary PRs retain change filtering.
+
+A tag-triggered release calls the same CI workflow with `full_validation: true` and the
+CodeQL workflow from that tag. Publication depends on both reusable workflow results. It
+therefore validates the tagged source anew instead of accepting a passing check from a
+branch, an old commit or a partial run. Existing staged-asset verification remains mandatory.
+A failure means no publication; fix the cause before choosing a new immutable release tag.
+
+Recommended main protection: require `build`, `Analyze Go` and `CI complete`. Adding the
+aggregate protects platform/receiver jobs for human merges as well. The security-update bot
+checks `CI complete` independently of the configured required-check list, then revalidates
+PR state and merges the exact head. No repository protection settings are changed by these
+workflow files. An independent human approval rule is a maintainer decision: enabling one
+without a second eligible reviewer would block a sole-maintainer project. Do not create
+synthetic approvals to improve Scorecard.

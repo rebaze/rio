@@ -18,8 +18,8 @@ DETECTOR = textwrap.dedent(
 )
 
 
-def detect(changed, event="pull_request"):
-    script = DETECTOR.replace("${{ github.event_name }}", event)
+def detect(changed, event="pull_request", full=False):
+    script = DETECTOR.replace("${{ github.event_name }}", event).replace("${{ inputs.full_validation || false }}", str(full).lower())
     with tempfile.NamedTemporaryFile() as output:
         subprocess.run(
             ["bash", "-eu", "-o", "pipefail", "-c", script],
@@ -189,7 +189,11 @@ class ChangesTest(unittest.TestCase):
     def test_scheduled_and_manual_runs_scan_without_changes(self):
         for event in ("schedule", "workflow_dispatch"):
             with self.subTest(event=event):
-                self.assertEqual(detect("", event)["go"], "true")
+                self.assertEqual(detect("README.md", event), dict(go="true", goreleaser="true", shell="true", python="true"))
+
+    def test_reusable_release_validation_ignores_previous_diff(self):
+        self.assertEqual(detect("README.md", "push", full=True),
+                         dict(go="true", goreleaser="true", shell="true", python="true"))
 
 
 if __name__ == "__main__":
