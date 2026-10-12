@@ -13,140 +13,269 @@
       "findings": [
         {
           "id": "GO-2026-6617",
-          "found": "golang.org/x/net@v0.56.0",
-          "fixed": "golang.org/x/net@v0.60.0"
+          "affected": [
+            {
+              "found": "golang.org/x/net@v0.56.0",
+              "fixed": "golang.org/x/net@v0.60.0"
+            },
+            {
+              "found": "net/http@go1.26.4",
+              "fixed": "net/http@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6613",
-          "found": "net/http@go1.26.4",
-          "fixed": "net/http@go1.26.9"
+          "affected": [
+            {
+              "found": "net/http@go1.26.4",
+              "fixed": "net/http@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6612",
-          "found": "golang.org/x/net@v0.56.0",
-          "fixed": "golang.org/x/net@v0.60.0"
+          "affected": [
+            {
+              "found": "golang.org/x/net@v0.56.0",
+              "fixed": "golang.org/x/net@v0.60.0"
+            },
+            {
+              "found": "net/http@go1.26.4",
+              "fixed": "net/http@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6611",
-          "found": "golang.org/x/net@v0.56.0",
-          "fixed": "golang.org/x/net@v0.60.0"
+          "affected": [
+            {
+              "found": "golang.org/x/net@v0.56.0",
+              "fixed": "golang.org/x/net@v0.60.0"
+            },
+            {
+              "found": "net/http@go1.26.4",
+              "fixed": "net/http@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6610",
-          "found": "golang.org/x/net@v0.56.0",
-          "fixed": "golang.org/x/net@v0.60.0"
+          "affected": [
+            {
+              "found": "golang.org/x/net@v0.56.0",
+              "fixed": "golang.org/x/net@v0.60.0"
+            },
+            {
+              "found": "net/http@go1.26.4",
+              "fixed": "net/http@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6608",
-          "found": "mime/multipart@go1.26.4",
-          "fixed": "mime/multipart@go1.26.9"
+          "affected": [
+            {
+              "found": "mime/multipart@go1.26.4",
+              "fixed": "mime/multipart@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6607",
-          "found": "crypto/tls@go1.26.4",
-          "fixed": "crypto/tls@go1.26.9"
+          "affected": [
+            {
+              "found": "crypto/tls@go1.26.4",
+              "fixed": "crypto/tls@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6605",
-          "found": "net/http/httputil@go1.26.4",
-          "fixed": "net/http/httputil@go1.26.9"
+          "affected": [
+            {
+              "found": "net/http/httputil@go1.26.4",
+              "fixed": "net/http/httputil@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6603",
-          "found": "golang.org/x/net@v0.56.0",
-          "fixed": "golang.org/x/net@v0.60.0"
+          "affected": [
+            {
+              "found": "golang.org/x/net@v0.56.0",
+              "fixed": "golang.org/x/net@v0.60.0"
+            },
+            {
+              "found": "net/http@go1.26.4",
+              "fixed": "net/http@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6600",
-          "found": "html/template@go1.26.4",
-          "fixed": "html/template@go1.26.9"
+          "affected": [
+            {
+              "found": "html/template@go1.26.4",
+              "fixed": "html/template@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6599",
-          "found": "html/template@go1.26.4",
-          "fixed": "html/template@go1.26.9"
+          "affected": [
+            {
+              "found": "html/template@go1.26.4",
+              "fixed": "html/template@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6443",
-          "found": "google.golang.org/grpc@v1.82.0",
-          "fixed": "google.golang.org/grpc@v1.82.2"
+          "affected": [
+            {
+              "found": "google.golang.org/grpc@v1.82.0",
+              "fixed": "google.golang.org/grpc@v1.82.2"
+            }
+          ]
         },
         {
           "id": "GO-2026-6348",
-          "found": "google.golang.org/grpc@v1.82.0",
-          "fixed": "google.golang.org/grpc@v1.83.1"
+          "affected": [
+            {
+              "found": "google.golang.org/grpc@v1.82.0",
+              "fixed": "google.golang.org/grpc@v1.83.1"
+            }
+          ]
         },
         {
           "id": "GO-2026-6225",
-          "found": "github.com/chrismellard/docker-credential-acr-env@v0.0.0-20230304212654-82a0ddb27589",
-          "fixed": "N/A"
+          "affected": [
+            {
+              "found": "github.com/chrismellard/docker-credential-acr-env@v0.0.0-20230304212654-82a0ddb27589",
+              "fixed": "N/A"
+            }
+          ]
         },
         {
           "id": "GO-2026-6218",
-          "found": "net/url@go1.26.4",
-          "fixed": "net/url@go1.26.6"
+          "affected": [
+            {
+              "found": "net/url@go1.26.4",
+              "fixed": "net/url@go1.26.6"
+            }
+          ]
         },
         {
           "id": "GO-2026-6091",
-          "found": "html/template@go1.26.4",
-          "fixed": "html/template@go1.26.6"
+          "affected": [
+            {
+              "found": "html/template@go1.26.4",
+              "fixed": "html/template@go1.26.6"
+            }
+          ]
         },
         {
           "id": "GO-2026-6090",
-          "found": "crypto/tls@go1.26.4",
-          "fixed": "crypto/tls@go1.26.6"
+          "affected": [
+            {
+              "found": "crypto/tls@go1.26.4",
+              "fixed": "crypto/tls@go1.26.6"
+            }
+          ]
         },
         {
           "id": "GO-2026-6089",
-          "found": "net/http@go1.26.4",
-          "fixed": "net/http@go1.26.6"
+          "affected": [
+            {
+              "found": "net/http@go1.26.4",
+              "fixed": "net/http@go1.26.6"
+            }
+          ]
         },
         {
           "id": "GO-2026-6088",
-          "found": "encoding/xml@go1.26.4",
-          "fixed": "encoding/xml@go1.26.6"
+          "affected": [
+            {
+              "found": "encoding/xml@go1.26.4",
+              "fixed": "encoding/xml@go1.26.6"
+            }
+          ]
         },
         {
           "id": "GO-2026-6061",
-          "found": "google.golang.org/grpc@v1.82.0",
-          "fixed": "google.golang.org/grpc@v1.82.1"
+          "affected": [
+            {
+              "found": "google.golang.org/grpc@v1.82.0",
+              "fixed": "google.golang.org/grpc@v1.82.1"
+            }
+          ]
         },
         {
           "id": "GO-2026-5972",
-          "found": "encoding/asn1@go1.26.4",
-          "fixed": "encoding/asn1@go1.26.6"
+          "affected": [
+            {
+              "found": "encoding/asn1@go1.26.4",
+              "fixed": "encoding/asn1@go1.26.6"
+            }
+          ]
         },
         {
           "id": "GO-2026-5970",
-          "found": "golang.org/x/text@v0.38.0",
-          "fixed": "golang.org/x/text@v0.39.0"
+          "affected": [
+            {
+              "found": "golang.org/x/text@v0.38.0",
+              "fixed": "golang.org/x/text@v0.39.0"
+            }
+          ]
         },
         {
           "id": "GO-2026-5942",
-          "found": "net@go1.26.4",
-          "fixed": "net@go1.26.6"
+          "affected": [
+            {
+              "found": "net@go1.26.4",
+              "fixed": "net@go1.26.6"
+            }
+          ]
         },
         {
           "id": "GO-2026-5932",
-          "found": "golang.org/x/crypto@v0.53.0",
-          "fixed": "N/A"
+          "affected": [
+            {
+              "found": "golang.org/x/crypto@v0.53.0",
+              "fixed": "N/A"
+            }
+          ]
         },
         {
           "id": "GO-2026-5856",
-          "found": "crypto/tls@go1.26.4",
-          "fixed": "crypto/tls@go1.26.5"
+          "affected": [
+            {
+              "found": "crypto/tls@go1.26.4",
+              "fixed": "crypto/tls@go1.26.5"
+            }
+          ]
         },
         {
           "id": "GO-2026-5026",
-          "found": "net/http@go1.26.4",
-          "fixed": "net/http@go1.26.6"
+          "affected": [
+            {
+              "found": "net/http@go1.26.4",
+              "fixed": "net/http@go1.26.6"
+            }
+          ]
         },
         {
           "id": "GO-2026-4970",
-          "found": "os@go1.26.4",
-          "fixed": "os@go1.26.5"
+          "affected": [
+            {
+              "found": "os@go1.26.4",
+              "fixed": "os@go1.26.5"
+            }
+          ]
         }
-      ]
+      ],
+      "scanTextSHA256": "c1c9f2b129af4db492a7f292cda69587e171f8462e47df680e9d97b946e40050"
     },
     {
       "tool": "syft",
@@ -158,70 +287,143 @@
       "findings": [
         {
           "id": "GO-2026-6617",
-          "found": "golang.org/x/net@v0.59.0",
-          "fixed": "golang.org/x/net@v0.60.0"
+          "affected": [
+            {
+              "found": "golang.org/x/net@v0.59.0",
+              "fixed": "golang.org/x/net@v0.60.0"
+            },
+            {
+              "found": "net/http@go1.26.8",
+              "fixed": "net/http@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6613",
-          "found": "net/http@go1.26.8",
-          "fixed": "net/http@go1.26.9"
+          "affected": [
+            {
+              "found": "net/http@go1.26.8",
+              "fixed": "net/http@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6612",
-          "found": "golang.org/x/net@v0.59.0",
-          "fixed": "golang.org/x/net@v0.60.0"
+          "affected": [
+            {
+              "found": "golang.org/x/net@v0.59.0",
+              "fixed": "golang.org/x/net@v0.60.0"
+            },
+            {
+              "found": "net/http@go1.26.8",
+              "fixed": "net/http@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6611",
-          "found": "golang.org/x/net@v0.59.0",
-          "fixed": "golang.org/x/net@v0.60.0"
+          "affected": [
+            {
+              "found": "golang.org/x/net@v0.59.0",
+              "fixed": "golang.org/x/net@v0.60.0"
+            },
+            {
+              "found": "net/http@go1.26.8",
+              "fixed": "net/http@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6610",
-          "found": "golang.org/x/net@v0.59.0",
-          "fixed": "golang.org/x/net@v0.60.0"
+          "affected": [
+            {
+              "found": "golang.org/x/net@v0.59.0",
+              "fixed": "golang.org/x/net@v0.60.0"
+            },
+            {
+              "found": "net/http@go1.26.8",
+              "fixed": "net/http@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6609",
-          "found": "net/http@go1.26.8",
-          "fixed": "net/http@go1.26.9"
+          "affected": [
+            {
+              "found": "net/http@go1.26.8",
+              "fixed": "net/http@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6608",
-          "found": "mime/multipart@go1.26.8",
-          "fixed": "mime/multipart@go1.26.9"
+          "affected": [
+            {
+              "found": "mime/multipart@go1.26.8",
+              "fixed": "mime/multipart@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6607",
-          "found": "crypto/tls@go1.26.8",
-          "fixed": "crypto/tls@go1.26.9"
+          "affected": [
+            {
+              "found": "crypto/tls@go1.26.8",
+              "fixed": "crypto/tls@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6605",
-          "found": "net/http/httputil@go1.26.8",
-          "fixed": "net/http/httputil@go1.26.9"
+          "affected": [
+            {
+              "found": "net/http/httputil@go1.26.8",
+              "fixed": "net/http/httputil@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6603",
-          "found": "golang.org/x/net@v0.59.0",
-          "fixed": "golang.org/x/net@v0.60.0"
+          "affected": [
+            {
+              "found": "golang.org/x/net@v0.59.0",
+              "fixed": "golang.org/x/net@v0.60.0"
+            },
+            {
+              "found": "net/http@go1.26.8",
+              "fixed": "net/http@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6600",
-          "found": "html/template@go1.26.8",
-          "fixed": "html/template@go1.26.9"
+          "affected": [
+            {
+              "found": "html/template@go1.26.8",
+              "fixed": "html/template@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-6599",
-          "found": "html/template@go1.26.8",
-          "fixed": "html/template@go1.26.9"
+          "affected": [
+            {
+              "found": "html/template@go1.26.8",
+              "fixed": "html/template@go1.26.9"
+            }
+          ]
         },
         {
           "id": "GO-2026-5932",
-          "found": "golang.org/x/crypto@v0.57.0",
-          "fixed": "N/A"
+          "affected": [
+            {
+              "found": "golang.org/x/crypto@v0.57.0",
+              "fixed": "N/A"
+            }
+          ]
         }
-      ]
+      ],
+      "scanTextSHA256": "5d8cceb511d557ed74d3bf3be8a61407ddffca10bcdb2577c9a8d3688a685c71"
     },
     {
       "tool": "goreleaser",
@@ -233,75 +435,152 @@
       "findings": [
         {
           "id": "GO-2026-6617",
-          "found": "golang.org/x/net@v0.59.0",
-          "fixed": "golang.org/x/net@v0.60.0"
+          "affected": [
+            {
+              "found": "golang.org/x/net@v0.59.0",
+              "fixed": "golang.org/x/net@v0.60.0"
+            },
+            {
+              "found": "net/http/internal/http2@go1.27.1",
+              "fixed": "net/http/internal/http2@go1.27.2"
+            }
+          ]
         },
         {
           "id": "GO-2026-6613",
-          "found": "net/http@go1.27.1",
-          "fixed": "net/http@go1.27.2"
+          "affected": [
+            {
+              "found": "net/http@go1.27.1",
+              "fixed": "net/http@go1.27.2"
+            }
+          ]
         },
         {
           "id": "GO-2026-6612",
-          "found": "golang.org/x/net@v0.59.0",
-          "fixed": "golang.org/x/net@v0.60.0"
+          "affected": [
+            {
+              "found": "golang.org/x/net@v0.59.0",
+              "fixed": "golang.org/x/net@v0.60.0"
+            },
+            {
+              "found": "net/http/internal/http2@go1.27.1",
+              "fixed": "net/http/internal/http2@go1.27.2"
+            }
+          ]
         },
         {
           "id": "GO-2026-6611",
-          "found": "golang.org/x/net@v0.59.0",
-          "fixed": "golang.org/x/net@v0.60.0"
+          "affected": [
+            {
+              "found": "golang.org/x/net@v0.59.0",
+              "fixed": "golang.org/x/net@v0.60.0"
+            },
+            {
+              "found": "net/http/internal/http2@go1.27.1",
+              "fixed": "net/http/internal/http2@go1.27.2"
+            }
+          ]
         },
         {
           "id": "GO-2026-6610",
-          "found": "golang.org/x/net@v0.59.0",
-          "fixed": "golang.org/x/net@v0.60.0"
+          "affected": [
+            {
+              "found": "golang.org/x/net@v0.59.0",
+              "fixed": "golang.org/x/net@v0.60.0"
+            },
+            {
+              "found": "net/http/internal/http2@go1.27.1",
+              "fixed": "net/http/internal/http2@go1.27.2"
+            }
+          ]
         },
         {
           "id": "GO-2026-6609",
-          "found": "net/http@go1.27.1",
-          "fixed": "net/http@go1.27.2"
+          "affected": [
+            {
+              "found": "net/http@go1.27.1",
+              "fixed": "net/http@go1.27.2"
+            }
+          ]
         },
         {
           "id": "GO-2026-6608",
-          "found": "mime/multipart@go1.27.1",
-          "fixed": "mime/multipart@go1.27.2"
+          "affected": [
+            {
+              "found": "mime/multipart@go1.27.1",
+              "fixed": "mime/multipart@go1.27.2"
+            }
+          ]
         },
         {
           "id": "GO-2026-6607",
-          "found": "crypto/tls@go1.27.1",
-          "fixed": "crypto/tls@go1.27.2"
+          "affected": [
+            {
+              "found": "crypto/tls@go1.27.1",
+              "fixed": "crypto/tls@go1.27.2"
+            }
+          ]
         },
         {
           "id": "GO-2026-6605",
-          "found": "net/http/httputil@go1.27.1",
-          "fixed": "net/http/httputil@go1.27.2"
+          "affected": [
+            {
+              "found": "net/http/httputil@go1.27.1",
+              "fixed": "net/http/httputil@go1.27.2"
+            }
+          ]
         },
         {
           "id": "GO-2026-6603",
-          "found": "golang.org/x/net@v0.59.0",
-          "fixed": "golang.org/x/net@v0.60.0"
+          "affected": [
+            {
+              "found": "golang.org/x/net@v0.59.0",
+              "fixed": "golang.org/x/net@v0.60.0"
+            },
+            {
+              "found": "net/http/internal/http2@go1.27.1",
+              "fixed": "net/http/internal/http2@go1.27.2"
+            }
+          ]
         },
         {
           "id": "GO-2026-6600",
-          "found": "html/template@go1.27.1",
-          "fixed": "html/template@go1.27.2"
+          "affected": [
+            {
+              "found": "html/template@go1.27.1",
+              "fixed": "html/template@go1.27.2"
+            }
+          ]
         },
         {
           "id": "GO-2026-6599",
-          "found": "html/template@go1.27.1",
-          "fixed": "html/template@go1.27.2"
+          "affected": [
+            {
+              "found": "html/template@go1.27.1",
+              "fixed": "html/template@go1.27.2"
+            }
+          ]
         },
         {
           "id": "GO-2026-6225",
-          "found": "github.com/chrismellard/docker-credential-acr-env@v0.0.0-20230304212654-82a0ddb27589",
-          "fixed": "N/A"
+          "affected": [
+            {
+              "found": "github.com/chrismellard/docker-credential-acr-env@v0.0.0-20230304212654-82a0ddb27589",
+              "fixed": "N/A"
+            }
+          ]
         },
         {
           "id": "GO-2026-5932",
-          "found": "golang.org/x/crypto@v0.57.0",
-          "fixed": "N/A"
+          "affected": [
+            {
+              "found": "golang.org/x/crypto@v0.57.0",
+              "fixed": "N/A"
+            }
+          ]
         }
-      ]
+      ],
+      "scanTextSHA256": "b57be046be2e94c63b0fd75e79c2fcdc02ee8c6daffcd23c5976c377b8579c8d"
     }
   ]
 }
