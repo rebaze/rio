@@ -1,0 +1,37 @@
+name: Pipeline tool updates
+
+on:
+  schedule:
+    - cron: '20 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pipeline-tool-updates
+  cancel-in-progress: false
+
+jobs:
+  report:
+    # Scheduled/manual runs use only the default branch; never execute PR code
+    # with issue-write permission.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check pins and maintain one update tracker
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/pipeline-updates.py --output "$RUNNER_TEMP/pipeline-tools.json" --publish-issue
+      - name: Retain version inventory
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pipeline-tool-inventory
+          path: ${{ runner.temp }}/pipeline-tools.json

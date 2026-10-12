@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sign rio's existing statements with a local key, then verify each bundle.
-# Requires Bash 3.2+, jq, cosign v3.0.6 and sha256sum or shasum.
+# Requires Bash 3.2+, jq, cosign v3.1.3 and sha256sum or shasum.
 # COSIGN_PASSWORD supplies the private-key password (may be explicitly empty).
 # No keyless fallback, signing service configuration, or transparency-log upload.
 set -euo pipefail
@@ -13,7 +13,7 @@ Sign every statement from a rio normalize --attest run, then verify each
 <artifact-id>.sigstore.json bundle. Requires index.json and the matching SBOMs.
 Both keys must be local files. Set COSIGN_PASSWORD (empty is allowed) so the
 script can unlock the private key without prompting, in CI or on a workstation.
-Requires cosign v3.0.6, jq, and sha256sum or shasum.
+Requires cosign v3.1.3, jq, and sha256sum or shasum.
 
 Public transparency-log upload is disabled. No keyless signing is attempted.
 Existing bundles are refused; use a fresh normalize output directory to rerun.
@@ -57,7 +57,7 @@ else
   refuse 'sha256sum or shasum is required'
 fi
 version=$(cosign version --json) || refuse 'cannot read cosign version'
-[ "$(printf '%s' "$version" | jq -r '.gitVersion')" = v3.0.6 ] || refuse 'cosign v3.0.6 is required (same pin as release.yaml)'
+[ "$(printf '%s' "$version" | jq -r '.gitVersion')" = v3.1.3 ] || refuse 'cosign v3.1.3 is required (same pin as release.yaml)'
 for file in "$key" "$public_key"; do
   if [ ! -f "$file" ] || [ ! -r "$file" ] || [ ! -s "$file" ]; then refuse "key must be a readable, nonempty local file: $file"; fi
 done
@@ -133,7 +133,7 @@ done <<< "$ids"
 printf 'Signing with a local key; transparency-log upload disabled.\n' >&2
 while IFS= read -r id; do
   bundle="$stage/$id.sigstore.json"
-  # v3.0.6 defaults to a TUF signing config. Disable that as well as log upload.
+  # v3.1.3 defaults to a TUF signing config. Disable that as well as log upload.
   cosign attest-blob --key "$key" --statement "$stage/$id.intoto.json" \
     --bundle "$bundle" --yes --tlog-upload=false --use-signing-config=false \
     "$stage/$id.cdx.json" </dev/null >/dev/null || failed "$id: signing failed"

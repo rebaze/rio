@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verify only the v0.3 DSSE bundle format emitted by rio-attest-sign.sh.
-# A legacy cosign bundle can override --key with its embedded key in v3.0.6.
+# Reject legacy embedded-key fallback even when running a newer cosign.
 set -euo pipefail
 
 usage() {
@@ -8,7 +8,7 @@ usage() {
 Usage: rio-attest-verify.sh --public-key FILE --bundle FILE SBOM-FILE
 
 Verify a normalization statement with an independently trusted local public key.
-Requires Bash 3.2+, jq and cosign v3.0.6. Only v0.3 Sigstore DSSE bundles are
+Requires Bash 3.2+, jq and cosign v3.1.3. Only v0.3 Sigstore DSSE bundles are
 accepted; legacy bundles and their embedded-key fallback are refused.
 Public transparency-log verification is disabled for this private signing mode.
 Exit 2: usage/input refusal; exit 1: verification failure; exit 0: verified.
@@ -43,7 +43,7 @@ for file in "$public_key" "$bundle" "$blob"; do
   if [ ! -f "$file" ] || [ ! -r "$file" ] || [ ! -s "$file" ] || [ -L "$file" ]; then refuse 'supply readable, nonempty regular public-key, bundle and SBOM files'; fi
 done
 version=$(cosign version --json) || refuse 'cannot read cosign version'
-[ "$(printf '%s' "$version" | jq -r '.gitVersion')" = v3.0.6 ] || refuse 'cosign v3.0.6 is required'
+[ "$(printf '%s' "$version" | jq -r '.gitVersion')" = v3.1.3 ] || refuse 'cosign v3.1.3 is required'
 umask 077
 stage=$(mktemp -d "${TMPDIR:-/tmp}/rio-attest-verify.XXXXXX") || refuse 'cannot create verification snapshot'
 trap 'rm -rf "$stage"' EXIT

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sign synthetic SBOM statements with installed Rio and real cosign v3.0.6."""
+"""Sign synthetic SBOM statements with installed Rio and real cosign v3.1.3."""
 import argparse
 import base64
 import json
@@ -33,8 +33,8 @@ def main():
         return result.stdout
 
     version = json.loads(run("cosign", "version", "--json"))
-    if version["gitVersion"] != "v3.0.6":
-        raise RuntimeError("cosign v3.0.6 is required")
+    if version["gitVersion"] != "v3.1.3":
+        raise RuntimeError("cosign v3.1.3 is required")
     for name in ("rio.yaml", "app.cdx.json", "worker.cdx.json"):
         shutil.copyfile(fixture / name, root / name)
     originals = {name: (root / name).read_bytes() for name in ("app.cdx.json", "worker.cdx.json")}

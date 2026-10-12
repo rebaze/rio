@@ -375,7 +375,7 @@ These are synthetic test data; this public key is not a production trust anchor.
 Copy [rio-attest-sign.sh](rio-attest-sign.sh) and [rio-attest-verify.sh](rio-attest-verify.sh) together.
 
 Run the [demonstration](demo-attest-sign/) with an installed Rio 0.7.0+, Python 3.9+,
-Bash, jq and cosign v3.0.6. No Go toolchain is needed:
+Bash, jq and cosign v3.1.3. No Go toolchain is needed:
 
 ```sh
 python3 tools/demo-attest-sign/run.py /path/to/rio
@@ -389,10 +389,10 @@ remains available for inspection. This test identity must never sign customer da
 
 ### Requirements and identity
 
-The signing tool needs Bash 3.2+, jq, **cosign v3.0.6** (the same version as `release.yaml`), and
+The signing tool needs Bash 3.2+, jq, **cosign v3.1.3** (the same version as `release.yaml`), and
 `sha256sum` or `shasum`. It rejects other cosign versions so a dependency upgrade cannot silently
 change the signing defaults. Install cosign from its
-[v3.0.6 release](https://github.com/sigstore/cosign/releases/tag/v3.0.6).
+[v3.1.3 release](https://github.com/sigstore/cosign/releases/tag/v3.1.3).
 
 Supply a local private key and the corresponding PEM public key explicitly. The tool checks that
 they match and unlocks the private key before signing anything. It does not generate keys or
@@ -454,7 +454,7 @@ fresh normalization output directory; existing evidence is never overwritten.
 
 ### Recipient verification
 
-A recipient needs Bash 3.2+, jq, cosign v3.0.6, the normalized SBOM, its bundle, an independently
+A recipient needs Bash 3.2+, jq, cosign v3.1.3, the normalized SBOM, its bundle, an independently
 trusted public key, and a copy of [rio-attest-verify.sh](rio-attest-verify.sh). No Rio installation,
 checkout, unsigned statement or `index.json` is needed:
 
@@ -889,3 +889,24 @@ PR state and merges the exact head. No repository protection settings are change
 workflow files. An independent human approval rule is a maintainer decision: enabling one
 without a second eligible reviewer would block a sole-maintainer project. Do not create
 synthetic approvals to improve Scorecard.
+
+## Pipeline tool update inventory
+
+`python3 tools/pipeline-updates.py` reads the actual Go/cosign/Syft/GoReleaser pins,
+checks upstream stable releases and prints a JSON update report. It performs network reads,
+never installs tools or edits dependencies, and needs only Python 3.9+. Inconsistent/missing
+pins or failed upstream queries fail visibly. Go updates stay within the selected supported
+minor line; a line disappearing from supported downloads requires an explicit migration.
+
+The `Pipeline tool updates` workflow runs weekly on Monday and can be dispatched manually
+on main. It creates or updates one exact-title issue only when an update exists; it never
+merges, publishes, dismisses alerts or grants approvals. Dependabot continues to cover both
+Go module graphs (including govulncheck) and SHA-pinned Actions. Builder and receiver images
+remain reviewed compatibility fixtures with digest pins; updating them requires their real
+integration tests rather than changing versions automatically.
+
+Version freshness is not vulnerability clearance. Review the actual binary's compiler and
+module inventory (`go version -m`, `govulncheck -mode=binary`) and upstream advisories. A binary
+scan reports included vulnerable symbols, not proof that Rio's particular signing invocation
+calls them. Upstream tools can retain vulnerable dependencies even in their latest release.
+The [2026-10-12 binary audit](security/pipeline-audit-2026-10-12.json) records exact Linux/amd64 hashes and symbol findings for the selected upstream releases. [Issue #129](https://github.com/rebaze/rio/issues/129) tracks invocation-specific assessment and remediation before claiming a clean release toolchain.
