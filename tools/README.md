@@ -899,7 +899,8 @@ pins or failed upstream queries fail visibly. Go updates stay within the selecte
 minor line; a line disappearing from supported downloads requires an explicit migration.
 
 The `Pipeline tool updates` workflow runs weekly on Monday and can be dispatched manually
-on main. It creates or updates one exact-title issue only when an update exists; it never
+on main. It creates a tracker only when an update exists and reuses only an exact-title issue authored
+by the GitHub Actions bot with the dependencies label; matching an untrusted title is insufficient. It never
 merges, publishes, dismisses alerts or grants approvals. Dependabot continues to cover both
 Go module graphs (including govulncheck) and SHA-pinned Actions. Builder and receiver images
 remain reviewed compatibility fixtures with digest pins; updating them requires their real

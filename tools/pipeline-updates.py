@@ -46,7 +46,7 @@ def same_pin(root, paths, pattern):
 
 def inventory(root=ROOT):
     workflows = '.github/workflows/'
-    return {
+    pins = {
         'go': same_pin(root, ['go.mod', 'tools/security/go.mod'], r'^go (\d+\.\d+\.\d+)$'),
         'cosign': same_pin(root, [workflows+x for x in ('ci.yaml','release.yaml','verify-release.yaml')],
                            r'cosign-release: (v\d+\.\d+\.\d+)'),
@@ -54,6 +54,14 @@ def inventory(root=ROOT):
         'goreleaser': same_pin(root, [workflows+'ci.yaml',workflows+'release.yaml'],
                                r'version: "(v\d+\.\d+\.\d+)"'),
     }
+
+    shell_pin = same_pin(root, ['tools/rio-attest-sign.sh','tools/rio-attest-verify.sh'],
+                         r'^\[.* = (v\d+\.\d+\.\d+) \] \|\| refuse')
+    demo_pin = same_pin(root, ['tools/demo-attest-sign/run.py'],
+                        r'if version\["gitVersion"\] != "(v\d+\.\d+\.\d+)":')
+    if len({pins['cosign'], shell_pin, demo_pin}) != 1:
+        raise ValueError('inconsistent cosign workflow/signer/verifier/demo pins')
+    return pins
 
 
 def fetch(url):
@@ -103,8 +111,11 @@ def publish(result, command=run):
             '\n\nCheck upstream advisories, actual downloaded binary build metadata, signer/recipient compatibility, '
             'and full candidate CI before changing pins. This report does not authorize auto-merge or publication. '
             'Go modules/actions remain covered by Dependabot.\n')
-    issues = json.loads(command(['gh','issue','list','--repo',REPO,'--state','open','--search',TITLE+' in:title','--limit','100','--json','number,title']))
-    matches = [i for i in issues if i['title'] == TITLE]
+    issues = json.loads(command(['gh','issue','list','--repo',REPO,'--state','open','--search',TITLE+' in:title','--author','github-actions[bot]','--label','dependencies','--limit','100','--json','number,title,author,labels']))
+    matches = [i for i in issues if i['title'] == TITLE
+               and i.get('author', {}).get('is_bot') is True
+               and i.get('author', {}).get('login') in ('github-actions[bot]', 'app/github-actions')
+               and any(label.get('name') == 'dependencies' for label in i.get('labels', []))]
     if len(matches) > 1:
         raise ValueError('multiple update trackers exist; reconcile them explicitly')
     with tempfile.NamedTemporaryFile(mode='w', suffix='.md') as tmp:

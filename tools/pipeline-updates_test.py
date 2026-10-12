@@ -48,13 +48,41 @@ class UpdatesTest(unittest.TestCase):
         def run(args):
             calls.append(args)
             if args[1:3] == ['issue', 'list']:
-                return json.dumps([{'number': 20, 'title': updates.TITLE},
+                return json.dumps([{'number': 20, 'title': updates.TITLE, 'author': {'login':'github-actions[bot]', 'is_bot':True}, 'labels':[{'name':'dependencies'}]},
                                    {'number': 21, 'title': updates.TITLE + ' unrelated'}])
             return ''
         report = {'updates': [{'tool': 'go', 'current': 'v1.27.2', 'latest': 'v1.27.3'}]}
         updates.publish(report, run)
         self.assertEqual(calls[-1][1:4], ['issue', 'edit', '20'])
         self.assertFalse(any(c[1:3] == ['issue','create'] for c in calls))
+
+    def test_matching_untrusted_title_is_not_overwritten(self):
+        calls=[]
+        def command(args):
+            calls.append(args)
+            if args[1:3] == ['issue','list']:
+                return json.dumps([{'number':99, 'title':updates.TITLE,
+                    'author':{'login':'outside-user','is_bot':False},
+                    'labels':[{'name':'dependencies'}]}])
+            return ''
+        updates.publish({'updates':[{'tool':'go','current':'v1.27.2','latest':'v1.27.3'}]}, command)
+        self.assertEqual(calls[-1][1:3], ['issue','create'])
+        self.assertFalse(any(c[1:3] == ['issue','edit'] for c in calls))
+
+    def test_workflow_only_cosign_update_is_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            for rel in ['go.mod','tools/security/go.mod','.github/workflows/ci.yaml',
+                        '.github/workflows/release.yaml','.github/workflows/verify-release.yaml',
+                        'tools/rio-attest-sign.sh','tools/rio-attest-verify.sh','tools/demo-attest-sign/run.py']:
+                dest=root/rel;dest.parent.mkdir(parents=True,exist_ok=True)
+                dest.write_bytes((updates.ROOT/rel).read_bytes())
+            for rel in ['tools/rio-attest-sign.sh','tools/rio-attest-verify.sh','tools/demo-attest-sign/run.py']:
+                dest=root/rel;before=dest.read_text()
+                dest.write_text(before.replace('v3.1.3','v3.0.6'))
+                with self.subTest(path=rel), self.assertRaisesRegex(ValueError, 'inconsistent'):
+                    updates.inventory(root)
+                dest.write_text(before)
 
     def test_token_is_never_sent_to_another_origin_and_redirects_fail(self):
         seen = []
