@@ -12,13 +12,13 @@ Inspect the [signed bundle](example/app.sigstore.json), [original statement](exa
 [normalized SBOM](example/app.cdx.json) and [test public key](example/SYNTHETIC-ONLY.pub).
 The private synthetic key was deleted. The sample key is not a production trust anchor.
 
-Run with installed Rio 0.7.0+, Python 3.9+, Bash, jq, cosign v3.1.3 and sha256sum or shasum:
+Run with installed Rio 0.7.0+, Python 3.9+, Bash, jq, the [reviewed Cosign rebuild](../release-toolchain/README.md) based on v3.1.3, and sha256sum or shasum:
 
 ```sh
 python3 tools/demo-attest-sign/run.py /path/to/rio
 ```
 
-No Go toolchain is required. The runner generates a disposable test key, normalizes both
+No Go toolchain is required to run the demo with installed tools; rebuilding Cosign requires Go. The runner generates a disposable test key, normalizes both
 synthetic fixtures into one isolated run, signs and verifies both statements, and checks
 overwrite and tamper refusals. It deletes the private key even if a check fails and prints
 the retained public evidence directory. Public-log upload is disabled.
