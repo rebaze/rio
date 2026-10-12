@@ -72,7 +72,11 @@ func (t stopAfterResponse) Submit(ctx context.Context, p []delivery.Payload) (de
 	if e = os.WriteFile(t.marker, []byte("received"), 0600); e != nil {
 		return sub, e
 	}
-	select {}
+	// Keep a timer live so the runtime cannot report a deadlock before the
+	// parent kills this child at the response-before-journal boundary.
+	for {
+		time.Sleep(time.Hour)
+	}
 }
 func TestReceiptRecoveryAfterHardKillNeverReplays(t *testing.T) {
 	if marker := os.Getenv("RIO_106_KILL_MARKER"); marker != "" {
@@ -105,26 +109,43 @@ func TestReceiptRecoveryAfterHardKillNeverReplays(t *testing.T) {
 	if e := child.Start(); e != nil {
 		t.Fatal(e)
 	}
+	done := make(chan struct{})
+	var waitErr error
+	go func() {
+		waitErr = child.Wait()
+		close(done)
+	}()
 	defer func() {
-		if child.ProcessState == nil {
-			child.Process.Kill()
-			child.Wait()
-		}
+		child.Process.Kill()
+		<-done
 	}()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
+		select {
+		case <-done:
+			t.Fatalf("child exited before kill: %v\n%s", waitErr, stderr.String())
+		default:
+		}
 		if _, e := os.Stat(marker); e == nil {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("child did not reach response", stderr.String())
+			t.Fatal("child did not reach response")
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	// Prove the child remains at the crash boundary rather than exiting from a
+	// runtime deadlock before a slower Windows parent can terminate it.
+	select {
+	case <-done:
+		t.Fatalf("child exited at crash boundary: %v\n%s", waitErr, stderr.String())
+	case <-time.After(100 * time.Millisecond):
 	}
 	if e := child.Process.Kill(); e != nil {
 		t.Fatal(e)
 	}
-	if e := child.Wait(); e == nil {
+	<-done
+	if waitErr == nil {
 		t.Fatal("child was not killed")
 	}
 	dirs, _ := filepath.Glob(filepath.Join(dir, "target", "rio", "runs", "run-*"))

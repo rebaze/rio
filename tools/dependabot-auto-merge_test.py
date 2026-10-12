@@ -169,7 +169,8 @@ if args[:3] == ['api', '--method', 'PUT']:
     print(os.environ.get('TEST_MERGE_REPLY', 'true'))
     sys.exit(int(os.environ.get('TEST_MERGE_EXIT', '0')))
 elif args[:2] == ['pr', 'checks']:
-    print(os.environ.get('TEST_CHECKS', '[{"name":"build","bucket":"pass"},{"name":"Analyze Go","bucket":"pass"}]'))
+    field = 'TEST_CHECKS' if '--required' in args else 'TEST_ALL_CHECKS'
+    print(os.environ.get(field, os.environ.get('TEST_CHECKS', '[{"name":"build","bucket":"pass"},{"name":"Analyze Go","bucket":"pass"},{"name":"CI complete","bucket":"pass"}]')))
 elif args[:2] == ['api', 'graphql']:
     states = json.loads(os.environ.get('TEST_BODY_STATES', '[{"body":"Dependabot update","lastEditedAt":null,"editor":null,"author":"bot-id"}]'))
     counter = Path(os.environ['TEST_CALLS'] + '.body-count')
@@ -206,7 +207,7 @@ else:
             PR_BODY="Dependabot update",
             GH_REPO="rebaze/rio",
             GH_TOKEN="test",
-            TEST_CHECKS='[{"name":"build","bucket":"pass"},{"name":"Analyze Go","bucket":"pass"}]',
+            TEST_CHECKS='[{"name":"build","bucket":"pass"},{"name":"Analyze Go","bucket":"pass"},{"name":"CI complete","bucket":"pass"}]',
             METADATA=metadata if isinstance(metadata, str) else json.dumps(metadata),
             TEST_COMMITS=json.dumps(commits),
             TEST_CURRENT=json.dumps(current),
@@ -323,9 +324,10 @@ else:
         ("cancelled", '[{"name":"build","bucket":"cancel"}]'),
         ("pending", '[{"name":"build","bucket":"pending"}]'),
         ("missing", "[]"),
+        ("missing aggregate", '[{"name":"build","bucket":"pass"},{"name":"Analyze Go","bucket":"pass"}]'),
         (
             "skipped",
-            '[{"name":"build","bucket":"skipping"},{"name":"Analyze Go","bucket":"pass"}]',
+            '[{"name":"build","bucket":"skipping"},{"name":"Analyze Go","bucket":"pass"},{"name":"CI complete","bucket":"pass"}]',
         ),
         ("malformed", "error"),
     ]:
@@ -345,4 +347,13 @@ else:
             result.stderr,
         )
         print("PASS", name, "checks do not merge")
-print(len(cases) + len(body_cases) + len(merge_cases) + 6, "policy scenarios passed")
+    for bucket in ('fail', 'cancel'):
+        calls.write_text("")
+        env.update(TEST_CHECKS='[{"name":"build","bucket":"pass"},{"name":"Analyze Go","bucket":"pass"}]',
+                   TEST_ALL_CHECKS=json.dumps([{'name':'CI complete','bucket':bucket}]))
+        result = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, timeout=30)
+        assert result.returncode == 0, (bucket, result.stderr)
+        assert not calls.read_text(), calls.read_text()
+        assert 'Waiting for required checks' not in result.stdout, result.stdout
+        print('PASS terminal aggregate', bucket, 'does not wait or merge')
+print(len(cases) + len(body_cases) + len(merge_cases) + 9, "policy scenarios passed")

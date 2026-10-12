@@ -12,7 +12,7 @@ Inspect the [signed bundle](example/app.sigstore.json), [original statement](exa
 [normalized SBOM](example/app.cdx.json) and [test public key](example/SYNTHETIC-ONLY.pub).
 The private synthetic key was deleted. The sample key is not a production trust anchor.
 
-Run with installed Rio 0.7.0+, Python 3.9+, Bash, jq, cosign v3.0.6 and sha256sum or shasum:
+Run with installed Rio 0.7.0+, Python 3.9+, Bash, jq, cosign v3.1.3 and sha256sum or shasum:
 
 ```sh
 python3 tools/demo-attest-sign/run.py /path/to/rio
@@ -23,7 +23,7 @@ synthetic fixtures into one isolated run, signs and verifies both statements, an
 overwrite and tamper refusals. It deletes the private key even if a check fails and prints
 the retained public evidence directory. Public-log upload is disabled.
 
-Verify the committed example independently with cosign v3.0.6:
+Verify the committed example independently with cosign v3.1.3:
 
 ```sh
 cd tools/demo-attest-sign/example
@@ -38,3 +38,5 @@ predicate type and subject digest. The sample proves that this bundle is interna
 with its test key; it does not authenticate a real producer or establish a trusted signing time.
 
 See [key handling, output boundaries and recipient trust](../README.md#signing-and-verifying-normalization-attestations).
+
+The original sample remains unchanged. The current helper and signing/refusal demo are also verified with cosign v3.1.3.

@@ -24,7 +24,7 @@ set -eu
 # JSON arrays preserve argument boundaries, including spaces.
 jq -cn --args '$ARGS.positional' -- "$@" >> "$WORK/calls"
 case "$1" in
-  version) printf '{"gitVersion":"%s"}\n' "${VERSION:-v3.0.6}" ;;
+  version) printf '{"gitVersion":"%s"}\n' "${VERSION:-v3.1.3}" ;;
   public-key)
     [ "${KEY_FAIL:-0}" = 0 ] || exit 1
     printf '%s\n' '-----BEGIN PUBLIC KEY-----' 'YWJj' '-----END PUBLIC KEY-----'
@@ -87,7 +87,7 @@ run() {
     INTERRUPT="${INTERRUPT:-0}" CHANGE_INPUT="${CHANGE_INPUT:-0}" CREATE_DESTINATION="${CREATE_DESTINATION:-0}" \
     CHANGE_EARLIER_INPUT="${CHANGE_EARLIER_INPUT:-0}" \
     CHANGE_EARLIER_BUNDLE="${CHANGE_EARLIER_BUNDLE:-0}" \
-    VERSION="${VERSION:-v3.0.6}" KEY_FAIL="${KEY_FAIL:-0}" SIGN_FAIL="${SIGN_FAIL:-}" VERIFY_FAIL="${VERIFY_FAIL:-}" \
+    VERSION="${VERSION:-v3.1.3}" KEY_FAIL="${KEY_FAIL:-0}" SIGN_FAIL="${SIGN_FAIL:-}" VERIFY_FAIL="${VERIFY_FAIL:-}" \
     BUNDLE_FORMAT="${BUNDLE_FORMAT:-}" \
     bash "$script" "$@" 2>&1)"
   code=$?
@@ -112,7 +112,7 @@ refused
 run --key "$work/private key" --public-key "$work/public key" "$dir" extra
 refused
 saved_dir="$dir"; dir="$work/missing"; normal; refused; dir="$saved_dir"
-VERSION=v3.1.3 normal
+VERSION=v99.0.0 normal
 refused
 KEY_FAIL=1 normal
 refused

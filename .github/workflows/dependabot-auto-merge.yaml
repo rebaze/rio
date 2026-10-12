@@ -106,11 +106,16 @@ jobs:
               # gh exits nonzero for pending/failed checks as well as errors.
               # Parse only a real JSON array and never treat empty as passing.
               checks=$(gh pr checks "$PR_NUMBER" --required --json name,bucket) || true
+              # Enforce the aggregate even before a maintainer adds it to branch protection.
+              all_checks=$(gh pr checks "$PR_NUMBER" --json name,bucket) || true
               if jq -e 'type == "array"' <<<"$checks" >/dev/null; then
                 if jq -e '
                   any(.[]; .name == "build") and any(.[]; .name == "Analyze Go") and
                   all(.[]; .bucket == "pass")
-                ' <<<"$checks" >/dev/null; then
+                ' <<<"$checks" >/dev/null && jq -e '
+                  type == "array" and
+                  ([.[] | select(.name == "CI complete")] | length == 1 and all(.[]; .bucket == "pass"))
+                ' <<<"$all_checks" >/dev/null; then
                   # Revalidate head, base, open/draft state and body metadata
                   # together after the checks query, immediately before merge.
                   latest_pr_state=$(read_pr_state)
@@ -127,8 +132,9 @@ jobs:
                   gh workflow run scorecard.yaml --ref main
                   exit 0
                 fi
-                if jq -e 'any(.[]; .bucket == "fail" or .bucket == "cancel")' <<<"$checks" >/dev/null; then
-                  echo "Required checks failed; leaving the PR open."
+                if jq -e 'any(.[]; .bucket == "fail" or .bucket == "cancel")' <<<"$checks" >/dev/null ||
+                  jq -e 'type == "array" and any(.[]; .name == "CI complete" and (.bucket == "fail" or .bucket == "cancel"))' <<<"$all_checks" >/dev/null; then
+                  echo "Required checks or CI aggregate failed; leaving the PR open."
                   exit 0
                 fi
               fi

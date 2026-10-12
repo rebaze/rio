@@ -41,8 +41,9 @@ resolves somewhere it should not, that is in scope and we want to hear about it.
 
 Two properties are worth stating because a break in either is a security finding in itself:
 
-- **rio makes no network calls.** Resolution happens against data it already has. A build of rio that
-  reaches the network is a bug, and CI enforces this.
+- **read-only operations and normalization remain offline.** Root pipeline execution, explicit
+  delivery and reconciliation may contact configured receivers and resolve credentials. Planning,
+  normalization and receipt inspection/reporting must not do so.
 - **rio is self-contained.** It runs with `CGO_ENABLED=0` and shells out to nothing at runtime.
 
 ## Verifying a release
@@ -57,8 +58,7 @@ This policy covers vulnerabilities in rio's first-party code. Issues in upstream
 be reported to their respective maintainers; if a dependency issue affects rio specifically, tell us
 as well so we can bump or work around it.
 
-Supporting tools under `tools/` are not part of the rio binary and are not covered by the no-network
-property above. Report issues in those as ordinary bugs unless they expose credentials or
+Supporting tools under `tools/` are not part of the rio binary and may perform their documented network operations. Report issues in those as ordinary bugs unless they expose credentials or
 compromise a release.
 
 ## Dependency updates and alert closure
@@ -71,7 +71,7 @@ The required CI `build` check reviews every PR for newly introduced vulnerable d
 any severity, including development dependencies. Changes to Go code, dependencies, or CI also
 run `govulncheck` against both rio and the scanner itself, the tests, vet, and a static build. The scanner and its dependencies are
 pinned in `tools/security/go.mod` and `go.sum`, which Dependabot also maintains. A daily CI run and manual dispatch repeat
-the Go checks so newly published advisories can be detected without a code change. Scheduled,
+the full validation suite so newly published advisories can be detected without a code change. Scheduled,
 manual, and push runs have separate concurrency groups so they cannot cancel each other. The Go scan
 uses the compiler selected by `go.mod`; it reports reachable vulnerabilities in that build,
 not a guarantee about every platform or previously released binary.
@@ -79,7 +79,7 @@ not a guarantee about every platform or previously released binary.
 Dependabot groups patch/minor security fixes separately for Go and GitHub Actions. The
 `Auto-merge security updates` workflow checks the bot's verified single commit, security-group
 metadata, and every dependency's update type. It waits for the required `build` and
-`Analyze Go` checks to pass, then merges only that exact commit without bypassing branch
+`Analyze Go` checks plus the `CI complete` aggregate to pass, then merges only that exact commit without bypassing branch
 protection. The REST merge endpoint either merges that SHA immediately or refuses; it never
 queues native auto-merge authorization that could survive a later edit.
 Major updates, ordinary version updates, upstream maintainer changes, unknown metadata,
@@ -108,3 +108,15 @@ The CycloneDX files directly under `testdata/` are synthetic input documents, no
 inventory. `testdata/osv-scanner.toml` records the verified Commons Lang fixture finding by
 advisory ID and reason. That exception applies only beside those fixtures; real dependencies
 in `go.mod` remain scanned, and new fixture advisories still surface for review.
+
+The captured v0.7.0 client-record example also contains synthetic Commons Lang 3.17.0
+metadata in `tools/demo-client-record/example/` and its `normalized/` directory. Each directory
+has its own advisory-specific `osv-scanner.toml`: the scanner does not apply the parent
+exception to nested SBOMs. These are preserved input/output bytes bound to published sample
+receipts, not installed Java libraries. No receipt, SBOM or digest is rewritten to silence a scan.
+
+Verified on 2026-10-12 with Scorecard v5.5.0: after patching Go/x/text, scanning the repository
+reported this one Commons Lang advisory; adding the two example-local dispositions produced
+zero findings. The original `testdata/` exception alone was insufficient. This does not
+suppress the advisory in other directories, other advisories, or actual module dependencies.
+Re-run Scorecard after merging; local results do not close the hosted alert.
