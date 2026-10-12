@@ -1,6 +1,6 @@
 module github.com/rebaze/rio/tools/security
 
-go 1.27.0
+go 1.27.2
 
 tool golang.org/x/vuln/cmd/govulncheck
 
