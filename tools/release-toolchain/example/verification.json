@@ -1,7 +1,7 @@
 {
   "date": "2026-10-12",
   "compiler": "go1.27.2",
-  "manifestSHA256": "8ff3a0e8a58dab712130f285f27f2da3980073708810194ace17451fe7bd422c",
+  "manifestSHA256": "00992db52ab1f800dd30499d37f15e33deae3909f86f9f4c4cc16a03532606cc",
   "builds": [
     {
       "tool": "cosign",
@@ -67,5 +67,13 @@
     "goreleaserSnapshot": "six OS/architecture archives built; signing/publication skipped",
     "publishedReleaseVerification": "v0.7.0 complete signed asset set, attestations and native darwin/arm64 client demo passed"
   },
-  "limits": "Local evidence and Linux cross-build scans; hosted checks recorded in the PR. Remaining IDs are scoped dispositions, not general tool security clearance."
+  "limits": "Local evidence and Linux cross-build scans; hosted checks recorded in the PR. Remaining IDs are scoped dispositions, not general tool security clearance.",
+  "scanner": {
+    "module": "golang.org/x/vuln",
+    "version": "v1.8.0",
+    "locks": {
+      "go.mod": "306ea902b1da16611aa1c5c94326c2524a5131a8a13b08814c8d9bb710181a77",
+      "go.sum": "e2f7d9dce0e331ca426fa86f979169d99b656d639819cec35ae9c81bd8b7be48"
+    }
+  }
 }

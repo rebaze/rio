@@ -19,7 +19,7 @@ REVIEWED_FILES = ('.goreleaser.yaml', '.github/workflows/ci.yaml',
                   '.github/workflows/release.yaml', '.github/workflows/verify-release.yaml',
                   'tools/rio-attest-sign.sh', 'tools/rio-attest-verify.sh',
                   'tools/release-publish.py', 'tools/verify-release.py',
-                  'tools/demo-attest-sign/run.py')
+                  'tools/demo-attest-sign/run.py', 'tools/security/go.mod', 'tools/security/go.sum')
 
 
 def digest(path):
@@ -50,7 +50,7 @@ def events(data):
         data=data.lstrip()[end:]
 
 
-def assess(data, approved):
+def assess(data, approved, scanner_version):
     findings=[]
     configured=False
     sbom=False
@@ -59,6 +59,8 @@ def assess(data, approved):
         if cfg:
             if cfg.get('scanner_name') != 'govulncheck' or cfg.get('scan_mode') != 'binary' or cfg.get('scan_level') != 'symbol':
                 raise ValueError('unexpected scanner configuration')
+            if cfg.get('scanner_version') != scanner_version:
+                raise ValueError('unexpected scanner version')
             configured=True
         if isinstance(event.get('SBOM'),dict):
             sbom=True
@@ -98,7 +100,7 @@ def environment(compiler):
 
 
 def run(args, env, cwd=None):
-    return subprocess.check_output([str(a) for a in args],env=env,cwd=cwd,text=True)
+    return subprocess.check_output([str(a) for a in args],env=env,cwd=cwd,text=True,encoding='utf-8')
 
 
 def build(output, names):
@@ -110,6 +112,11 @@ def build(output, names):
         raise ValueError('compiler identity differs')
     host=run(['go','env','GOHOSTOS','GOHOSTARCH'],env).splitlines()
     env.update(GOOS=host[0],GOARCH=host[1])
+    scanner=manifest['scanner']
+    run(['go','-C',ROOT/'tools/security','mod','verify'],env)
+    scanner_module=json.loads(run(['go','-C',ROOT/'tools/security','list','-m','-json',scanner['module']],env))
+    if scanner_module.get('Version') != scanner['version']:
+        raise ValueError('scanner module version differs')
     output.mkdir(mode=0o700,parents=True,exist_ok=False)
     results=[]
     for name in names:
@@ -141,9 +148,9 @@ def build(output, names):
                 identity.get('Main',{}).get('Sum') != cfg['sum']):
             raise ValueError('built tool identity differs')
         scan=run(['go','-C',ROOT/'tools/security','tool','govulncheck','-mode=binary','-format=json',binary],env)
-        (output/(name+'.govulncheck.json')).write_text(scan)
-        findings=assess(scan,cfg['reviewedFindings'])
-        (output/(name+'.build.json')).write_text(info)
+        (output/(name+'.govulncheck.json')).write_text(scan,encoding='utf-8')
+        findings=assess(scan,cfg['reviewedFindings'],scanner['version'])
+        (output/(name+'.build.json')).write_text(info,encoding='utf-8')
         results.append({'tool':name,'version':cfg['version'],'upstreamCommit':cfg['commit'],
                         'sourceSum':cfg['sum'],'locks':cfg['locks'],'compiler':manifest['compiler'],
                         'platform':'/'.join(host),'binarySHA256':digest(binary),'findings':findings})
@@ -152,7 +159,8 @@ def build(output, names):
     if (HERE/'manifest.json').read_bytes() != manifest_bytes:
         raise ValueError('toolchain manifest changed during build')
     (output/'inventory.json').write_text(json.dumps({'manifestSHA256':hashlib.sha256(manifest_bytes).hexdigest(),
-        'tools':results,'scope':'Only the reviewed Rio release invocations; not general-purpose tool security clearance.'},indent=2)+'\n')
+        'scanner':dict(scanner, locks={name:manifest['reviewedFiles']['tools/security/'+name] for name in ('go.mod','go.sum')}),
+        'tools':results,'scope':'Only the reviewed Rio release invocations; not general-purpose tool security clearance.'},indent=2)+'\n',encoding='utf-8')
 
 
 def main():

@@ -116,3 +116,10 @@ fails its lock hash or source-identity checks until the corresponding manifest a
 are reviewed. Such coordinated changes need maintainer review; they do not silently qualify
 for the single-commit security auto-merge path. Daily full CI scans detect new advisories even
 when no upstream tool version has changed.
+
+The scanner is part of the audited inputs too: both `tools/security` module locks are
+fingerprinted, the resolved `golang.org/x/vuln` version is checked, and the emitted
+`scanner_version` must match. Inventories record that version and the scanner lock hashes.
+A scanner implementation/dependency update therefore requires explicit reassessment, rather
+than silently reusing an older precision or policy assumption. The vulnerability database
+remains live so new advisory IDs still fail validation.

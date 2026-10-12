@@ -4,12 +4,14 @@
     ".goreleaser.yaml": "b6cc670b3cc3f18a574edefc383d970e1c26961df97501215e5ae133b314127d",
     ".github/workflows/ci.yaml": "53a90716a85ff5fb83d6e2023b7bd131612c7e001e023a3a43cb8f64208a8c04",
     ".github/workflows/release.yaml": "1e9dbce477399f3cb056404e7426ad2121fdb5497c004417376e906d97340939",
-    ".github/workflows/verify-release.yaml": "8639af2837b1ffb98370f1f3adc79495105f7cf16ad35d1618060dd1925154e8",
+    ".github/workflows/verify-release.yaml": "9cf5e30eea3fddaa87b0905d7187e93a2b762e97d58ca8a64366c1b175ef6502",
     "tools/rio-attest-sign.sh": "8259794c718d47edd0afc3d3e590ee7126a872832ea5d8095e7f9491d70f2f0f",
     "tools/rio-attest-verify.sh": "0062193eb3f2e86d0d672c969af968d7f869d751343ae00dcd4ceeb098b9d8f6",
     "tools/release-publish.py": "351478935f4814e62babf9ffa2c7d0706a0405ccf5caee51fda1587a5a24e8ec",
     "tools/verify-release.py": "04fa9bd965095b63c8ee6b2bb2166dbe532829a5c4e5ccf774e64030336889a8",
-    "tools/demo-attest-sign/run.py": "dd8c091a56819bb9852182fab9303e85ec75dfd8e8ffe0656780edc0e978610f"
+    "tools/demo-attest-sign/run.py": "dd8c091a56819bb9852182fab9303e85ec75dfd8e8ffe0656780edc0e978610f",
+    "tools/security/go.mod": "306ea902b1da16611aa1c5c94326c2524a5131a8a13b08814c8d9bb710181a77",
+    "tools/security/go.sum": "e2f7d9dce0e331ca426fa86f979169d99b656d639819cec35ae9c81bd8b7be48"
   },
   "tools": {
     "cosign": {
@@ -117,5 +119,9 @@
         }
       }
     }
+  },
+  "scanner": {
+    "module": "golang.org/x/vuln",
+    "version": "v1.8.0"
   }
 }

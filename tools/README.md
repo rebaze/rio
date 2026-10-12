@@ -375,7 +375,8 @@ These are synthetic test data; this public key is not a production trust anchor.
 Copy [rio-attest-sign.sh](rio-attest-sign.sh) and [rio-attest-verify.sh](rio-attest-verify.sh) together.
 
 Run the [demonstration](demo-attest-sign/) with an installed Rio 0.7.0+, Python 3.9+,
-Bash, jq and cosign v3.1.3. No Go toolchain is needed:
+Bash, jq and an already installed, audited Cosign executable based on v3.1.3.
+Running this demo needs no Go toolchain; building the audited Cosign executable does:
 
 ```sh
 python3 tools/demo-attest-sign/run.py /path/to/rio
@@ -389,10 +390,12 @@ remains available for inspection. This test identity must never sign customer da
 
 ### Requirements and identity
 
-The signing tool needs Bash 3.2+, jq, **cosign v3.1.3** (the same version as `release.yaml`), and
-`sha256sum` or `shasum`. It rejects other cosign versions so a dependency upgrade cannot silently
-change the signing defaults. Install cosign from its
-[v3.1.3 release](https://github.com/sigstore/cosign/releases/tag/v3.1.3).
+The signing tool needs Bash 3.2+, jq, the **reviewed Cosign rebuild based on v3.1.3**, and
+`sha256sum` or `shasum`. Use the [source-build recipe and its inventory](release-toolchain/README.md)
+or an already audited executable produced by that recipe. The upstream v3.1.3 release asset
+uses an older compiler and is not the patched executable used by Rio's release workflow.
+The helper's version check enforces command compatibility only; matching `gitVersion` does not
+verify dependency versions or build identity. Check the build inventory and executable digest.
 
 Supply a local private key and the corresponding PEM public key explicitly. The tool checks that
 they match and unlocks the private key before signing anything. It does not generate keys or
@@ -454,7 +457,7 @@ fresh normalization output directory; existing evidence is never overwritten.
 
 ### Recipient verification
 
-A recipient needs Bash 3.2+, jq, cosign v3.1.3, the normalized SBOM, its bundle, an independently
+A recipient needs Bash 3.2+, jq, the reviewed Cosign rebuild described above, the normalized SBOM, its bundle, an independently
 trusted public key, and a copy of [rio-attest-verify.sh](rio-attest-verify.sh). No Rio installation,
 checkout, unsigned statement or `index.json` is needed:
 
