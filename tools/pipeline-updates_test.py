@@ -14,6 +14,9 @@ updates = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(updates)
 
 class UpdatesTest(unittest.TestCase):
+    def test_repository_pins_are_consistent(self):
+        self.assertEqual(set(updates.inventory()), {'go','cosign','syft','goreleaser'})
+
     def test_new_patch_is_reported_and_prereleases_are_rejected(self):
         self.assertTrue(updates.newer('v1.27.2', 'v1.27.3'))
         self.assertFalse(updates.newer('v3.1.3', 'v3.1.3'))
@@ -69,11 +72,12 @@ class UpdatesTest(unittest.TestCase):
         self.assertEqual(calls[-1][1:3], ['issue','create'])
         self.assertFalse(any(c[1:3] == ['issue','edit'] for c in calls))
 
-    def test_workflow_only_cosign_update_is_refused(self):
+    def test_toolchain_and_executable_cosign_mismatch_is_refused(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d)
-            for rel in ['go.mod','tools/security/go.mod','.github/workflows/ci.yaml',
-                        '.github/workflows/release.yaml','.github/workflows/verify-release.yaml',
+            for rel in ['go.mod','tools/security/go.mod','tools/release-toolchain/manifest.json',
+                        'tools/release-toolchain/cosign/go.mod','tools/release-toolchain/syft/go.mod',
+                        'tools/release-toolchain/goreleaser/go.mod',
                         'tools/rio-attest-sign.sh','tools/rio-attest-verify.sh','tools/demo-attest-sign/run.py']:
                 dest=root/rel;dest.parent.mkdir(parents=True,exist_ok=True)
                 dest.write_bytes((updates.ROOT/rel).read_bytes())

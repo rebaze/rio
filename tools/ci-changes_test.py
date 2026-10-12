@@ -180,6 +180,11 @@ class ChangesTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(detect(path)["go"], "true")
 
+    def test_release_toolchain_changes_run_live_build_and_audit(self):
+        for leaf in ('manifest.json','build.py','cosign/go.mod','cosign/go.sum','README.md'):
+            with self.subTest(leaf=leaf):
+                self.assertEqual(detect('tools/release-toolchain/'+leaf)['go'], 'true')
+
     def test_unrelated_documentation_keeps_checks_skipped(self):
         self.assertEqual(
             detect("README.md"),

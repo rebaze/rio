@@ -24,7 +24,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -70,7 +70,7 @@ jobs:
           # Fixtures, golden files and the embedded CycloneDX schemas are
           # inputs to the test suite, so a change to any of them has to run it.
           # Missing that is how a stale golden file reaches main.
-          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery|record|oci|dtrack-tls|normalization-evidence|batch-evidence|client-record|juice-shop|attest-sign)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$|^tools/rio-attest-(sign(_test)?|verify)\.sh$)' <<<"$CHANGED" >/dev/null; then go=true; fi
+          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/release-toolchain/|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery|record|oci|dtrack-tls|normalization-evidence|batch-evidence|client-record|juice-shop|attest-sign)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$|^tools/rio-attest-(sign(_test)?|verify)\.sh$)' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.github/workflows/.*\.ya?ml$' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.goreleaser\.yaml$' <<<"$CHANGED" >/dev/null; then goreleaser=true; fi
           if grep -E '\.sh$' <<<"$CHANGED" >/dev/null; then shell=true; fi
@@ -89,6 +89,7 @@ jobs:
           cache-dependency-path: |
             go.sum
             tools/security/go.sum
+            tools/release-toolchain/*/go.sum
 
       # Pin the scanner and its dependencies in a separate tools module.
       # Dependabot updates that module; the vulnerability database stays live.
@@ -156,11 +157,29 @@ jobs:
           python3 tools/demo-juice-shop/verify.py "$PWD/rio"
           RIO_BIN="$PWD/rio" python3 tools/demo-juice-shop/verify_test.py
 
-      - name: Install pinned cosign for synthetic signing checks
+      - name: Build and audit the pinned release toolchain
+        if: steps.changes.outputs.go == 'true' || steps.changes.outputs.goreleaser == 'true'
+        run: |
+          python3 tools/release-toolchain/build.py --output "$RUNNER_TEMP/rio-release-tools"
+          echo "$RUNNER_TEMP/rio-release-tools" >> "$GITHUB_PATH"
+
+      - name: Exercise rebuilt source-SBOM generation
         if: steps.changes.outputs.go == 'true'
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        run: |
+          syft dir:. --exclude './dist/**' --output "cyclonedx-json@1.6=$RUNNER_TEMP/rio-source.cdx.json"
+          python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["bomFormat"] == "CycloneDX" and d["specVersion"] == "1.6" and d["components"]' "$RUNNER_TEMP/rio-source.cdx.json"
+
+      - name: Exercise rebuilt GoReleaser without publishing
+        if: steps.changes.outputs.go == 'true' || steps.changes.outputs.goreleaser == 'true'
+        run: goreleaser release --config .goreleaser.yaml --snapshot --skip=publish,announce,sign,homebrew
+
+      - name: Retain release-tool build and scan evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          cosign-release: v3.1.3
+          name: release-tool-audit
+          path: ${{ runner.temp }}/rio-release-tools/*.json
+          if-no-files-found: ignore
 
       - name: Sign and independently verify synthetic normalization statements
         if: steps.changes.outputs.go == 'true'
@@ -208,6 +227,7 @@ jobs:
           python3 tools/ci-changes_test.py
           python3 tools/ci-complete_test.py
           python3 tools/pipeline-updates_test.py
+          python3 tools/release-toolchain/build_test.py
           python3 tools/rio-context_test.py
           python3 tools/feature-video/feature_video_test.py
           python3 tools/feature-video/tooling_test.py
@@ -217,16 +237,9 @@ jobs:
           python3 tools/demo-delivery/integration/setup_test.py
           python3 tools/demo-juice-shop/demo_test.py
 
-      - name: Install GoReleaser
-        if: steps.changes.outputs.goreleaser == 'true'
-        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
-        with:
-          version: "v2.18.3"
-          install-only: true
-
       - name: Validate GoReleaser config
         if: steps.changes.outputs.goreleaser == 'true'
-        run: goreleaser check
+        run: goreleaser check --config .goreleaser.yaml
 
   delivery-platforms:
     strategy:

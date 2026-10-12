@@ -911,3 +911,12 @@ module inventory (`go version -m`, `govulncheck -mode=binary`) and upstream advi
 scan reports included vulnerable symbols, not proof that Rio's particular signing invocation
 calls them. Upstream tools can retain vulnerable dependencies even in their latest release.
 The [2026-10-12 binary audit](security/pipeline-audit-2026-10-12.json) records exact Linux/amd64 hashes and symbol findings for the selected upstream releases. [Issue #129](https://github.com/rebaze/rio/issues/129) tracks invocation-specific assessment and remediation before claiming a clean release toolchain.
+
+### Rebuilt release tools
+
+CI and release verification use the [reviewed source-build recipe](release-toolchain/README.md)
+for Cosign, Syft and GoReleaser. It preserves upstream source identities, uses explicit patched
+dependency locks and audits unstripped binaries before use. The remaining legacy-feature
+findings are recorded with command-specific dispositions, not silently suppressed. Changes
+to the reviewed invocation files require reassessment. See the recipe for reproduction and
+verification; these builds are not general-purpose security clearance for those tools.

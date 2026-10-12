@@ -1,7 +1,7 @@
 {
   "date": "2026-10-12",
   "scanner": "golang.org/x/vuln/cmd/govulncheck v1.8.0, Go 1.27.2",
-  "method": "Downloaded release executables, analyzed without executing. Binary-mode symbol findings are not invocation-specific reachability or exploitability evidence.",
+  "method": "Downloaded release executables, analyzed without executing. Cosign retains symbols; stripped Syft and GoReleaser use govulncheck module-level fallback with wildcard placeholders. These findings do not establish invocation-specific reachability or exploitability.",
   "tools": [
     {
       "tool": "cosign",
@@ -275,7 +275,8 @@
           ]
         }
       ],
-      "scanTextSHA256": "c1c9f2b129af4db492a7f292cda69587e171f8462e47df680e9d97b946e40050"
+      "scanTextSHA256": "c1c9f2b129af4db492a7f292cda69587e171f8462e47df680e9d97b946e40050",
+      "scanPrecision": "linked symbols"
     },
     {
       "tool": "syft",
@@ -423,7 +424,8 @@
           ]
         }
       ],
-      "scanTextSHA256": "5d8cceb511d557ed74d3bf3be8a61407ddffca10bcdb2577c9a8d3688a685c71"
+      "scanTextSHA256": "5d8cceb511d557ed74d3bf3be8a61407ddffca10bcdb2577c9a8d3688a685c71",
+      "scanPrecision": "module fallback: stripped binary"
     },
     {
       "tool": "goreleaser",
@@ -580,7 +582,8 @@
           ]
         }
       ],
-      "scanTextSHA256": "b57be046be2e94c63b0fd75e79c2fcdc02ee8c6daffcd23c5976c377b8579c8d"
+      "scanTextSHA256": "b57be046be2e94c63b0fd75e79c2fcdc02ee8c6daffcd23c5976c377b8579c8d",
+      "scanPrecision": "module fallback: stripped binary"
     }
   ]
 }

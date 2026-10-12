@@ -45,22 +45,22 @@ def same_pin(root, paths, pattern):
 
 
 def inventory(root=ROOT):
-    workflows = '.github/workflows/'
-    pins = {
-        'go': same_pin(root, ['go.mod', 'tools/security/go.mod'], r'^go (\d+\.\d+\.\d+)$'),
-        'cosign': same_pin(root, [workflows+x for x in ('ci.yaml','release.yaml','verify-release.yaml')],
-                           r'cosign-release: (v\d+\.\d+\.\d+)'),
-        'syft': same_pin(root, [workflows+'release.yaml'], r'syft-version: (v\d+\.\d+\.\d+)'),
-        'goreleaser': same_pin(root, [workflows+'ci.yaml',workflows+'release.yaml'],
-                               r'version: "(v\d+\.\d+\.\d+)"'),
-    }
+    toolchain=json.loads((root/'tools/release-toolchain/manifest.json').read_text())
+    pins={name: toolchain['tools'][name]['version'] for name in ('cosign','syft','goreleaser')}
+    pins['go']=same_pin(root, ['go.mod','tools/security/go.mod'] +
+                       ['tools/release-toolchain/'+name+'/go.mod' for name in pins],
+                       r'^go (\d+\.\d+\.\d+)$')
+    if toolchain['compiler'] != 'go'+pins['go'][1:]:
+        raise ValueError('inconsistent compiler/toolchain pins')
+    for pin in pins.values():
+        version(pin)
 
     shell_pin = same_pin(root, ['tools/rio-attest-sign.sh','tools/rio-attest-verify.sh'],
                          r'^\[.* = (v\d+\.\d+\.\d+) \] \|\| refuse')
     demo_pin = same_pin(root, ['tools/demo-attest-sign/run.py'],
                         r'if version\["gitVersion"\] != "(v\d+\.\d+\.\d+)":')
     if len({pins['cosign'], shell_pin, demo_pin}) != 1:
-        raise ValueError('inconsistent cosign workflow/signer/verifier/demo pins')
+        raise ValueError('inconsistent cosign toolchain/signer/verifier/demo pins')
     return pins
 
 
