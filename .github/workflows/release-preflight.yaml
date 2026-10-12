@@ -1,0 +1,27 @@
+name: Release preflight
+
+# Exercise the release caller/callee contracts without tagging or publishing.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    uses: ./.github/workflows/ci.yaml
+    with:
+      full_validation: true
+    permissions:
+      contents: read
+
+  analyze:
+    uses: ./.github/workflows/codeql.yaml
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+
