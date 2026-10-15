@@ -121,9 +121,7 @@ zero findings. The original `testdata/` exception alone was insufficient. This d
 suppress the advisory in other directories, other advisories, or actual module dependencies.
 Re-run Scorecard after merging; local results do not close the hosted alert.
 
-Release tools are built from authenticated upstream Go modules using the explicit locks in
-`tools/release-toolchain/`. Every build retains symbols and scans the actual executables.
-New advisory IDs or changed reviewed invocation files fail validation. Two legacy-feature
-findings have documented command-specific dispositions; they remain visible in the audit.
-See [the build and assessment record](tools/release-toolchain/README.md). This policy does not
-assert that upstream tools are safe for arbitrary commands or dismiss their advisories globally.
+Release tools (cosign, Syft and GoReleaser) are the official upstream releases, installed by
+their official GitHub Actions pinned to commit SHAs and with explicit tool versions. They run
+only in CI and the release pipeline and are not part of the shipped binary. The daily
+vulnerability scan covers Rio's own module and binary, not these third-party tools.

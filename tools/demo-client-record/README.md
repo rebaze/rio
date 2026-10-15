@@ -21,4 +21,4 @@ python3 tools/demo-client-record/example/generate.py "$(command -v rio)" /tmp/ri
 
 The output includes complete `rio.yaml`, `pipeline.json`, input and normalized SBOMs, a standalone Python runner, synthetic TLS material, JSON/HTML, and a downloadable ZIP. Neither the runner nor Rio needs a Go toolchain. Each receipt describes only its own invocation; no collection or bundle export is involved.
 
-For native adapter failure matrices and explicit stage operations, see the [Dependency-Track](../demo-delivery/README.md), [TLS policy](../demo-dtrack-tls/README.md), [OCI](../demo-oci/README.md), and [batch recovery](../demo-batch-evidence/README.md) examples. Artifact-set and normalization fixtures remain specialist examples in [tools/README.md](../README.md).
+For native adapter failure matrices and explicit stage operations, see the [Dependency-Track](../demo-delivery/README.md), [TLS policy](../demo-dtrack-tls/README.md), [OCI](../demo-oci/README.md), and [failure and recovery](../demo-recovery/README.md) examples. Artifact-set and normalization fixtures remain specialist examples in [tools/README.md](../README.md).
