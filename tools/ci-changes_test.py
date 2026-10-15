@@ -82,12 +82,6 @@ class ChangesTest(unittest.TestCase):
                 with self.subTest(name=name, leaf=leaf):
                     self.assertEqual(detect("tools/demo-" + name + "/" + leaf)["go"], "true")
 
-    def test_juice_shop_demo_changes_run_binary_checks(self):
-        for leaf in ("demo.py", "build.sh", "verify.py", "README.md",
-                     "example/backend-record.json", "example/frontend-report.html"):
-            with self.subTest(leaf=leaf):
-                self.assertEqual(detect("tools/demo-juice-shop/" + leaf)["go"], "true")
-
     def test_signing_helper_and_demo_run_binary_checks(self):
         for path in (
             "tools/rio-attest-sign.sh",

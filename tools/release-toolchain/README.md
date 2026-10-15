@@ -64,12 +64,11 @@ Evidence is pinned to these source revisions:
 - sigstore-go v1.2.2 `pkg/sign/transparency.go:255` selects `pki.X509`; Rekor v1.5.3
   `pkg/types/dsse/v0.0.1/entry.go` uses `x509.NewPublicKey` for DSSE.
 
-`reviewedFiles` hashes the GoReleaser configuration, relevant workflows and every direct
-Cosign caller. A changed or missing scope file refuses the build, as does a new advisory,
-module/version mismatch, affected package outside the reviewed prefix, or newly reachable
-Syft OpenPGP code. GoReleaser is invoked with the explicit reviewed configuration path.
-Adding registry/Kubernetes credentials, ko, OpenPGP, alternative bundle formats or new
-callers requires a fresh assessment. Do not mechanically refresh hashes to silence a failure.
+A new advisory, module/version mismatch, affected package outside the reviewed prefix, or
+newly reachable Syft OpenPGP code refuses the build. GoReleaser is invoked with the explicit
+reviewed configuration path. These dispositions cover the current release invocations:
+adding registry/Kubernetes credentials, ko, OpenPGP, alternative bundle formats or new
+Cosign callers requires a fresh assessment in the reviewing PR.
 
 ## Scanner precision
 

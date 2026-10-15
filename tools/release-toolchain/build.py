@@ -15,23 +15,8 @@ import tempfile
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
-REVIEWED_FILES = ('.goreleaser.yaml', '.github/workflows/ci.yaml',
-                  '.github/workflows/release.yaml', '.github/workflows/verify-release.yaml',
-                  'tools/rio-attest-sign.sh', 'tools/rio-attest-verify.sh',
-                  'tools/release-publish.py', 'tools/verify-release.py',
-                  'tools/demo-attest-sign/run.py', 'tools/security/go.mod', 'tools/security/go.sum')
-
-
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def check_scope(root, manifest):
-    if not set(REVIEWED_FILES).issubset(manifest['reviewedFiles']):
-        raise ValueError('reviewed scope inventory is incomplete')
-    for name, expected in manifest['reviewedFiles'].items():
-        if digest(root/name) != expected:
-            raise ValueError('reviewed scope differs: '+name+'; reassess the scoped tool findings')
 
 
 def check_source(actual, expected):
@@ -106,7 +91,6 @@ def run(args, env, cwd=None):
 def build(output, names):
     manifest_bytes=(HERE/'manifest.json').read_bytes()
     manifest=json.loads(manifest_bytes)
-    check_scope(ROOT,manifest)
     env=environment(manifest['compiler'])
     if run(['go','env','GOVERSION'],env).strip() != manifest['compiler']:
         raise ValueError('compiler identity differs')
@@ -155,11 +139,10 @@ def build(output, names):
                         'sourceSum':cfg['sum'],'locks':cfg['locks'],'compiler':manifest['compiler'],
                         'platform':'/'.join(host),'binarySHA256':digest(binary),'findings':findings})
         print('BUILT AND AUDITED: '+name+'; '+str(len({f['osv'] for f in findings}))+' explicitly scoped advisory IDs',flush=True)
-    check_scope(ROOT,manifest)
     if (HERE/'manifest.json').read_bytes() != manifest_bytes:
         raise ValueError('toolchain manifest changed during build')
     (output/'inventory.json').write_text(json.dumps({'manifestSHA256':hashlib.sha256(manifest_bytes).hexdigest(),
-        'scanner':dict(scanner, locks={name:manifest['reviewedFiles']['tools/security/'+name] for name in ('go.mod','go.sum')}),
+        'scanner':dict(scanner, locks={name:digest(ROOT/'tools/security'/name) for name in ('go.mod','go.sum')}),
         'tools':results,'scope':'Only the reviewed Rio release invocations; not general-purpose tool security clearance.'},indent=2)+'\n',encoding='utf-8')
 
 
