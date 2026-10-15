@@ -72,7 +72,8 @@ def main():
             checks = json.loads((work / "record.json").read_text())["artifacts"][0]["checks"]
             delivered = len(uploads) - before
 
-            print("==", name, "→ exit", result.returncode, "·", "delivered" if delivered else "not delivered")
+            # ASCII only: Windows consoles and redirected Python 3.9 output may use CP1252.
+            print("==", name, "-> exit", result.returncode, "-", "delivered" if delivered else "not delivered")
             print("   checks.subjectRequirements:", checks["subjectRequirements"])
             if "failed" in checks:
                 print("   checks.failed:", checks["failed"])

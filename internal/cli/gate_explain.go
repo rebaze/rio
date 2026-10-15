@@ -50,7 +50,8 @@ func gateExplanations(r gate.Result) []string {
 		if req == gate.RequirePURL {
 			what = "no valid package URL"
 		}
-		lines = append(lines, fmt.Sprintf("components.%s: %s %s, for example %s. Fix the SBOM generator, or remove %s from gate.require if this handoff does not need it.",
+		// %q: the example comes from the SBOM and may hold control characters.
+		lines = append(lines, fmt.Sprintf("components.%s: %s %s, for example %q. Fix the SBOM generator, or remove %s from gate.require if this handoff does not need it.",
 			m, plural(n, "component"), hasHave(n)+" "+what, example[m], m))
 	}
 	return lines

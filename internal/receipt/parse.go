@@ -155,18 +155,8 @@ func Validate(d Document) error {
 			if len(c.Failed) > 0 && c.Gate != "fail" {
 				return invalid("failed requirements without a failed gate")
 			}
-			next := 0
-			for _, f := range c.Failed {
-				order := -1
-				for i, id := range FailedRequirementIDs() {
-					if id == f.Requirement {
-						order = i
-					}
-				}
-				if order < next || f.Count < 1 || (strings.HasPrefix(f.Requirement, "subject.") && f.Count != 1) || (strings.HasPrefix(f.Requirement, "components.") && f.Count > c.ComponentsEvaluated) {
-					return invalid("failed requirements")
-				}
-				next = order + 1
+			if err := validateFailed(c); err != nil {
+				return err
 			}
 		}
 		if c := a.Changes; c != nil {
@@ -286,4 +276,64 @@ func Validate(d Document) error {
 		}
 	}
 	return validateRelations(d, artifacts)
+}
+
+// validateFailed checks checks.failed against the rest of checks: known IDs
+// in fixed order, each one actually required, and counts that the number of
+// findings can explain. Receipts that omit failed are not checked here.
+func validateFailed(c *Checks) error {
+	if len(c.Failed) == 0 {
+		return nil
+	}
+	bad := func() error { return invalid("failed requirements") }
+	subjectRequired := c.SubjectRequirements
+	if subjectRequired == nil {
+		subjectRequired = []string{"name", "version"}
+	}
+	next, subjectFailed, componentMax, componentSum := 0, false, 0, 0
+	for _, f := range c.Failed {
+		order := -1
+		for i, id := range FailedRequirementIDs() {
+			if id == f.Requirement {
+				order = i
+			}
+		}
+		if order < next || f.Count < 1 {
+			return bad()
+		}
+		next = order + 1
+		scope, field, _ := strings.Cut(f.Requirement, ".")
+		switch scope {
+		case "subject":
+			if f.Count != 1 || !contains(subjectRequired, field) {
+				return bad()
+			}
+			subjectFailed = true
+		case "components":
+			if f.Count > c.ComponentsEvaluated || !contains(c.ComponentRequirements, field) {
+				return bad()
+			}
+			componentMax = max(componentMax, f.Count)
+			componentSum += f.Count
+		}
+	}
+	// One subject finding covers every failed subject field. Each failing
+	// component is one finding, however many of its fields failed.
+	componentFindings := c.Findings
+	if subjectFailed {
+		componentFindings--
+	}
+	if componentFindings < componentMax || componentFindings > componentSum || componentFindings > c.ComponentsEvaluated {
+		return bad()
+	}
+	return nil
+}
+
+func contains(list []string, value string) bool {
+	for _, v := range list {
+		if v == value {
+			return true
+		}
+	}
+	return false
 }

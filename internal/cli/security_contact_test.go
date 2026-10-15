@@ -14,6 +14,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/rebaze/rio/internal/delivery"
+	"github.com/rebaze/rio/internal/gate"
 	"github.com/rebaze/rio/internal/receipt"
 )
 
@@ -210,6 +211,49 @@ func TestStandaloneDeliverCarriesFailedRequirements(t *testing.T) {
 	if c.Mode != "pre-existing" || !cmp.Equal(c.SubjectRequirements, []string{"name", "version", "securityContact"}) ||
 		!cmp.Equal(c.Failed, []receipt.FailedRequirement{{Requirement: "subject.securityContact", Count: 1}}) {
 		t.Fatalf("checks %+v", c)
+	}
+}
+
+// A failing index may not hide the requirement its finding names: dropping
+// both the opt-in and its evaluation still leaves the finding, which the
+// reader refuses.
+func TestIndexRefusesFindingOutsideSelectedRequirements(t *testing.T) {
+	dir := pipelineFixture(t, "")
+	t.Chdir(dir)
+	appendManifest(t, "gate:\n  subject:\n    require: [securityContact]\n")
+	code, _, runDir, _ := runRoot(t)
+	if code != ExitGate {
+		t.Fatalf("exit %d", code)
+	}
+	original, e := os.ReadFile(filepath.Join(runDir, "index.json"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e := delivery.ParseIndex(original); e != nil {
+		t.Fatalf("the written index must be readable: %v", e)
+	}
+	var idx map[string]any
+	if e := json.Unmarshal(original, &idx); e != nil {
+		t.Fatal(e)
+	}
+	checks := idx["artifacts"].([]any)[0].(map[string]any)["checks"].(map[string]any)
+	delete(checks, "subjectRequirements")
+	evals := checks["evaluations"].([]any)
+	checks["evaluations"] = append(evals[:2:2], evals[3:]...)
+	raw, e := json.Marshal(idx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e := delivery.ParseIndex(raw); e == nil {
+		t.Fatal("a security-contact finding without its requirement was accepted")
+	}
+}
+
+func TestGateExplanationEscapesSBOMText(t *testing.T) {
+	r := gate.Result{Findings: []gate.Finding{{Component: "evil\n\x1b[31mrio: all good", Missing: []string{"purl"}}}}
+	lines := gateExplanations(r)
+	if len(lines) != 1 || strings.ContainsAny(lines[0], "\n\x1b") || !strings.Contains(lines[0], `"evil\n\x1b[31mrio: all good"`) {
+		t.Fatalf("SBOM text must be quoted and escaped: %q", lines)
 	}
 }
 

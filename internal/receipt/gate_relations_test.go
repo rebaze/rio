@@ -175,6 +175,8 @@ func TestFailedRequirementsAreScopedOrderedAndCounted(t *testing.T) {
 		failReceiptGate(d, "warn")
 		d.Artifacts[0].Checks.SubjectRequirements = []string{"name", "version", "securityContact"}
 		d.Artifacts[0].Checks.Failed = []FailedRequirement{{Requirement: "subject.securityContact", Count: 1}, {Requirement: "components.name", Count: 1}}
+		// One subject finding plus one failing component.
+		d.Artifacts[0].Checks.Findings = 2
 	}
 	d := gateRelationFixture()
 	valid(&d)
@@ -209,6 +211,27 @@ func TestFailedRequirementsAreScopedOrderedAndCounted(t *testing.T) {
 		"more components than evaluated": func(d *Document) {
 			valid(d)
 			d.Artifacts[0].Checks.Failed[1].Count = 2
+		},
+		"subject requirement that was not required": func(d *Document) {
+			valid(d)
+			d.Artifacts[0].Checks.SubjectRequirements = []string{"name", "version"}
+		},
+		"component requirement that was not selected": func(d *Document) {
+			valid(d)
+			d.Artifacts[0].Checks.Failed[1].Requirement = "components.purl"
+		},
+		"subject and component failures in one finding": func(d *Document) {
+			valid(d)
+			d.Artifacts[0].Checks.Findings = 1
+		},
+		"more findings than the failures explain": func(d *Document) {
+			valid(d)
+			d.Artifacts[0].Checks.Findings = 3
+		},
+		"component failures beyond the findings": func(d *Document) {
+			valid(d)
+			d.Artifacts[0].Checks.Failed = d.Artifacts[0].Checks.Failed[1:]
+			d.Artifacts[0].Checks.Findings = 0
 		},
 	}
 	for name, change := range cases {

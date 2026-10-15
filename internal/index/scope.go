@@ -218,6 +218,15 @@ func (c *EffectiveChecks) Validate(a Artifact) error {
 	if len(c.Evaluations) != len(subject)+len(selection) {
 		return bad()
 	}
+	// A finding can only name a requirement that was selected; otherwise the
+	// checks would claim less was evaluated than the findings show.
+	for _, f := range a.GateFindings {
+		for _, m := range f.Missing {
+			if (f.Subject && !subject[m]) || (!f.Subject && !selection[m]) {
+				return bad()
+			}
+		}
+	}
 	seen := map[string]bool{}
 	for _, e := range c.Evaluations {
 		key := e.Scope + "/" + e.Requirement
