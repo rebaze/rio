@@ -70,7 +70,7 @@ jobs:
           # Fixtures, golden files and the embedded CycloneDX schemas are
           # inputs to the test suite, so a change to any of them has to run it.
           # Missing that is how a stale golden file reaches main.
-          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/release-toolchain/|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery|record|oci|dtrack-tls|normalization-evidence|batch-evidence|client-record|attest-sign)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$|^tools/rio-attest-(sign(_test)?|verify)\.sh$)' <<<"$CHANGED" >/dev/null; then go=true; fi
+          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery|oci|dtrack-tls|normalization-evidence|client-record|attest-sign|recovery)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$|^tools/rio-attest-(sign(_test)?|verify)\.sh$)' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.github/workflows/.*\.ya?ml$' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.goreleaser\.yaml$' <<<"$CHANGED" >/dev/null; then goreleaser=true; fi
           if grep -E '\.sh$' <<<"$CHANGED" >/dev/null; then shell=true; fi
@@ -89,7 +89,6 @@ jobs:
           cache-dependency-path: |
             go.sum
             tools/security/go.sum
-            tools/release-toolchain/*/go.sum
 
       # Pin the scanner and its dependencies in a separate tools module.
       # Dependabot updates that module; the vulnerability database stays live.
@@ -155,29 +154,34 @@ jobs:
           RIO_BIN="$PWD/rio" python3 tools/demo-agent-integration/test.py
           RIO_BIN="$PWD/rio" python3 tools/rio-context_test.py
 
-      - name: Build and audit the pinned release toolchain
+      - name: Install GoReleaser
         if: steps.changes.outputs.go == 'true' || steps.changes.outputs.goreleaser == 'true'
-        run: |
-          python3 tools/release-toolchain/build.py --output "$RUNNER_TEMP/rio-release-tools"
-          echo "$RUNNER_TEMP/rio-release-tools" >> "$GITHUB_PATH"
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          version: v2.18.3
+          install-only: true
 
-      - name: Exercise rebuilt source-SBOM generation
+      - name: Install Syft
+        if: steps.changes.outputs.go == 'true'
+        uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          syft-version: v1.54.1
+
+      - name: Install cosign
+        if: steps.changes.outputs.go == 'true'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+
+      - name: Exercise source-SBOM generation
         if: steps.changes.outputs.go == 'true'
         run: |
           syft dir:. --exclude './dist/**' --output "cyclonedx-json@1.6=$RUNNER_TEMP/rio-source.cdx.json"
           python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["bomFormat"] == "CycloneDX" and d["specVersion"] == "1.6" and d["components"]' "$RUNNER_TEMP/rio-source.cdx.json"
 
-      - name: Exercise rebuilt GoReleaser without publishing
+      - name: Exercise GoReleaser without publishing
         if: steps.changes.outputs.go == 'true' || steps.changes.outputs.goreleaser == 'true'
         run: goreleaser release --config .goreleaser.yaml --snapshot --skip=publish,announce,sign,homebrew
-
-      - name: Retain release-tool build and scan evidence
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: release-tool-audit
-          path: ${{ runner.temp }}/rio-release-tools/*.json
-          if-no-files-found: ignore
 
       - name: Sign and independently verify synthetic normalization statements
         if: steps.changes.outputs.go == 'true'
@@ -223,8 +227,6 @@ jobs:
           python3 tools/dependabot-auto-merge_test.py
           python3 tools/ci-changes_test.py
           python3 tools/ci-complete_test.py
-          python3 tools/pipeline-updates_test.py
-          python3 tools/release-toolchain/build_test.py
           python3 tools/rio-context_test.py
           python3 tools/release-publish_test.py
           python3 tools/release-notes_test.py
@@ -265,9 +267,8 @@ jobs:
           go build -trimpath -o rio-demo.exe ./cmd/rio
           python tools/demo-delivery/run.py "$PWD/rio-demo.exe"
           python tools/demo-dtrack-tls/run.py "$PWD/rio-demo.exe"
-          python tools/demo-record/run.py "$PWD/rio-demo.exe"
           python tools/demo-normalization-evidence/run.py "$PWD/rio-demo.exe"
-          python tools/demo-batch-evidence/run.py "$PWD/rio-demo.exe"
+          python tools/demo-recovery/run.py "$PWD/rio-demo.exe"
           python tools/demo-client-record/run.py "$PWD/rio-demo.exe"
           python tools/demo-oci/run.py "$PWD/rio-demo.exe"
 

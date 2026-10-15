@@ -4,9 +4,6 @@ updates:
     directories:
       - "/"
       - "/tools/security"
-      - "/tools/release-toolchain/cosign"
-      - "/tools/release-toolchain/syft"
-      - "/tools/release-toolchain/goreleaser"
     schedule:
       interval: weekly
       day: monday

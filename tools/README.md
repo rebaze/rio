@@ -19,8 +19,7 @@ inputs and remain separate from its runtime.
 | [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | with Rio 0.7.0+ and Python 3.9+ |
 | [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, refusals and owned-claim replacement | with Rio 0.7.0+ and Python 3.9+ |
 | [`demo-artifact-sets/`](#artifact-sets-demo) | discovers module SBOMs, refuses missing/overlapping inputs and retains offline scope/check evidence | with Rio 0.7.0+ and Python 3.9+ |
-| [`demo-batch-evidence/`](demo-batch-evidence/) | demonstrates partial delivery, compact scope, explicit retry and offline crash recovery | with Rio 0.7.0+ and Python 3.9+ |
-| [`demo-record/`](#consolidated-record-demo) | inspects independent pipeline, retry and reconciliation receipts | when retaining normalization and selected delivery facts |
+| [`demo-recovery/`](demo-recovery/) | demonstrates partial delivery, explicit retry, reconciliation and offline crash recovery | with Rio 0.7.0+ and Python 3.9+ |
 | [`demo-normalization-evidence/`](demo-normalization-evidence/) | explains repair sources, exact changes and offline retention | with an installed release containing normalization evidence |
 | [`demo-repair/`](#first-repair-sample) | shows optional p2 repair with an unchanged input and an audit record | when evaluating Eclipse/OSGi coordinate repair |
 | [`demo-agent-integration/`](#agent-integration-examples) | tests project onboarding configurations and a one-command CI receipt step | with Rio 0.7.0+ and Python 3.9+ |
@@ -389,12 +388,9 @@ remains available for inspection. This test identity must never sign customer da
 
 ### Requirements and identity
 
-The signing tool needs Bash 3.2+, jq, the **reviewed Cosign rebuild based on v3.1.3**, and
-`sha256sum` or `shasum`. Use the [source-build recipe and its inventory](release-toolchain/README.md)
-or an already audited executable produced by that recipe. The upstream v3.1.3 release asset
-uses an older compiler and is not the patched executable used by Rio's release workflow.
-The helper's version check enforces command compatibility only; matching `gitVersion` does not
-verify dependency versions or build identity. Check the build inventory and executable digest.
+The signing tool needs Bash 3.2+, jq, cosign v3.1.3 and `sha256sum` or `shasum`. The
+helper's version check enforces command compatibility only; it does not verify where the
+cosign executable came from.
 
 Supply a local private key and the corresponding PEM public key explicitly. The tool checks that
 they match and unlocks the private key before signing anything. It does not generate keys or
@@ -456,7 +452,7 @@ fresh normalization output directory; existing evidence is never overwritten.
 
 ### Recipient verification
 
-A recipient needs Bash 3.2+, jq, the reviewed Cosign rebuild described above, the normalized SBOM, its bundle, an independently
+A recipient needs Bash 3.2+, jq, cosign v3.1.3, the normalized SBOM, its bundle, an independently
 trusted public key, and a copy of [rio-attest-verify.sh](rio-attest-verify.sh). No Rio installation,
 checkout, unsigned statement or `index.json` is needed:
 
@@ -763,15 +759,15 @@ The first exercises one root pipeline, exact bytes, indexed membership, fan-out/
 
 These local receiver simulations are not real-server compatibility claims. The existing [Dependency-Track integration harness](demo-delivery/integration/README.md) provisions pinned disposable services with scoped synthetic credentials and verifies uploaded bytes/projects/tokens. Existing CI runs this separately from synthetic demos. Do not treat a skipped integration as a pass.
 
-## Consolidated record demo
+## Failure and recovery demo
 
-The directory name is historical; the current [receipt demo](demo-record/README.md) demonstrates separate compact receipts rather than an assembled history bundle:
+[`demo-recovery/`](demo-recovery/README.md) shows what happens when a delivery goes wrong:
 
 ```sh
-python3 tools/demo-record/run.py /path/to/rio
+python3 tools/demo-recovery/run.py /path/to/rio
 ```
 
-It exercises one root pipeline, a lost-response attempt, explicit retry and three independent reconciliation invocations. Earlier public receipts remain byte-identical. After receiver shutdown and source removal, it inspects/renders each receipt and refuses dangling references and contradictory acknowledgment claims. Requires Rio 0.7.0+ and Python 3.9+; no Go or external receiver is needed.
+It covers a partial batch with a lost response and an excluded pair, refusal to resubmit, explicit retry, three independent reconciliations, a killed delivery recovered offline without replay or lock breaking, and a failed gate. Every receipt is then inspected and rendered with the source workspace removed; earlier receipts stay byte-identical and corrupted copies are refused. Requires Rio 0.7.0+ and Python 3.9+; no Go or external receiver is needed.
 
 ## Native OCI delivery
 
@@ -791,11 +787,10 @@ The [real-registry harness](demo-oci/integration/README.md) uses the existing di
 
 ```sh
 python3 tools/demo-client-record/run.py /path/to/rio
-python3 tools/demo-batch-evidence/run.py /path/to/rio
 python3 tools/demo-normalization-evidence/run.py /path/to/rio
 ```
 
-All require an installed Rio 0.7.0+ and Python 3.9+; none requires a Go toolchain. The client example makes one root invocation per case, verifies exact context fields and multipart bytes/projects, then removes source state and stops the receiver before receipt-only inspection/rendering. The batch demo covers partial/unattempted/excluded pairs, explicit retry and actual process interruption with offline recovery **without lock breaking or upload replay**. The normalization demo keeps repair provenance and uplift in a specialist setting, with compact counts in the receipt and detailed local normalized outputs.
+All require an installed Rio 0.7.0+ and Python 3.9+; none requires a Go toolchain. The client example makes one root invocation per case, verifies exact context fields and multipart bytes/projects, then removes source state and stops the receiver before receipt-only inspection/rendering. The normalization demo keeps repair provenance and uplift in a specialist setting, with compact counts in the receipt and detailed local normalized outputs.
 
 Each normal execution automatically publishes one `rio-run-receipt`, schema version 1. No `--evidence`, collection step, embedded source archive or legacy format reader remains. A retry/reconciliation has its own receipt with prior references, not a merged account of work from different invocations. See the [field guide, bounds and recovery semantics](../docs/output.md).
 
@@ -855,34 +850,3 @@ PR state and merges the exact head. No repository protection settings are change
 workflow files. An independent human approval rule is a maintainer decision: enabling one
 without a second eligible reviewer would block a sole-maintainer project. Do not create
 synthetic approvals to improve Scorecard.
-
-## Pipeline tool update inventory
-
-`python3 tools/pipeline-updates.py` reads the actual Go/cosign/Syft/GoReleaser pins,
-checks upstream stable releases and prints a JSON update report. It performs network reads,
-never installs tools or edits dependencies, and needs only Python 3.9+. Inconsistent/missing
-pins or failed upstream queries fail visibly. Go updates stay within the selected supported
-minor line; a line disappearing from supported downloads requires an explicit migration.
-
-The `Pipeline tool updates` workflow runs weekly on Monday and can be dispatched manually
-on main. It creates a tracker only when an update exists and reuses only an exact-title issue authored
-by the GitHub Actions bot with the dependencies label; matching an untrusted title is insufficient. It never
-merges, publishes, dismisses alerts or grants approvals. Dependabot continues to cover both
-Go module graphs (including govulncheck) and SHA-pinned Actions. Builder and receiver images
-remain reviewed compatibility fixtures with digest pins; updating them requires their real
-integration tests rather than changing versions automatically.
-
-Version freshness is not vulnerability clearance. Review the actual binary's compiler and
-module inventory (`go version -m`, `govulncheck -mode=binary`) and upstream advisories. A binary
-scan reports included vulnerable symbols, not proof that Rio's particular signing invocation
-calls them. Upstream tools can retain vulnerable dependencies even in their latest release.
-The [2026-10-12 binary audit](security/pipeline-audit-2026-10-12.json) records exact Linux/amd64 hashes and symbol findings for the selected upstream releases. [Issue #129](https://github.com/rebaze/rio/issues/129) tracks invocation-specific assessment and remediation before claiming a clean release toolchain.
-
-### Rebuilt release tools
-
-CI and release verification use the [reviewed source-build recipe](release-toolchain/README.md)
-for Cosign, Syft and GoReleaser. It preserves upstream source identities, uses explicit patched
-dependency locks and audits unstripped binaries before use. The remaining legacy-feature
-findings are recorded with command-specific dispositions, not silently suppressed. Changes
-to the reviewed invocation files require reassessment. See the recipe for reproduction and
-verification; these builds are not general-purpose security clearance for those tools.

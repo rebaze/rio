@@ -77,7 +77,7 @@ class ChangesTest(unittest.TestCase):
                 self.assertEqual(detect(path)["go"], "true")
 
     def test_client_evidence_demo_files_run_binary_checks(self):
-        for name in ("normalization-evidence", "batch-evidence", "client-record"):
+        for name in ("normalization-evidence", "recovery", "client-record"):
             for leaf in ("run.py", "rio.yaml", "fixtures/bom.json", "README.md"):
                 with self.subTest(name=name, leaf=leaf):
                     self.assertEqual(detect("tools/demo-" + name + "/" + leaf)["go"], "true")
@@ -91,13 +91,6 @@ class ChangesTest(unittest.TestCase):
             "tools/demo-attest-sign/rio.yaml",
             "tools/demo-attest-sign/bom.json",
         ):
-            with self.subTest(path=path):
-                self.assertEqual(detect(path)["go"], "true")
-
-    def test_record_demo_files_run_binary_checks(self):
-        paths = [str(p.relative_to(ROOT)) for p in (ROOT / "tools/demo-record").rglob("*") if p.is_file()]
-        paths.append("tools/demo-record/future-fixture.json")
-        for path in paths:
             with self.subTest(path=path):
                 self.assertEqual(detect(path)["go"], "true")
 
@@ -173,11 +166,6 @@ class ChangesTest(unittest.TestCase):
         for path in ("tools/demo-delivery/run.py", "tools/demo-delivery/bom.json", "tools/demo-delivery/rio.yaml", "tools/demo-delivery/README.md"):
             with self.subTest(path=path):
                 self.assertEqual(detect(path)["go"], "true")
-
-    def test_release_toolchain_changes_run_live_build_and_audit(self):
-        for leaf in ('manifest.json','build.py','cosign/go.mod','cosign/go.sum','README.md'):
-            with self.subTest(leaf=leaf):
-                self.assertEqual(detect('tools/release-toolchain/'+leaf)['go'], 'true')
 
     def test_unrelated_documentation_keeps_checks_skipped(self):
         self.assertEqual(

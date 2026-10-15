@@ -27,7 +27,7 @@ jobs:
         with:
           ref: ${{ inputs.commit }}
           path: source
-      # Use the current reviewed tool recipe even when verifying an older release.
+      # Use the current verifier even when verifying an older release.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: workflow
@@ -35,18 +35,9 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.9"
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
-          go-version-file: workflow/go.mod
-          cache-dependency-path: |
-            workflow/go.sum
-            workflow/tools/security/go.sum
-            workflow/tools/release-toolchain/*/go.sum
-      - name: Build and audit the recipient verifier
-        shell: bash
-        run: |
-          python workflow/tools/release-toolchain/build.py --tool cosign --output "$RUNNER_TEMP/rio-release-tools"
-          echo "$RUNNER_TEMP/rio-release-tools" >> "$GITHUB_PATH"
+          cosign-release: v3.1.3
       - name: Verify downloaded bytes and execute native client handoff
         shell: bash
         env:
