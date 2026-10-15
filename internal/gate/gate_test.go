@@ -2,6 +2,8 @@ package gate_test
 
 import (
 	"encoding/json"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -414,4 +416,91 @@ func TestWhitespaceIsNotIdentity(t *testing.T) {
 			t.Fatalf("Missing (-want +got):\n%s", diff)
 		}
 	})
+}
+
+func subjectWithContact(refs string) string {
+	return `"metadata": {"component": {"type": "application", "name": "cart-api", "version": "1.0.0", "externalReferences": [` + refs + `]}}`
+}
+
+func contactOnly() gate.Requirements {
+	return gate.Requirements{Subject: []gate.Requirement{gate.RequireSecurityContact}}
+}
+
+func TestSecurityContactIsOnlyCheckedWhenRequired(t *testing.T) {
+	got := gate.Check(load(t, docWith(goodSubject)), nil)
+	if !got.OK() {
+		t.Fatalf("a contact that is not required must not fail the gate: %+v", got.Findings)
+	}
+	for _, e := range got.Evaluations {
+		if e.Requirement == string(gate.RequireSecurityContact) {
+			t.Fatalf("an unrequired contact must not be reported as evaluated: %+v", e)
+		}
+	}
+}
+
+func TestSecurityContactRequiredAndMissing(t *testing.T) {
+	got := gate.CheckRequirements(load(t, docWith(subjectWithContact(`{"type": "website", "url": "https://example.com"}`))), contactOnly())
+	want := []gate.Finding{{Subject: true, Missing: []string{"securityContact"}}}
+	if diff := cmp.Diff(want, got.Findings); diff != "" {
+		t.Fatalf("findings (-want +got):\n%s", diff)
+	}
+	want2 := gate.Evaluation{Scope: "subject", Requirement: "securityContact", Evaluated: 1, Failed: 1, Outcome: "fail"}
+	if diff := cmp.Diff(want2, got.Evaluations[2]); diff != "" {
+		t.Fatalf("evaluation (-want +got):\n%s", diff)
+	}
+}
+
+func TestSecurityContactSupportedValuesPass(t *testing.T) {
+	for _, url := range []string{"mailto:security@example.com", "https://example.com/security", "http://example.com/.well-known/security.txt"} {
+		ref := `{"type": "security-contact", "url": "` + url + `"}`
+		got := gate.CheckRequirements(load(t, docWith(subjectWithContact(ref))), contactOnly())
+		if !got.OK() {
+			t.Errorf("%s: %+v", url, got.Findings)
+		}
+		if e := got.Evaluations[2]; e.Requirement != "securityContact" || e.Outcome != "pass" {
+			t.Errorf("%s: evaluation %+v", url, e)
+		}
+	}
+}
+
+func TestSecurityContactUnsupportedValueIsNamed(t *testing.T) {
+	for _, url := range []string{"security@example.com", "ftp://example.com", "mailto:a@example.com,b@example.com", "https://user:pw@example.com", ""} {
+		ref := `{"type": "security-contact", "url": "` + url + `"}`
+		got := gate.CheckRequirements(load(t, docWith(subjectWithContact(ref))), contactOnly())
+		if got.OK() || len(got.Findings) != 1 || !cmp.Equal(got.Findings[0].Missing, []string{"securityContact"}) {
+			t.Errorf("%q: findings %+v", url, got.Findings)
+			continue
+		}
+		if detail := got.Findings[0].Details["securityContact"]; !strings.Contains(detail, strconv.Quote(url)) {
+			t.Errorf("%q: the unsupported value must be explained, got %q", url, detail)
+		}
+	}
+}
+
+func TestOneSupportedSecurityContactIsEnough(t *testing.T) {
+	refs := `{"type": "security-contact", "url": "not a url"}, {"type": "security-contact", "url": "mailto:security@example.com"}`
+	if got := gate.CheckRequirements(load(t, docWith(subjectWithContact(refs))), contactOnly()); !got.OK() {
+		t.Fatalf("%+v", got.Findings)
+	}
+}
+
+func TestSecurityContactJoinsSubjectFindingInFixedOrder(t *testing.T) {
+	doc := docWith(`"metadata": {"component": {"type": "application", "version": "1.0.0"}}`)
+	got := gate.CheckRequirements(load(t, doc), contactOnly())
+	want := []gate.Finding{{Subject: true, Missing: []string{"name", "securityContact"}}}
+	if diff := cmp.Diff(want, got.Findings); diff != "" {
+		t.Fatalf("findings (-want +got):\n%s", diff)
+	}
+}
+
+func TestSecurityContactIsNeverAComponentRequirement(t *testing.T) {
+	got := gate.CheckRequirements(load(t, docWith(goodSubject, compGson)), gate.Requirements{Components: []gate.Requirement{gate.RequireSecurityContact}})
+	if !got.OK() {
+		t.Fatalf("%+v", got.Findings)
+	}
+	for _, e := range got.Evaluations {
+		if e.Scope == "components" {
+			t.Fatalf("unexpected component evaluation %+v", e)
+		}
+	}
 }

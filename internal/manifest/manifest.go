@@ -48,6 +48,10 @@ const (
 // DefaultRequire is what gate.require means when it is not given.
 func DefaultRequire() []string { return []string{RequireName, RequireVersion, RequirePURL} }
 
+// RequireSecurityContact is the one opt-in subject requirement in
+// gate.subject.require. The subject's name and version are always required.
+const RequireSecurityContact = "securityContact"
+
 // DefaultSpecVersionFloor is what output.specVersionFloor means when it is not
 // given (§2).
 const DefaultSpecVersionFloor = "1.6"
@@ -121,6 +125,9 @@ type Gate struct {
 	ModeExplicit bool
 	Mode         string
 	Require      []string
+	// SubjectRequire is gate.subject.require: subject requirements beyond the
+	// name and version every subject needs. Empty unless opted into.
+	SubjectRequire []string
 }
 
 // Requires reports whether field is one of the gate's required fields.
@@ -270,8 +277,13 @@ type outputSection struct {
 }
 
 type gateSection struct {
-	Mode    *string   `yaml:"mode"`
-	Require *[]string `yaml:"require"`
+	Mode    *string             `yaml:"mode"`
+	Require *[]string           `yaml:"require"`
+	Subject *gateSubjectSection `yaml:"subject"`
+}
+
+type gateSubjectSection struct {
+	Require []string `yaml:"require"`
 }
 
 // loader carries the manifest path so every message can name it, and the
@@ -417,6 +429,21 @@ func (l loader) gate(f *fileSection, m *Manifest) error {
 		m.Gate.Mode = *f.Gate.Mode
 		m.Gate.ModeExplicit = true
 	}
+	m.Gate.SubjectRequire = []string{}
+	if f.Gate != nil && f.Gate.Subject != nil {
+		seen := map[string]bool{}
+		for _, r := range f.Gate.Subject.Require {
+			if r != RequireSecurityContact {
+				return l.errf("gate.subject.require", "%q is not a subject requirement, the only allowed value is %s (name and version are always required)",
+					r, RequireSecurityContact)
+			}
+			if seen[r] {
+				return l.errf("gate.subject.require", "%q is listed more than once", r)
+			}
+			seen[r] = true
+		}
+		m.Gate.SubjectRequire = append(m.Gate.SubjectRequire, f.Gate.Subject.Require...)
+	}
 	if f.Gate == nil || f.Gate.Require == nil {
 		m.Gate.Require = DefaultRequire()
 		return nil
@@ -513,14 +540,16 @@ var yamlTargets = map[string]struct {
 		where: regexp.MustCompile(`^output$`)},
 	"manifest.gateSection": {field: "gate", shape: "a mapping",
 		where: regexp.MustCompile(`^gate$`)},
+	"manifest.gateSubjectSection": {field: "gate.subject", shape: "a mapping with require",
+		where: regexp.MustCompile(`^gate\.subject$`)},
 	"[]yaml.Node": {field: "transforms", shape: "a list of transforms",
 		where: regexp.MustCompile(`^(?:artifacts|artifactSets)\[[0-9]+\]\.transforms$`)},
 	"[]string": {field: "gate.require", shape: "a list of strings",
-		where: regexp.MustCompile(`^(artifactSets\[[0-9]+\]\.exclude|gate\.require|(?:artifacts|artifactSets)\[[0-9]+\]\.context\.(require|replace)|((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment\.(replace|(producer|subject\.(manufacturer|supplier))\.url))$`)},
+		where: regexp.MustCompile(`^(artifactSets\[[0-9]+\]\.exclude|gate\.require|gate\.subject\.require|(?:artifacts|artifactSets)\[[0-9]+\]\.context\.(require|replace)|((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment\.(replace|(producer|subject\.(manufacturer|supplier))\.url))$`)},
 	// The one type several keys share, which is why it names none of them
 	// when the lookup below cannot tell which one was meant.
 	"string": {shape: "a string", where: regexp.MustCompile(
-		`^((?:artifacts|artifactSets)\[[0-9]+\]\.(id|modules|idFrom|sbom|exclude\[[0-9]+\]|subject\.(name|version)|context\.file)|output\.specVersionFloor|gate\.require\[[0-9]+\]|(?:artifacts|artifactSets)\[[0-9]+\]\.context\.(require|replace)\[[0-9]+\]|((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment\..+)$`)},
+		`^((?:artifacts|artifactSets)\[[0-9]+\]\.(id|modules|idFrom|sbom|exclude\[[0-9]+\]|subject\.(name|version)|context\.file)|output\.specVersionFloor|gate\.require\[[0-9]+\]|gate\.subject\.require\[[0-9]+\]|(?:artifacts|artifactSets)\[[0-9]+\]\.context\.(require|replace)\[[0-9]+\]|((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment\..+)$`)},
 }
 
 // yamlDetail reduces a decode failure to go-yaml's own words, without the
@@ -788,7 +817,7 @@ func (l loader) strictStringTypes() error {
 					child = path + "." + key.Value
 				}
 				// Set selector strings and existing extension mappings are strict.
-				enabled := inside || (path == "output" && key.Value == "directory") || (path == "gate" && key.Value == "mode") || (path == "" && key.Value == "artifactSets") || ((key.Value == "enrichment" || key.Value == "context") && artifactStrictParent.MatchString(path))
+				enabled := inside || (path == "output" && key.Value == "directory") || (path == "gate" && (key.Value == "mode" || key.Value == "subject")) || (path == "" && key.Value == "artifactSets") || ((key.Value == "enrichment" || key.Value == "context") && artifactStrictParent.MatchString(path))
 				if key.Value == "transforms" && strings.HasPrefix(path, "artifactSets[") {
 					enabled = false
 				}

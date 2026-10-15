@@ -99,7 +99,25 @@ type Checks struct {
 	ComponentsEvaluated   int      `json:"componentsEvaluated"`
 	Findings              int      `json:"findings"`
 	GraphFindings         int      `json:"graphFindings,omitempty"`
+	// Failed names each failed requirement and how often it failed, in the
+	// fixed order of FailedRequirementIDs. Present only when the gate failed;
+	// receipts written before it existed omit it even then.
+	Failed []FailedRequirement `json:"failed,omitempty"`
 }
+
+// FailedRequirement is one requirement that failed and how many times: once
+// for a subject requirement, once per affected component otherwise.
+type FailedRequirement struct {
+	Requirement string `json:"requirement"`
+	Count       int    `json:"count"`
+}
+
+// FailedRequirementIDs are the stable requirement identifiers, in reporting
+// order: the scope, a dot, and the field the requirement concerns.
+func FailedRequirementIDs() []string {
+	return []string{"subject.name", "subject.version", "subject.securityContact", "components.name", "components.version", "components.purl"}
+}
+
 type Target struct {
 	Type string `json:"type"`
 	URL  string `json:"url"`

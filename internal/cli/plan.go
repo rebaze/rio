@@ -107,6 +107,8 @@ type planFile struct {
 type planGate struct {
 	Mode    string   `json:"mode"`
 	Require []string `json:"require"`
+	// SubjectRequire is gate.subject.require, present only when opted into.
+	SubjectRequire []string `json:"subjectRequire,omitempty"`
 }
 
 // planTransform is one transform as the plan describes it: its manifest name,
@@ -250,7 +252,7 @@ func runPlan(cmd *cobra.Command, opts *globalOptions, o pipelineOptions, asJSON 
 		// gate.require may legally be the empty subset, and a nil slice
 		// serializes as null. Every array this format promises is an array,
 		// exactly as in index.json, so a consumer can iterate it unguarded.
-		Gate: planGate{Mode: mode, Require: append([]string{}, man.Gate.Require...)},
+		Gate: planGate{Mode: mode, Require: append([]string{}, man.Gate.Require...), SubjectRequire: man.Gate.SubjectRequire},
 	}
 
 	for _, input := range resolved {
@@ -360,6 +362,9 @@ func writePlanText(p plan, man *manifest.Manifest, opts *globalOptions, stdout i
 	}
 
 	fmt.Fprintf(stdout, "gate  require %s\n", requireList(p.Gate.Require))
+	if len(p.Gate.SubjectRequire) > 0 {
+		fmt.Fprintf(stdout, "gate  subject requires name, version, %s\n", strings.Join(p.Gate.SubjectRequire, ", "))
+	}
 	fmt.Fprintf(stdout, "gate  mode %s\ndelivery  %s\nreceipt  %s\n", p.Gate.Mode, p.Delivery.Mode, p.Receipt)
 	if !opts.quiet {
 		for _, pair := range p.Delivery.Pairs {

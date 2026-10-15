@@ -20,6 +20,7 @@ inputs and remain separate from its runtime.
 | [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, refusals and owned-claim replacement | with Rio 0.7.0+ and Python 3.9+ |
 | [`demo-artifact-sets/`](#artifact-sets-demo) | discovers module SBOMs, refuses missing/overlapping inputs and retains offline scope/check evidence | with Rio 0.7.0+ and Python 3.9+ |
 | [`demo-recovery/`](demo-recovery/) | demonstrates partial delivery, explicit retry, reconciliation and offline crash recovery | with Rio 0.7.0+ and Python 3.9+ |
+| [`demo-handoff-checks/`](#handoff-checks-demo) | demonstrates the opt-in security-contact check and actionable gate failures | with Rio 0.9.0+ and Python 3.9+ |
 | [`demo-normalization-evidence/`](demo-normalization-evidence/) | explains repair sources, exact changes and offline retention | with an installed release containing normalization evidence |
 | [`demo-repair/`](#first-repair-sample) | shows optional p2 repair with an unchanged input and an audit record | when evaluating Eclipse/OSGi coordinate repair |
 | [`demo-agent-integration/`](#agent-integration-examples) | tests project onboarding configurations and a one-command CI receipt step | with Rio 0.7.0+ and Python 3.9+ |
@@ -768,6 +769,19 @@ python3 tools/demo-recovery/run.py /path/to/rio
 ```
 
 It covers a partial batch with a lost response and an excluded pair, refusal to resubmit, explicit retry, three independent reconciliations, a killed delivery recovered offline without replay or lock breaking, and a failed gate. Every receipt is then inspected and rendered with the source workspace removed; earlier receipts stay byte-identical and corrupted copies are refused. Requires Rio 0.7.0+ and Python 3.9+; no Go or external receiver is needed.
+
+## Handoff checks demo
+
+[`demo-handoff-checks/`](demo-handoff-checks/README.md) shows the opt-in `gate.subject.require: [securityContact]`:
+
+```sh
+python3 tools/demo-handoff-checks/run.py /path/to/rio
+```
+
+The same synthetic SBOM passes when no contact is required, fails with a next step when it is
+required but missing or unsupported, and passes once a reviewed contact is supplied through
+enrichment. Failures deliver nothing and list `subject.securityContact` under the receipt's
+`checks.failed`. Requires Rio 0.9.0+ and Python 3.9+.
 
 ## Native OCI delivery
 

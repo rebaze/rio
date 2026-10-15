@@ -152,6 +152,22 @@ func Validate(d Document) error {
 			if c.Gate == "pass" && c.Findings > 0 {
 				return invalid("passing gate findings")
 			}
+			if len(c.Failed) > 0 && c.Gate != "fail" {
+				return invalid("failed requirements without a failed gate")
+			}
+			next := 0
+			for _, f := range c.Failed {
+				order := -1
+				for i, id := range FailedRequirementIDs() {
+					if id == f.Requirement {
+						order = i
+					}
+				}
+				if order < next || f.Count < 1 || (strings.HasPrefix(f.Requirement, "subject.") && f.Count != 1) || (strings.HasPrefix(f.Requirement, "components.") && f.Count > c.ComponentsEvaluated) {
+					return invalid("failed requirements")
+				}
+				next = order + 1
+			}
 		}
 		if c := a.Changes; c != nil {
 			if len(c.Metadata) > MaxItems || len(c.Bulk) > MaxItems {

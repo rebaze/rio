@@ -192,5 +192,11 @@ func effectiveChecks(man *manifest.Manifest, a *artifact, mode string) *index.Ef
 	if len(man.Gate.Require) == 0 || a.gate.ComponentCount == 0 {
 		state = "not-evaluated"
 	}
-	return &index.EffectiveChecks{Version: 1, Mode: mode, ComponentScope: "all components including nested", ComponentCount: a.gate.ComponentCount, ComponentRequirements: append([]string{}, man.Gate.Require...), ComponentEvaluation: state, Evaluations: a.gate.Evaluations, SchemaValidation: schema, GraphCheck: "dangling-dependency-references", GraphFindings: len(a.integrity)}
+	checks := &index.EffectiveChecks{Version: 1, Mode: mode, ComponentScope: "all components including nested", ComponentCount: a.gate.ComponentCount, ComponentRequirements: append([]string{}, man.Gate.Require...), ComponentEvaluation: state, Evaluations: a.gate.Evaluations, SchemaValidation: schema, GraphCheck: "dangling-dependency-references", GraphFindings: len(a.integrity)}
+	if len(man.Gate.SubjectRequire) > 0 {
+		// Recorded only when opted into, so an index without subject
+		// requirements keeps the shape earlier readers accept.
+		checks.SubjectRequirements = append([]string{"name", "version"}, man.Gate.SubjectRequire...)
+	}
+	return checks
 }

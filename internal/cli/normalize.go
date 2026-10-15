@@ -291,7 +291,7 @@ func process(man *manifest.Manifest, a *artifact) error {
 	}
 
 	// Step 4: the gate reads, it never modifies.
-	a.gate = gate.Check(doc, requirements(man.Gate.Require))
+	a.gate = gate.CheckRequirements(doc, gate.Requirements{Components: requirements(man.Gate.Require), Subject: requirements(man.Gate.SubjectRequire)})
 
 	return nil
 }
@@ -478,6 +478,9 @@ func report(artifacts []*artifact, gateMode string, quiet bool, stdout, stderr i
 			failures++
 			status = "FAIL (" + summarizeFindings(a.gate) + ")"
 			fmt.Fprintf(stderr, "rio: artifact %q failed the gate: %s\n", a.spec.ID, summarizeFindings(a.gate))
+			for _, line := range gateExplanations(a.gate) {
+				fmt.Fprintf(stderr, "  %s\n", line)
+			}
 		}
 		for _, f := range a.integrity {
 			fmt.Fprintf(stderr, "rio: artifact %q: dangling dependency reference %s\n", a.spec.ID, f.Ref)

@@ -169,3 +169,59 @@ func TestGateRelationsPreserveScopedFailuresAndOverrides(t *testing.T) {
 		})
 	}
 }
+
+func TestFailedRequirementsAreScopedOrderedAndCounted(t *testing.T) {
+	valid := func(d *Document) {
+		failReceiptGate(d, "warn")
+		d.Artifacts[0].Checks.SubjectRequirements = []string{"name", "version", "securityContact"}
+		d.Artifacts[0].Checks.Failed = []FailedRequirement{{Requirement: "subject.securityContact", Count: 1}, {Requirement: "components.name", Count: 1}}
+	}
+	d := gateRelationFixture()
+	valid(&d)
+	if _, err := Marshal(d); err != nil {
+		t.Fatalf("valid failed requirements refused: %v", err)
+	}
+	cases := map[string]func(*Document){
+		"failed requirements on a passing gate": func(d *Document) {
+			d.Artifacts[0].Checks.Failed = []FailedRequirement{{Requirement: "subject.name", Count: 1}}
+		},
+		"unknown requirement": func(d *Document) {
+			valid(d)
+			d.Artifacts[0].Checks.Failed[0].Requirement = "subject.license"
+		},
+		"out of order": func(d *Document) {
+			valid(d)
+			f := d.Artifacts[0].Checks.Failed
+			f[0], f[1] = f[1], f[0]
+		},
+		"duplicate": func(d *Document) {
+			valid(d)
+			d.Artifacts[0].Checks.Failed[1] = d.Artifacts[0].Checks.Failed[0]
+		},
+		"zero count": func(d *Document) {
+			valid(d)
+			d.Artifacts[0].Checks.Failed[1].Count = 0
+		},
+		"subject counted twice": func(d *Document) {
+			valid(d)
+			d.Artifacts[0].Checks.Failed[0].Count = 2
+		},
+		"more components than evaluated": func(d *Document) {
+			valid(d)
+			d.Artifacts[0].Checks.Failed[1].Count = 2
+		},
+	}
+	for name, change := range cases {
+		t.Run(name, func(t *testing.T) {
+			d := gateRelationFixture()
+			change(&d)
+			raw, err := json.Marshal(d)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = Parse(raw); err == nil {
+				t.Fatal("accepted inconsistent failed requirements")
+			}
+		})
+	}
+}

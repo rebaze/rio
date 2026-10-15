@@ -10,6 +10,7 @@ import (
 
 	"github.com/rebaze/rio/internal/buildcontext"
 	"github.com/rebaze/rio/internal/delivery"
+	"github.com/rebaze/rio/internal/index"
 	"github.com/rebaze/rio/internal/manifest"
 	"github.com/rebaze/rio/internal/receipt"
 	"github.com/spf13/cobra"
@@ -199,6 +200,15 @@ func runPipeline(cmd *cobra.Command, g *globalOptions, o pipelineOptions, stdout
 	}
 	if gateFailed {
 		r.doc.Run.Stages["checks"] = "failed"
+		consequence := "gate mode fail, so nothing was delivered."
+		if mode == gateWarn {
+			consequence = "gate mode warn, so the run continues and the receipt records the override."
+		}
+		for _, a := range artifacts {
+			if !a.gate.OK() {
+				explainGate(stderr, a.spec.ID, consequence, a.gate)
+			}
+		}
 		if mode == gateFail {
 			return gateFailure
 		}
@@ -235,6 +245,50 @@ func runPipeline(cmd *cobra.Command, g *globalOptions, o pipelineOptions, stdout
 	}
 	return nil
 }
+
+// subjectRequirements is what the receipt reports as checked on the subject:
+// the name and version every subject needs, plus anything opted into.
+func subjectRequirements(c *index.EffectiveChecks) []string {
+	if c != nil && len(c.SubjectRequirements) > 0 {
+		return append([]string{}, c.SubjectRequirements...)
+	}
+	return []string{"name", "version"}
+}
+
+// countFailed adds one finding's failed requirements to the receipt's tally.
+func countFailed(failed []receipt.FailedRequirement, subject bool, missing []string) []receipt.FailedRequirement {
+	scope := "components."
+	if subject {
+		scope = "subject."
+	}
+	for _, m := range missing {
+		found := false
+		for i := range failed {
+			if failed[i].Requirement == scope+m {
+				failed[i].Count++
+				found = true
+			}
+		}
+		if !found {
+			failed = append(failed, receipt.FailedRequirement{Requirement: scope + m, Count: 1})
+		}
+	}
+	return failed
+}
+
+// orderFailed puts the tally into the receipt's fixed requirement order.
+func orderFailed(failed []receipt.FailedRequirement) []receipt.FailedRequirement {
+	var out []receipt.FailedRequirement
+	for _, id := range receipt.FailedRequirementIDs() {
+		for _, f := range failed {
+			if f.Requirement == id {
+				out = append(out, f)
+			}
+		}
+	}
+	return out
+}
+
 func compactArtifact(a *artifact) receipt.Artifact {
 	out := receipt.Artifact{ID: a.spec.ID, State: "completed", Input: &receipt.Bytes{Path: a.inputRel, SHA256: a.inputSHA, Size: a.inputSize}, Output: &receipt.Bytes{Path: a.spec.ID + ".cdx.json", SHA256: delivery.Digest(a.output), Size: int64(len(a.output))}}
 	gateState := "pass"
@@ -243,7 +297,11 @@ func compactArtifact(a *artifact) receipt.Artifact {
 	}
 	if a.checks != nil {
 		c := a.checks
-		out.Checks = &receipt.Checks{Mode: c.Mode, Gate: gateState, Schema: c.SchemaValidation, SubjectRequirements: []string{"name", "version"}, ComponentRequirements: c.ComponentRequirements, ComponentScope: c.ComponentScope, ComponentEvaluation: c.ComponentEvaluation, ComponentsEvaluated: c.ComponentCount, Findings: len(a.gate.Findings), GraphFindings: c.GraphFindings}
+		out.Checks = &receipt.Checks{Mode: c.Mode, Gate: gateState, Schema: c.SchemaValidation, SubjectRequirements: subjectRequirements(c), ComponentRequirements: c.ComponentRequirements, ComponentScope: c.ComponentScope, ComponentEvaluation: c.ComponentEvaluation, ComponentsEvaluated: c.ComponentCount, Findings: len(a.gate.Findings), GraphFindings: c.GraphFindings}
+		for _, f := range a.gate.Findings {
+			out.Checks.Failed = countFailed(out.Checks.Failed, f.Subject, f.Missing)
+		}
+		out.Checks.Failed = orderFailed(out.Checks.Failed)
 	}
 	changes := &receipt.Changes{}
 	if a.inputSpec != a.outputSpec {

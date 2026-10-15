@@ -40,17 +40,20 @@ type TransformScope struct {
 }
 
 type EffectiveChecks struct {
-	Version               int               `json:"version"`
-	Mode                  string            `json:"mode"`
-	ComponentScope        string            `json:"componentScope"`
-	ComponentCount        int               `json:"componentCount"`
-	ComponentRequirements []string          `json:"componentRequirements"`
-	ComponentEvaluation   string            `json:"componentEvaluation"`
-	Evaluations           []gate.Evaluation `json:"evaluations"`
-	SchemaValidation      string            `json:"schemaValidation"`
-	GraphCheck            string            `json:"graphCheck"`
-	GraphFindings         int               `json:"graphFindings"`
-	opaque                json.RawMessage
+	Version               int      `json:"version"`
+	Mode                  string   `json:"mode"`
+	ComponentScope        string   `json:"componentScope"`
+	ComponentCount        int      `json:"componentCount"`
+	ComponentRequirements []string `json:"componentRequirements"`
+	// SubjectRequirements is present only when gate.subject.require opted into
+	// more than the name and version every subject needs.
+	SubjectRequirements []string          `json:"subjectRequirements,omitempty"`
+	ComponentEvaluation string            `json:"componentEvaluation"`
+	Evaluations         []gate.Evaluation `json:"evaluations"`
+	SchemaValidation    string            `json:"schemaValidation"`
+	GraphCheck          string            `json:"graphCheck"`
+	GraphFindings       int               `json:"graphFindings"`
+	opaque              json.RawMessage
 }
 
 // decodeExtension strictly checks known versions; future versions remain opaque.
@@ -200,7 +203,19 @@ func (c *EffectiveChecks) Validate(a Artifact) error {
 	if c.ComponentEvaluation != state {
 		return bad()
 	}
-	if len(c.Evaluations) != 2+len(selection) {
+	subject := map[string]bool{"name": true, "version": true}
+	if c.SubjectRequirements != nil {
+		if len(c.SubjectRequirements) < 3 || c.SubjectRequirements[0] != "name" || c.SubjectRequirements[1] != "version" {
+			return bad()
+		}
+		for _, r := range c.SubjectRequirements[2:] {
+			if r != string(gate.RequireSecurityContact) || subject[r] {
+				return bad()
+			}
+			subject[r] = true
+		}
+	}
+	if len(c.Evaluations) != len(subject)+len(selection) {
 		return bad()
 	}
 	seen := map[string]bool{}
@@ -213,7 +228,7 @@ func (c *EffectiveChecks) Validate(a Artifact) error {
 		count := 1
 		switch e.Scope {
 		case "subject":
-			if e.Requirement != "name" && e.Requirement != "version" {
+			if !subject[e.Requirement] {
 				return bad()
 			}
 		case "components":

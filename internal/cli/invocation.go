@@ -137,7 +137,13 @@ func (r *invocation) consumePlan(plan delivery.BatchPlan, indexPath string) erro
 				if c := prior.Checks; c != nil {
 					a.Checks.ComponentScope = c.ComponentScope
 					a.Checks.ComponentRequirements = c.ComponentRequirements
-					a.Checks.SubjectRequirements = []string{"name", "version"}
+					a.Checks.SubjectRequirements = subjectRequirements(c)
+					if gate == "fail" {
+						for _, f := range prior.GateFindings {
+							a.Checks.Failed = countFailed(a.Checks.Failed, f.Subject, f.Missing)
+						}
+						a.Checks.Failed = orderFailed(a.Checks.Failed)
+					}
 					a.Checks.ComponentsEvaluated = c.ComponentCount
 					a.Checks.ComponentEvaluation = c.ComponentEvaluation
 					a.Checks.GraphFindings = c.GraphFindings
