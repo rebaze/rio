@@ -1,0 +1,85 @@
+{
+  "manifestSHA256": "7efc7a982277c19d9900697bd4cb5c758ffa32ecc91e52c8f1dbbf95525b7c81",
+  "scanner": {
+    "module": "golang.org/x/vuln",
+    "version": "v1.8.0",
+    "locks": {
+      "go.mod": "306ea902b1da16611aa1c5c94326c2524a5131a8a13b08814c8d9bb710181a77",
+      "go.sum": "e2f7d9dce0e331ca426fa86f979169d99b656d639819cec35ae9c81bd8b7be48"
+    }
+  },
+  "tools": [
+    {
+      "tool": "cosign",
+      "version": "v3.1.3",
+      "upstreamCommit": "11926fa5bbbbde47e88fc006b625a17769b743b2",
+      "sourceSum": "h1:001JQRI/PJ/5T+g/kJ1KTvKFbb322+fomc+pHDZ/6sg=",
+      "locks": {
+        "go.mod": "8f4c8353a6428dd96e4674072f72daa4f57554ca22caa6f278a5f58afc090a21",
+        "go.sum": "8188bc17b7fc84ec5cd0faafc5b0fd5c09b0918b0bcd8c6949dcbf6a8063ea55"
+      },
+      "compiler": "go1.27.2",
+      "platform": "linux/amd64",
+      "binarySHA256": "ceca49350c70c429d4b23bac6dd7a6b02faf5ba658fdf9129cdc0dbc8fa6035c",
+      "remainingAdvisories": {
+        "GO-2026-5932": [
+          "module",
+          "package",
+          "symbol"
+        ],
+        "GO-2026-6225": [
+          "module",
+          "package",
+          "symbol"
+        ]
+      }
+    },
+    {
+      "tool": "syft",
+      "version": "v1.54.1",
+      "upstreamCommit": "b254e6d92f28c3868a755f62fb3ca8f26e9fee76",
+      "sourceSum": "h1:IdNS5Ha7WfatXHDL0qzjdf7DBVnfb8OI3FpSbltv0nc=",
+      "locks": {
+        "go.mod": "1e192e6ab105178636418232e47a9a197c24e987405329a39e48908ca0fc9712",
+        "go.sum": "0f8d846f8f134b07e93b735111af50cc9e1c02e2e72cfa9930e189f7b09ce777"
+      },
+      "compiler": "go1.27.2",
+      "platform": "linux/amd64",
+      "binarySHA256": "f1823e1c17ed65c0f888e8bae45cbae13d065c81a8460188fbb40cec92b4d1f9",
+      "remainingAdvisories": {
+        "GO-2026-5932": [
+          "module"
+        ]
+      }
+    },
+    {
+      "tool": "goreleaser",
+      "version": "v2.18.3",
+      "upstreamCommit": "1942d44355492f44cd3774c57bd3c27fe544dfe9",
+      "sourceSum": "h1:QZyKdRAHzffgURxr0cODOjAE0Ywma7p43/fbwCi0mjs=",
+      "locks": {
+        "go.mod": "89ebcc956e6024789fc922cc3bf11342bf15f6684987e1522d37f6461096cb85",
+        "go.sum": "7a398bc42c1e97516b43387a44e6d737d938f54c6f7de13a98d89f3e1478a6a7"
+      },
+      "compiler": "go1.27.2",
+      "platform": "linux/amd64",
+      "binarySHA256": "6df06b703b605c80e7a4eae69bdee6dfa20258d245ae11f0c38b20d2af7e9376",
+      "remainingAdvisories": {
+        "GO-2026-5932": [
+          "module",
+          "package",
+          "symbol"
+        ],
+        "GO-2026-6225": [
+          "module",
+          "package",
+          "symbol"
+        ]
+      }
+    }
+  ],
+  "scope": "Only the reviewed Rio release invocations; not general-purpose tool security clearance.",
+  "evidenceRun": "https://github.com/rebaze/rio/actions/runs/38719316484",
+  "evidenceJob": "validate / build",
+  "inventorySHA256": "21d39c4613436e58837b8a39e6bafbe273681189f9c069aa26448f6e7c599973"
+}
