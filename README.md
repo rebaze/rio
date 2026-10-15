@@ -575,7 +575,7 @@ Reading an extracted release archive? [Open these references on GitHub](https://
 <!-- Keep previously linked README fragments useful after moving the reference. -->
 <a id="usage"></a><a id="rio-plan"></a><a id="the-plan-json"></a><a id="exit-codes"></a>
 <a id="the-manifest"></a><a id="discovering-module-artifacts"></a>
-<a id="build-and-source-context"></a><a id="walkthrough-recording"></a>
+<a id="build-and-source-context"></a>
 <a id="manifest-enrichment"></a><a id="existing-values-and-explicit-replacement"></a><a id="enrichment-provenance-and-compatibility"></a>
 <a id="normalization-attestations"></a><a id="what-rio-writes-into-the-output-sbom"></a><a id="reading-the-repair-records"></a><a id="what-a-record-establishes"></a>
 <a id="repaired-unmapped-skipped"></a>

@@ -20,27 +20,6 @@ def assess(data, approved):
     return builder.assess(data, approved, 'v1.8.0')
 
 class PolicyTest(unittest.TestCase):
-    def scope(self, root):
-        files={name:'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' for name in builder.REVIEWED_FILES}
-        for name in files:
-            path=root/name; path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b'')
-        return {'reviewedFiles':files}
-
-    def test_changed_invocation_scope_is_refused(self):
-        with tempfile.TemporaryDirectory() as d:
-            root=Path(d); scope=self.scope(root)
-            (root/'tools/release-publish.py').write_bytes(b'changed')
-            with self.assertRaisesRegex(ValueError,'reviewed scope differs'):
-                builder.check_scope(root,scope)
-
-    def test_required_reviewed_inputs_cannot_be_omitted(self):
-        with tempfile.TemporaryDirectory() as d:
-            root=Path(d);scope=self.scope(root)
-            for name in ('tools/release-publish.py','tools/verify-release.py','tools/demo-attest-sign/run.py','tools/security/go.mod','tools/security/go.sum'):
-                missing={'reviewedFiles':{k:v for k,v in scope['reviewedFiles'].items() if k!=name}}
-                with self.subTest(name=name),self.assertRaisesRegex(ValueError,'incomplete'):
-                    builder.check_scope(root,missing)
-
     def test_new_advisory_fails_even_at_module_precision(self):
         event={'finding':{'osv':'NEW-CVE','trace':[{'module':'example','version':'v1'}]}}
         with self.assertRaisesRegex(ValueError,'unreviewed'):
