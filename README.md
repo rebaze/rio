@@ -501,7 +501,7 @@ receipts; retries and reconciliation link to prior attempts rather than copying 
 
 Inspection checks internal consistency, without authenticating producers, fetching external SBOM
 bytes, or proving ingestion. See the [receipt field guide and recovery instructions](docs/output.md)
-and [installed-binary demo](tools/README.md#consolidated-record-demo).
+and [installed-binary demo](tools/README.md#failure-and-recovery-demo).
 
 ## Configure your project
 
