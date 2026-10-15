@@ -10,12 +10,14 @@ import re
 import subprocess
 import sys
 import tarfile
+import time
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ISSUER = "https://token.actions.githubusercontent.com"
 PROVENANCE = "https://slsa.dev/provenance/v1"
 SBOM = "https://cyclonedx.org/bom"
+DEVELOPER_ID = "Developer ID Application: rebaze GmbH (32Z95ATB2T)"
 
 
 def expected_assets(tag):
@@ -32,6 +34,28 @@ def client_demo_required(tag, legacy_smoke):
     if legacy_smoke and version >= (0, 6, 0):
         raise ValueError("client demo cannot be skipped for client-evidence releases")
     return not legacy_smoke
+
+
+def notarization_required(tag):
+    expected_assets(tag)
+    return tuple(int(part) for part in tag[1:].split(".")) >= (0, 8, 1)
+
+
+def gatekeeper(binary):
+    # Mark the binary as downloaded, as browsers and Homebrew do, so both the
+    # assessment and the first execution afterwards go through Gatekeeper.
+    command(["xattr", "-w", "com.apple.quarantine", "0381;%x;rio-verify-release;" % int(time.time()), binary])
+    result = subprocess.run(["spctl", "-a", "-vv", "-t", "install", str(binary)], capture_output=True, text=True, encoding="utf-8")
+    assessment = (result.stdout + result.stderr).strip()
+    check_assessment(result.returncode, assessment)
+    command(["codesign", "--verify", "--strict", binary])
+    return assessment.splitlines()
+
+
+def check_assessment(code, assessment):
+    lines = set(assessment.splitlines()[1:])
+    if code or not {"source=Notarized Developer ID", "origin=" + DEVELOPER_ID} <= lines:
+        raise ValueError("Gatekeeper does not accept the macOS binary as notarized by " + DEVELOPER_ID + ": " + assessment)
 
 
 def validate_release(data, tag, notes):
@@ -140,6 +164,8 @@ def verify(args):
         raise ValueError("host platform has no release archive")
     archive = assets / ("rio_" + args.tag[1:] + "_" + system + "_" + arch + (".zip" if system == "windows" else ".tar.gz"))
     binary = extract_binary(archive, args.output / "native", "rio.exe" if system == "windows" else "rio")
+    notarized = system == "darwin" and notarization_required(args.tag)
+    assessment = gatekeeper(binary) if notarized else None
     version = command([binary, "version"])
     if not version.startswith("rio " + args.tag[1:] + " (commit: " + args.commit + ", built: "):
         raise ValueError("published native binary version/commit differs")
@@ -150,6 +176,7 @@ def verify(args):
                "assetSHA256": hashes, "notesSHA256": hashlib.sha256(notes).hexdigest(),
                "cosignVerified": True, "attestedSourceCommitVerified": True,
                "nativeExecution": {"os": system, "arch": arch, "binarySHA256": digest(binary), "version": version.strip()},
+               "gatekeeper": {"quarantinedExecution": True, "assessment": assessment} if notarized else None,
                "clientDemoPassed": run_client_demo, "legacyVersionOnly": not run_client_demo, "otherArchitectures": "verified archives; not executed by this host"}
     (args.output / "verification.json").write_text(json.dumps(summary, indent=2) + "\n")
     print("VERIFIED:", args.tag, "complete signed asset set and native", system, arch, "client demo" if run_client_demo else "legacy version smoke")

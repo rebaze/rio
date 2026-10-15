@@ -33,6 +33,25 @@ class VerifyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             verify.client_demo_required("v0.6.0", True)
 
+    def test_notarization_required_from_v0_8_1(self):
+        self.assertFalse(verify.notarization_required("v0.8.0"))
+        self.assertTrue(verify.notarization_required("v0.8.1"))
+        self.assertTrue(verify.notarization_required("v0.10.0"))
+        with self.assertRaises(ValueError):
+            verify.notarization_required("v0.8.1-rc1")
+
+    def test_gatekeeper_assessment_requires_rebaze_notarization(self):
+        origin = "origin=" + verify.DEVELOPER_ID
+        verify.check_assessment(0, "rio: accepted\nsource=Notarized Developer ID\n" + origin)
+        for code, assessment in [
+                (3, "rio: rejected\nsource=Unnotarized Developer ID\n" + origin),
+                (0, "rio: accepted\nsource=Unnotarized Developer ID\n" + origin),
+                (0, "rio: accepted\noverride=security disabled"),
+                (0, "rio: accepted\nsource=Notarized Developer ID\norigin=Developer ID Application: Other (ABCDE12345)"),
+                (0, "rio: accepted\nsource=Notarized Developer ID\n" + origin + " (impostor)")]:
+            with self.subTest(assessment=assessment), self.assertRaises(ValueError):
+                verify.check_assessment(code, assessment)
+
     def test_extract_only_regular_binary_and_refuse_duplicates(self):
         with tempfile.TemporaryDirectory() as root:
             root = Path(root)

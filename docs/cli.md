@@ -17,6 +17,16 @@ curl -sSL https://raw.githubusercontent.com/rebaze/rio/main/install.sh \
   | RIO_VERSION=v0.7.0 RIO_INSTALL_DIR="$HOME/.local/bin" sh
 ```
 
+From v0.8.1 the macOS binaries are signed with rebaze's Developer ID and notarized by Apple, so
+Gatekeeper accepts them without a prompt. To check a macOS binary yourself:
+
+```sh
+spctl -a -vv -t install "$(command -v rio)"
+# …: accepted
+# source=Notarized Developer ID
+# origin=Developer ID Application: rebaze GmbH (32Z95ATB2T)
+```
+
 The installer variables belong on `sh`, after the pipe. Without them it uses the latest release and chooses a writable installation directory. Add the selected directory to `PATH`. [Platform downloads](https://github.com/rebaze/rio/releases/latest) also include Windows archives. Rio itself has no external runtime dependencies; supporting demos use Python 3.9+ where documented.
 
 ## Root execution

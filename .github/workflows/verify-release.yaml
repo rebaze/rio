@@ -70,6 +70,14 @@ jobs:
           HOMEBREW_NO_AUTO_UPDATE: "1"
         run: |
           brew install --cask rebaze/tap/rio
+          # The cask keeps Homebrew's quarantine mark, so the first run below is
+          # Gatekeeper's decision, which must rest on Apple's notarization.
+          binary="$(python3 -c 'import os, shutil; print(os.path.realpath(shutil.which("rio")))')"
+          xattr -p com.apple.quarantine "$binary"
+          spctl -a -vv -t install "$binary" > "$RUNNER_TEMP/brew-gatekeeper.txt" 2>&1
+          cat "$RUNNER_TEMP/brew-gatekeeper.txt"
+          grep -qx 'source=Notarized Developer ID' "$RUNNER_TEMP/brew-gatekeeper.txt"
+          grep -qx 'origin=Developer ID Application: rebaze GmbH (32Z95ATB2T)' "$RUNNER_TEMP/brew-gatekeeper.txt"
           rio version > "$RUNNER_TEMP/brew-version.txt"
           python3 - <<'PY'
           import os
@@ -80,6 +88,9 @@ jobs:
           print(text)
           PY
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
         with:
           name: homebrew-install
-          path: ${{ runner.temp }}/brew-version.txt
+          path: |
+            ${{ runner.temp }}/brew-version.txt
+            ${{ runner.temp }}/brew-gatekeeper.txt
