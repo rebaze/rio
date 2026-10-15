@@ -1,0 +1,29 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "application",
+      "name": "cart-api",
+      "version": "1.4.0",
+      "purl": "pkg:generic/example/cart-api@1.4.0"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "jackson-databind",
+      "group": "com.fasterxml.jackson.core",
+      "version": "2.17.1",
+      "purl": "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.17.1"
+    },
+    {
+      "type": "library",
+      "name": "slf4j-api",
+      "group": "org.slf4j",
+      "version": "2.0.13",
+      "purl": "pkg:maven/org.slf4j/slf4j-api@2.0.13"
+    }
+  ]
+}

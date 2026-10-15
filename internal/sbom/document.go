@@ -178,6 +178,26 @@ func (d *Document) Subject() (name, version string) {
 	return stringField(comp, "name"), stringField(comp, "version")
 }
 
+// SubjectReferences returns the URLs of metadata.component's external
+// references of the given type, in document order. A matching reference whose
+// url is missing or not a string contributes "", so a malformed entry is
+// reported as unsupported rather than silently skipped.
+func (d *Document) SubjectReferences(kind string) []string {
+	comp := d.metadataComponent(false)
+	if comp == nil {
+		return nil
+	}
+	refs, _ := comp["externalReferences"].([]any)
+	var urls []string
+	for _, r := range refs {
+		ref, _ := r.(map[string]any)
+		if ref["type"] == kind {
+			urls = append(urls, stringField(ref, "url"))
+		}
+	}
+	return urls
+}
+
 // SetSubject overrides metadata.component's name and version, returning the
 // values it replaced (§4.3d).
 func (d *Document) SetSubject(name, version string) (oldName, oldVersion string) {

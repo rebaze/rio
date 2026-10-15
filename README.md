@@ -324,7 +324,9 @@ self-contained HTML report. Keep the JSON alongside the report for machine inspe
 ## When to use Rio
 
 - **Normalize versions and check quality.** Raise older SBOMs to your chosen CycloneDX floor,
-  preserve dependency membership, and check required names, versions and package URLs.
+  preserve dependency membership, and check required names, versions and package URLs, and
+  optionally a [product security contact](docs/manifest.md#output-version-and-gate). A failed check
+  says what to fix and where.
 - **Keep lineage and pipeline context.** Record input/output digests and normalization details;
   attach supplied product, source, build and generator metadata with its origins and changes.
   Source/build details remain labeled as producer assertions.

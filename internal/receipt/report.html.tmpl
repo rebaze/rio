@@ -39,6 +39,7 @@ th { background: #eef2ef; } .muted, footer { color: #50636b; } .notice { border-
 </tbody></table>{{end}}
 {{range .Bulk}}<p><code>{{.Operation}}</code> · {{.Scope}} · evaluated {{.Evaluated}}, applied {{.Applied}}, unmapped {{.Unmapped}}, skipped {{.Skipped}}. Counters may overlap.</p>{{range $reason,$count := .Reasons}}<p>{{$reason}}: {{$count}}</p>{{end}}{{end}}{{end}}
 {{with .Checks}}<p>Gate <strong>{{.Gate}}</strong> (mode: {{.Mode}}) · Schema {{.Schema}} · Findings {{.Findings}}</p>
+{{if .Failed}}<p>Failed requirements: {{range $i, $f := .Failed}}{{if $i}} · {{end}}<code>{{$f.Requirement}}</code> ({{$f.Count}}){{end}}</p>{{end}}
 <p class="muted">Subject requirements: {{range .SubjectRequirements}}{{.}} {{end}} · Component requirements: {{range .ComponentRequirements}}{{.}} {{end}}<br>{{.ComponentScope}} · {{.ComponentEvaluation}} · components evaluated: {{.ComponentsEvaluated}} · {{.GraphFindings}} graph findings</p>{{end}}
 {{if .ErrorCode}}<p class="notice">{{.ErrorCode}}</p>{{end}}</section>{{end}}
 <h2>Destinations and acknowledgments</h2>

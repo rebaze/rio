@@ -162,6 +162,26 @@ func TestLoadEmptySections(t *testing.T) {
 	}
 }
 
+func TestGateSubjectRequire(t *testing.T) {
+	m, err := manifest.Load(write(t, "version: 1\nartifacts:\n  - id: only\n    sbom: bom.json\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if m.Gate.SubjectRequire == nil || len(m.Gate.SubjectRequire) != 0 {
+		t.Errorf("default SubjectRequire = %#v, want empty", m.Gate.SubjectRequire)
+	}
+	m, err = manifest.Load(write(t, "version: 1\nartifacts:\n  - id: only\n    sbom: bom.json\ngate:\n  subject:\n    require: [securityContact]\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if diff := cmp.Diff([]string{"securityContact"}, m.Gate.SubjectRequire); diff != "" {
+		t.Errorf("SubjectRequire (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"name", "version", "purl"}, m.Gate.Require); diff != "" {
+		t.Errorf("component requirements must keep their default (-want +got):\n%s", diff)
+	}
+}
+
 func TestGateRequires(t *testing.T) {
 	path := write(t, "version: 1\nartifacts:\n  - id: only\n    sbom: bom.json\ngate:\n  require: [purl]\n")
 	m, err := manifest.Load(path)
@@ -534,6 +554,26 @@ func TestLoadRejects(t *testing.T) {
 			name: "gate requires duplicate",
 			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\ngate:\n  require: [name, name]\n",
 			want: []string{"gate.require", "name"},
+		},
+		{
+			name: "gate subject requires unknown field",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\ngate:\n  subject:\n    require: [version]\n",
+			want: []string{"gate.subject.require", `"version"`, "securityContact", "always required"},
+		},
+		{
+			name: "gate subject requires duplicate",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\ngate:\n  subject:\n    require: [securityContact, securityContact]\n",
+			want: []string{"gate.subject.require", "more than once"},
+		},
+		{
+			name: "unknown gate subject key",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\ngate:\n  subject:\n    required: [securityContact]\n",
+			want: []string{"gate.subject", `unknown key "required"`},
+		},
+		{
+			name: "gate subject require is a scalar",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\ngate:\n  subject:\n    require: securityContact\n",
+			want: []string{"gate.subject.require", "must be a list of strings"},
 		},
 		{
 			name: "unknown top level key",

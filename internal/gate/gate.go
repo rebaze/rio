@@ -12,10 +12,12 @@
 package gate
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/package-url/packageurl-go"
 
+	"github.com/rebaze/rio/internal/enrichment"
 	"github.com/rebaze/rio/internal/sbom"
 )
 
@@ -30,7 +32,24 @@ const (
 	// RequirePURL demands a present component.purl that parses as a package
 	// URL.
 	RequirePURL Requirement = "purl"
+	// RequireSecurityContact demands a security-contact external reference on
+	// metadata.component with a supported value. It is a subject requirement,
+	// opted into with gate.subject.require; components are never asked for it.
+	RequireSecurityContact Requirement = "securityContact"
 )
+
+// SecurityContactReference is the CycloneDX external reference type that
+// carries a product security contact.
+const SecurityContactReference = "security-contact"
+
+// Requirements is everything one gate run is asked to check.
+type Requirements struct {
+	// Components is gate.require: what every component must carry.
+	Components []Requirement
+	// Subject is gate.subject.require: what metadata.component must carry in
+	// addition to the name and version it always needs.
+	Subject []Requirement
+}
 
 // All returns every requirement, which is what gate.require defaults to (§2).
 // The order is the reporting order used by Finding.Missing.
@@ -51,8 +70,13 @@ type Finding struct {
 	// artifact id.
 	Component string `json:"component,omitempty"`
 	// Missing lists the failed requirements in the fixed order name, version,
-	// purl, never the order gate.require gave them in (§7).
+	// purl, never the order gate.require gave them in (§7). A subject finding
+	// uses name, version, securityContact.
 	Missing []string `json:"missing"`
+	// Details explains a failed requirement where "missing" alone would
+	// mislead, such as a security contact that is present but unsupported.
+	// It is for the human message only and never reaches index.json.
+	Details map[string]string `json:"-"`
 }
 
 // Result is the outcome of a gate run.
@@ -86,13 +110,20 @@ func (r Result) OK() bool { return len(r.Findings) == 0 }
 // Requirements the gate does not recognise are ignored; the manifest loader is
 // what rejects them (§2).
 func Check(doc *sbom.Document, require []Requirement) Result {
+	return CheckRequirements(doc, Requirements{Components: require})
+}
+
+// CheckRequirements is Check with subject requirements beyond name and
+// version.
+func CheckRequirements(doc *sbom.Document, reqs Requirements) Result {
+	require := reqs.Components
 	findings := []Finding{}
 	if doc == nil {
 		return Result{Findings: findings, Evaluations: []Evaluation{}}
 	}
 
 	result := Result{Findings: findings, Evaluations: []Evaluation{}, ComponentCount: len(doc.EveryComponent())}
-	if f, failed := checkSubject(doc); failed {
+	if f, failed := checkSubject(doc, reqs.Subject); failed {
 		findings = append(findings, f)
 	}
 
@@ -108,7 +139,7 @@ func Check(doc *sbom.Document, require []Requirement) Result {
 		}
 	}
 	if !wantName && !wantVersion && !wantPURL {
-		return evaluatedResult(result, findings, require)
+		return evaluatedResult(result, findings, reqs)
 	}
 
 	// Every component, including components nested under another: a nested
@@ -132,20 +163,19 @@ func Check(doc *sbom.Document, require []Requirement) Result {
 		}
 	}
 
-	return evaluatedResult(result, findings, require)
+	return evaluatedResult(result, findings, reqs)
 }
 
-func evaluatedResult(result Result, findings []Finding, require []Requirement) Result {
+func evaluatedResult(result Result, findings []Finding, reqs Requirements) Result {
 	result.Findings = findings
 	for _, scope := range []string{"subject", "components"} {
-		for _, req := range All() {
-			selected := scope == "subject" && req != RequirePURL
-			if scope == "components" {
-				for _, r := range require {
-					if req == r {
-						selected = true
-					}
-				}
+		for _, req := range append(All(), RequireSecurityContact) {
+			selected := false
+			switch scope {
+			case "subject":
+				selected = req == RequireName || req == RequireVersion || (req == RequireSecurityContact && wants(reqs.Subject, req))
+			case "components":
+				selected = req != RequireSecurityContact && wants(reqs.Components, req)
 			}
 			if !selected {
 				continue
@@ -176,20 +206,52 @@ func evaluatedResult(result Result, findings []Finding, require []Requirement) R
 	return result
 }
 
-// checkSubject verifies metadata.component carries both a name and a version.
-func checkSubject(doc *sbom.Document) (Finding, bool) {
+func wants(list []Requirement, req Requirement) bool {
+	for _, r := range list {
+		if r == req {
+			return true
+		}
+	}
+	return false
+}
+
+// checkSubject verifies metadata.component carries both a name and a version,
+// and a supported security contact when that is required.
+func checkSubject(doc *sbom.Document, require []Requirement) (Finding, bool) {
 	name, version := doc.Subject()
-	var missing []string
+	f := Finding{Subject: true}
 	if blank(name) {
-		missing = append(missing, string(RequireName))
+		f.Missing = append(f.Missing, string(RequireName))
 	}
 	if blank(version) {
-		missing = append(missing, string(RequireVersion))
+		f.Missing = append(f.Missing, string(RequireVersion))
 	}
-	if len(missing) == 0 {
-		return Finding{}, false
+	if wants(require, RequireSecurityContact) {
+		if detail, ok := checkSecurityContact(doc); !ok {
+			f.Missing = append(f.Missing, string(RequireSecurityContact))
+			if detail != "" {
+				f.Details = map[string]string{string(RequireSecurityContact): detail}
+			}
+		}
 	}
-	return Finding{Subject: true, Missing: missing}, true
+	return f, len(f.Missing) > 0
+}
+
+// checkSecurityContact passes when any security-contact reference carries a
+// supported value. Presence alone is not enough: an unusable value is reported
+// with the value itself, so the producer sees what to correct. A pass says
+// only that a supported value is present; it does not verify who answers it.
+func checkSecurityContact(doc *sbom.Document) (detail string, ok bool) {
+	urls := doc.SubjectReferences(SecurityContactReference)
+	if len(urls) == 0 {
+		return "", false
+	}
+	for _, u := range urls {
+		if enrichment.ValidateSecurityContact(u) == nil {
+			return "", true
+		}
+	}
+	return fmt.Sprintf("the %s reference %q is not an absolute http(s) URL or a mailto address", SecurityContactReference, urls[0]), false
 }
 
 // validPURL reports whether purl is present and parses as a package URL.

@@ -270,6 +270,7 @@ jobs:
           python tools/demo-normalization-evidence/run.py "$PWD/rio-demo.exe"
           python tools/demo-recovery/run.py "$PWD/rio-demo.exe"
           python tools/demo-client-record/run.py "$PWD/rio-demo.exe"
+          python tools/demo-handoff-checks/run.py "$PWD/rio-demo.exe"
           python tools/demo-oci/run.py "$PWD/rio-demo.exe"
 
 

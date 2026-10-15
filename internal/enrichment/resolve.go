@@ -195,6 +195,12 @@ func validEmail(value string) bool {
 	return err == nil && parsed.Address == value && strings.Contains(value, "@")
 }
 
+// ValidateSecurityContact reports whether value is a supported product
+// security contact: an absolute HTTP(S) URL without credentials, or a mailto
+// URL with exactly one address. The gate applies the same rule to contacts
+// already in an SBOM, so a value enrichment accepts is a value the gate passes.
+func ValidateSecurityContact(value string) error { return validateURL(value, true) }
+
 func validateURL(value string, securityContact bool) error {
 	u, err := url.Parse(value)
 	if err != nil || strings.TrimSpace(value) != value || strings.ContainsAny(value, "\r\n\t ") {

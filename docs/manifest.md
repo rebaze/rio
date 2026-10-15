@@ -43,6 +43,8 @@ output:
 gate:
   mode: fail                     # root default; explicit --gate overrides it
   require: [name, version, purl]  # subset of these three; defaults to all three
+  subject:
+    require: [securityContact]    # optional; defaults to []
 ```
 
 Each explicit artifact must resolve to exactly one regular SBOM file. Zero or multiple matches
@@ -59,6 +61,23 @@ configured processing still applies.
 checks every dependency component, including nested components. Required names and versions must
 be nonblank; a required purl must be parseable as a package URL. Independently of this list, the
 SBOM subject (`metadata.component`) must always have a nonblank name and version.
+
+`gate.subject.require` opts into subject requirements beyond that. Its only value is
+`securityContact`: the subject must have a `security-contact` external reference whose URL is an
+absolute http(s) URL without credentials, or `mailto:` with one address. That is the same rule
+[enrichment](enrichment.md) applies, and the gate runs after enrichment, so a reviewed
+`enrichment.subject.securityContact` in `rio.yaml` satisfies it. A pass establishes only that a
+contact in a supported form is present. It does not identify who answers it, verify the mailbox or
+approve the release, and Rio never looks a contact up or invents one. The
+[handoff-checks demo](../tools/demo-handoff-checks/) shows each outcome.
+
+A failed requirement is printed with what its producer can do about it, and the receipt lists the
+failed requirements under `checks.failed`. For example:
+
+```text
+rio: artifact "cart-api" failed the gate; gate mode fail, so nothing was delivered.
+  subject.securityContact: the SBOM subject has no security-contact reference. Set the reviewed contact as enrichment.subject.securityContact in rio.yaml, or have the SBOM generator emit one. Rio does not look it up.
+```
 
 `gate.mode` accepts `fail` or `warn`. Explicit `--gate` wins over the manifest. Root defaults to `fail`; standalone `normalize` retains its historical `warn` default only when no manifest mode is supplied. Failed checks remain failed in either mode. Enforced failure blocks every selected root upload and returns exit 1; warn can continue while recording the effective exception. Standalone `deliver` still requires its separate `--allow-failed-gate` override. See [exit codes](cli.md#exit-codes).
 

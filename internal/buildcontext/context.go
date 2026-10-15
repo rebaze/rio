@@ -213,7 +213,7 @@ func (f *File) Resolve(artifactID, inputSHA string, binding Binding) (*Resolved,
 	}
 	for _, required := range binding.Require {
 		if !present[required] {
-			return nil, fmt.Errorf("context artifact %q requires explicitly supplied %s", artifactID, required)
+			return nil, fmt.Errorf("context artifact %q requires explicitly supplied %s; have the CI step that writes %s set it for this artifact, or remove %s from context.require in rio.yaml if this handoff does not need it", artifactID, required, f.ref.Path, required)
 		}
 	}
 	return &Resolved{
