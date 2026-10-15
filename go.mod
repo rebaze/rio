@@ -4,7 +4,7 @@ go 1.27.2
 
 require (
 	github.com/CycloneDX/cyclonedx-go v0.12.0
-	github.com/bmatcuk/doublestar/v4 v4.10.2
+	github.com/bmatcuk/doublestar/v4 v4.10.3
 	github.com/google/go-cmp v0.7.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
