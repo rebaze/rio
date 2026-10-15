@@ -49,7 +49,9 @@ class ReleaseTest(unittest.TestCase):
     def test_build_does_not_publish_before_attestation_verification(self):
         # Removing --skip=publish would expose releases before the later gate.
         workflow = (ROOT / ".github/workflows/release.yaml").read_text()
-        command = re.search(r"run: (goreleaser release [^\n]+)", workflow).group(1)
+        commands = re.findall(r"^[ \t]*(?:run: )?(goreleaser release [^\n]+)", workflow, re.MULTILINE)
+        self.assertEqual(len(commands), 1, "expected exactly one GoReleaser release command")
+        command = commands[0]
         subprocess.run(shlex.split(command), env=self.env, check=True)
         self.assertFalse((self.root / "published").exists(),
                          "GoReleaser published before attestation verification")
