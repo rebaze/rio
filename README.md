@@ -139,7 +139,31 @@ binary, on your workstation or in CI.
 Delivery destinations include **Dependency-Track** and **OCI artifact registries**, with separate
 delivery acknowledgments, transport facts and content verification.
 
-[First delivery](#deliver-your-first-sbom) · [Try without a server](#quick-start) · [Verified delivery](#deliver-to-dependency-track) · [OCI registries](#deliver-to-an-oci-registry) · [One evidence record](#one-evidence-record) · [Configuration](#configure-your-project) · [For agents](#for-agents) · [Reference](#reference)
+[Install](#install) · [First delivery](#deliver-your-first-sbom) · [Try without a server](#quick-start) · [Verified delivery](#deliver-to-dependency-track) · [OCI registries](#deliver-to-an-oci-registry) · [One evidence record](#one-evidence-record) · [Configuration](#configure-your-project) · [For agents](#for-agents) · [Reference](#reference)
+
+## Install
+
+With Homebrew:
+
+```sh
+brew install rebaze/tap/rio
+```
+
+Or with the installer:
+
+```sh
+curl -sSL https://raw.githubusercontent.com/rebaze/rio/main/install.sh | sh
+```
+
+Windows and other platforms: [download a release binary](https://github.com/rebaze/rio/releases/latest).
+Check it with `rio version`. Rio is a single binary with no runtime dependencies. Since v0.8.1,
+the macOS binaries are signed by rebaze and notarized by Apple; every release has signed
+checksums and build provenance. See [installation options](docs/cli.md#install) to pin a version, choose the
+install directory or verify a binary. Documentation follows `main`; check feature prerequisites
+when using an older release.
+
+Testing a fix on Linux? [Build and download a temporary test binary](tools/README.md#temporary-linux-test-binaries)
+from GitHub Actions, including a runnable example, without creating a release.
 
 ## Deliver your first SBOM
 
@@ -336,27 +360,6 @@ Delivery history is not added to `index.json` or the normalization statements. T
 support traceability; they do not authenticate the producer or prove successful ingestion.
 `rio delivery inspect` reads a journal offline; `rio delivery reconcile` queries the destination
 and appends new observations without uploading again.
-
-## Install
-
-With Homebrew:
-
-```sh
-brew install rebaze/tap/rio
-```
-
-Or use the installer:
-
-```sh
-curl -sSL https://raw.githubusercontent.com/rebaze/rio/main/install.sh | sh
-```
-
-You can also [download a release binary](https://github.com/rebaze/rio/releases).
-See [installation options](docs/cli.md#install) to pin a version or choose the install directory.
-Documentation follows `main`; check feature prerequisites when using an older release.
-
-Testing a fix on Linux? [Build and download a temporary test binary](tools/README.md#temporary-linux-test-binaries)
-from GitHub Actions, including a runnable example, without creating a release.
 
 ## Quick start
 
