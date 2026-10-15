@@ -156,9 +156,9 @@ curl -sSL https://raw.githubusercontent.com/rebaze/rio/main/install.sh | sh
 ```
 
 Windows and other platforms: [download a release binary](https://github.com/rebaze/rio/releases/latest).
-Check it with `rio version`. Rio is a single binary with no runtime dependencies. The macOS
-binaries are signed by rebaze and notarized by Apple; every release has signed checksums and
-build provenance. See [installation options](docs/cli.md#install) to pin a version, choose the
+Check it with `rio version`. Rio is a single binary with no runtime dependencies. Since v0.8.1,
+the macOS binaries are signed by rebaze and notarized by Apple; every release has signed
+checksums and build provenance. See [installation options](docs/cli.md#install) to pin a version, choose the
 install directory or verify a binary. Documentation follows `main`; check feature prerequisites
 when using an older release.
 
