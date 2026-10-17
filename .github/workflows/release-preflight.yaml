@@ -3,6 +3,11 @@ name: Release preflight
 # Exercise the release caller/callee contracts without tagging or publishing.
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, vX.Y.Z
+        required: true
+        type: string
   pull_request:
     paths:
       - '.github/workflows/**'
@@ -26,11 +31,14 @@ jobs:
       security-events: write
 
 
-  # The candidate's source SBOM, attested before any tag, so that a release
-  # gate can verify it for this exact commit. The subject stands for the
-  # commit: its name is git+https://github.com/<repo>@<sha>, its digest the
-  # SHA-256 of that name; the signing certificate names the commit itself.
-  # Only a manual run attests: a pull request's run builds a merge commit.
+  # The candidate's source SBOM and rio's receipt for it, attested before any
+  # tag, so that a release gate can verify both for this exact commit. The
+  # subject stands for the commit: its name is
+  # git+https://github.com/<repo>@<sha>, its digest the SHA-256 of that name;
+  # the signing certificate names the commit itself. rio built from the
+  # candidate checks the SBOM with its strict gate; a failing gate fails the
+  # job before anything is attested. Only a manual run attests: a pull
+  # request's run builds a merge commit.
   sbom:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -39,20 +47,51 @@ jobs:
       id-token: write
       attestations: write
     steps:
+      - name: Check the version
+        id: version
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "version must be vX.Y.Z, not \"$VERSION\"" >&2
+            exit 1
+          fi
+          printf 'number=%s\n' "${VERSION#v}" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
 
       - name: Install Syft
         uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           syft-version: v1.54.1
 
-      - name: Generate source CycloneDX SBOM
+      - name: Build rio from the candidate
         shell: bash
+        env:
+          CGO_ENABLED: "0"
+          VERSION: ${{ steps.version.outputs.number }}
         run: |
           set -euo pipefail
-          syft dir:. --output "cyclonedx-json@1.6=rio-${GITHUB_SHA}-source.cdx.json"
+          go build -trimpath -o "$RUNNER_TEMP/rio" \
+            -ldflags "-s -w -X github.com/rebaze/rio/internal/cli.version=$VERSION -X github.com/rebaze/rio/internal/cli.commit=$GITHUB_SHA" ./cmd/rio
+          "$RUNNER_TEMP/rio" version
+
+      - name: Generate the source SBOM and check it with rio's gate
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.number }}
+        run: |
+          set -euo pipefail
+          tools/source-sbom.sh "$VERSION" "rio-${GITHUB_SHA}-source.cdx.json" "$RUNNER_TEMP/rio" "rio-${GITHUB_SHA}-receipt.json"
 
       - name: Name the candidate commit
         id: subject
@@ -69,3 +108,11 @@ jobs:
           subject-name: ${{ steps.subject.outputs.name }}
           subject-digest: ${{ steps.subject.outputs.digest }}
           sbom-path: rio-${{ github.sha }}-source.cdx.json
+
+      - name: Attest rio's receipt for the candidate commit
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ steps.subject.outputs.name }}
+          subject-digest: ${{ steps.subject.outputs.digest }}
+          predicate-type: https://rebaze.com/attestation/rio-run-receipt/v1
+          predicate-path: rio-${{ github.sha }}-receipt.json
