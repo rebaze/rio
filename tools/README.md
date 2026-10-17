@@ -24,6 +24,7 @@ inputs and remain separate from its runtime.
 | [`demo-normalization-evidence/`](demo-normalization-evidence/) | explains repair sources, exact changes and offline retention | with an installed release containing normalization evidence |
 | [`demo-repair/`](#first-repair-sample) | shows optional p2 repair with an unchanged input and an audit record | when evaluating Eclipse/OSGi coordinate repair |
 | [`demo-agent-integration/`](#agent-integration-examples) | tests project onboarding configurations and a one-command CI receipt step | with Rio 0.7.0+ and Python 3.9+ |
+| [`source-sbom.sh`](#rios-source-sbom-and-candidate-checks) | makes the CycloneDX SBOM of rio's own source and checks it with rio's strict gate | in CI, release preflight and the release |
 | [`rio-context.py`](#rio-contextpy) | emits one explicit build-context entry bound to original SBOM bytes | in a producing CI job |
 
 ---
@@ -557,8 +558,9 @@ Before creating a draft, the guard checks the asset inventory, archive checksums
 provenance and CycloneDX attestations for each archive, provenance for the checksum file,
 and the checksum signature. It constrains the signer to this repository's release workflow
 at the requested tag. The verified CycloneDX predicate must match the staged source SBOM.
-The source SBOM describes the repository; attaching it to an archive does not establish a
-complete inventory of that archive's assembled binary.
+The source SBOM describes rio's source, as [`source-sbom.sh`](#rios-source-sbom-and-candidate-checks)
+makes it; attaching it to an archive does not establish a complete inventory of that archive's
+assembled binary.
 
 Verification and upload use the same private copy of the staged bytes. The guard downloads
 the draft's assets and compares their names and SHA-256 digests before publishing the
@@ -864,3 +866,30 @@ PR state and merges the exact head. No repository protection settings are change
 workflow files. An independent human approval rule is a maintainer decision: enabling one
 without a second eligible reviewer would block a sole-maintainer project. Do not create
 synthetic approvals to improve Scorecard.
+
+## rio's source SBOM and candidate checks
+
+`source-sbom.sh` makes the CycloneDX SBOM of rio's own source: the subject is `rio` at the given
+version, and the components are rio's Go modules, each with a version and a package URL. Demo
+fixtures (`tools/`), test data and workflows are not part of rio, and syft's file entries name
+manifests rather than dependencies, so the script leaves them out. Given a rio binary and a receipt
+path, it then checks the SBOM with rio's strict gate and writes the run receipt; a failing gate fails
+the script. CI runs it on every Go change, so a new directory of fixtures shows up as a failing gate
+there rather than in a release.
+
+```sh
+tools/source-sbom.sh 0.8.2 rio-source.cdx.json ./rio receipt.json
+```
+
+Before a tag, run release preflight by hand with the version to release:
+`gh workflow run release-preflight.yaml --ref main -f version=v0.8.2`. Besides full CI and CodeQL,
+it builds rio from the candidate, makes this SBOM, gates it, and attests both the SBOM and the
+receipt for the candidate commit (subject `git+https://github.com/rebaze/rio@<commit>`, receipt
+predicate type `https://rebaze.com/attestation/rio-run-receipt/v1`). A release gate such as
+Clear to Ship verifies them for that exact commit. The release makes the same SBOM for its tag.
+
+`installer-tests.yaml` builds the candidate as the release does on Linux, macOS and Windows, checks
+the version and commit it reports, runs the client-record demo, and on Linux and macOS the offline
+installer test. It runs on every push to main, so each candidate on main has a run. Signatures,
+notarization and the Homebrew cask need a published release and stay with
+[published-release verification](#published-release-verification).

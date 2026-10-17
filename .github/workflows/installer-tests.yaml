@@ -1,0 +1,77 @@
+name: Installer tests
+
+# The candidate's own build, installed and run on each system a release
+# supports, before any tag: the version and commit it reports, the native
+# client demo, and on Linux and macOS the offline installer test. A release
+# gate can take a run of this workflow at a commit as its installer tests.
+# What needs a published release (signatures, notarization, the Homebrew
+# cask) is verify-release.yaml's, after the release.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/installer-tests.yaml'
+      - 'install.sh'
+      - 'install_test.sh'
+      - 'tools/demo-client-record/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: installer-tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Preserve fixture bytes on Windows
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.9"
+
+      - name: Build the candidate the way GoReleaser does
+        id: build
+        shell: bash
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          binary="$RUNNER_TEMP/rio"
+          if [ "$RUNNER_OS" = Windows ]; then binary="$binary.exe"; fi
+          version="0.0.0-candidate+${GITHUB_SHA:0:12}"
+          go build -trimpath -o "$binary" \
+            -ldflags "-s -w -X github.com/rebaze/rio/internal/cli.version=$version -X github.com/rebaze/rio/internal/cli.commit=$GITHUB_SHA" ./cmd/rio
+          "$binary" version | tee "$RUNNER_TEMP/version.txt"
+          grep -F "$version" "$RUNNER_TEMP/version.txt"
+          grep -F "$GITHUB_SHA" "$RUNNER_TEMP/version.txt"
+          printf 'binary=%s\n' "$binary" >> "$GITHUB_OUTPUT"
+
+      - name: Run the native client demo
+        shell: bash
+        env:
+          RIO: ${{ steps.build.outputs.binary }}
+        run: python tools/demo-client-record/run.py "$RIO"
+
+      - name: Test the installer offline
+        if: runner.os != 'Windows'
+        run: ./install_test.sh
