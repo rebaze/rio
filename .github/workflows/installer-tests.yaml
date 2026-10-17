@@ -20,8 +20,11 @@ on:
 permissions:
   contents: read
 
+# A pull request keeps one run, its newest. Every push to main gets its own
+# run: GitHub would cancel a pending run queued behind another in one group,
+# and a commit without a run has no installer tests.
 concurrency:
-  group: installer-tests-${{ github.ref }}
+  group: installer-tests-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

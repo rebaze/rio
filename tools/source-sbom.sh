@@ -26,7 +26,9 @@ usage() {
 [ $# -eq 2 ] || [ $# -eq 4 ] || usage
 version=$1
 out=$2
-if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+# grep reads lines, so a version must also be exactly one line.
+if [ "$(printf '%s\n' "$version" | wc -l)" -ne 1 ] ||
+	! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
 	echo "source-sbom.sh: version must be X.Y.Z without a v, not \"$version\"" >&2
 	exit 2
 fi
