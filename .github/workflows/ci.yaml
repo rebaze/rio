@@ -230,6 +230,7 @@ jobs:
           python3 tools/rio-context_test.py
           python3 tools/release-publish_test.py
           python3 tools/release-notes_test.py
+          python3 tools/release-scan_test.py
           python3 tools/verify-release_test.py
           python3 tools/demo-delivery/integration/setup_test.py
 
