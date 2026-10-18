@@ -843,6 +843,25 @@ client demo. It is refused for v0.6.0 and newer, so it cannot waive this release
 Historical acceptance evidence is retained in the [v0.6.0 release verification report](../docs/release-verification/v0.6.0.md),
 including exact-commit workflow results, published downloads, native execution and Homebrew installation.
 
+## Published-release scan
+
+`release-scan.py` scans what users already downloaded. It resolves the latest release (or `--tag`),
+downloads the six archives, checks them against `checksums.txt` and verifies each archive's build
+provenance against the release workflow, tag and source commit. Only then does it extract every
+binary and run the pinned `govulncheck` in binary mode. Each archive is reported as clean,
+vulnerable (with advisory IDs) or error; anything but clean fails the run.
+
+```sh
+python3 tools/release-scan.py --output /absolute/new/private/scan
+python3 tools/release-scan.py --tag v0.7.0 --output /absolute/new/private/scan-v0.7.0
+```
+
+Requires Python 3.9+, `gh` and Go. The `Scan published release` workflow runs it every Monday and
+on demand, and retains `scan.json` and the scanner output. On 2026-10-18 it reported all six v0.8.1
+binaries clean and all six v0.7.0 binaries vulnerable (Go 1.27 standard library and
+`golang.org/x/text`, fixed in later releases). `python3 tools/release-scan_test.py` runs offline with
+real archives, a fake `gh` and a fake scanner.
+
 ## Full candidate validation
 
 Run `gh workflow run ci.yaml --ref BRANCH` and `gh workflow run codeql.yaml --ref BRANCH`
