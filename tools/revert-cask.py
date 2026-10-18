@@ -97,7 +97,7 @@ def revert(args):
     args.output.write_text(cask)
     print("VERIFIED: cask for " + args.to + " equals the release workflow's output at that tag with the signed "
           "checksums, as published in " + args.tap + "@" + sha)
-    print("Wrote " + str(args.output) + ". Commit it to " + args.tap + " as Casks/rio.rb with the message:")
+    print("Wrote " + str(args.output) + ". Open a pull request in " + args.tap + " that sets Casks/rio.rb to it, titled:")
     print("  rio " + args.to[1:] + " (withdraw <broken version>, see <issue>)")
 
 
