@@ -880,6 +880,32 @@ Requires Python 3.9+, `gh` and `cosign`. `python3 tools/revert-cask_test.py` run
 real published v0.8.0 and v0.8.1 casks, checksums and tagged release workflows under
 `tools/testdata/cask/`, a fake `gh` and a fake `cosign`.
 
+## Change class
+
+`change-class.py` labels every pull request `class:standard` or `class:significant` and lists
+the triggering criteria in the job summary, so each release can state which of its changes were
+significant and why. The `Change class` workflow runs it on `pull_request_target`. It checks out
+the base branch's copy of the tool and reads only the PR body and changed-file list through the API.
+It never checks out or runs PR code.
+
+A PR is significant when any of these applies:
+
+| Criterion | Trigger |
+|---|---|
+| `critical_function` | `internal/receipt/**`, `internal/gate/**` |
+| `external_interface` | `internal/delivery/**` |
+| `security_component` | `tools/rio-attest-sign.sh`, `tools/rio-attest-verify.sh` |
+| `pipeline_or_rules` | workflows, Dependabot config, PR template, `.goreleaser.yaml`, release and verification tools, `tools/security/**`, `install.sh`, `SECURITY.md` |
+| `new_or_major_dependency` | a module path added in `go.mod` or `tools/security/go.mod` (a major bump changes the path); patch and minor bumps stay standard |
+| `cra_substantial_modification_question` | the box in the PR template is ticked |
+| `incomplete_file_list` | the API did not return every changed file or a `go.mod` patch |
+
+Automation only raises the class. A maintainer can lower it by hand with a reason in the PR.
+Run against the 16 most recent merged PRs on 2026-10-18, it labelled 10 significant. All were
+workflow, release-tool or gate changes, including four Dependabot action bumps; the remaining
+6 were standard.
+`python3 tools/change-class_test.py` runs offline with a fake `gh`.
+
 ## Full candidate validation
 
 Run `gh workflow run ci.yaml --ref BRANCH` and `gh workflow run codeql.yaml --ref BRANCH`

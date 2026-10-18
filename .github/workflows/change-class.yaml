@@ -1,0 +1,36 @@
+name: Change class
+
+# Labels every PR class:standard or class:significant from its changed files and
+# the substantial-modification box. Reads API metadata only; never checks out or
+# runs PR code, so pull_request_target can label PRs from forks and Dependabot.
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, synchronize, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: change-class-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # The base branch's own tool, never the PR's.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Classify and label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: python3 tools/change-class.py --repo "$GITHUB_REPOSITORY" --pr "$PR"
