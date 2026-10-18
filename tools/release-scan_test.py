@@ -49,6 +49,8 @@ FAKE_SCANNER = textwrap.dedent('''\
     if sys.argv[1] == "-version":
         print("Scanner: govulncheck@test")
         sys.exit(0)
+    if not sys.argv[2].startswith("/"):
+        sys.exit("relative binary path; the real scanner runs in another directory")
     data = open(sys.argv[2], "rb").read()
     if b"BROKEN" in data:
         sys.exit(1)
@@ -102,10 +104,11 @@ class ReleaseScanTest(unittest.TestCase):
         (release / "checksums.txt").write_text("\n".join(sums) + "\n")
         (release / ("rio-" + TAG + ".intoto.jsonl")).write_text("{}\n")
 
-    def scan(self, *extra, env=None):
+    def scan(self, *extra, env=None, relative=False):
         output = self.root / "out"
-        result = subprocess.run([sys.executable, str(SCRIPT), "--output", str(output)] + list(extra),
-                                text=True, capture_output=True, env=env or self.env)
+        target = "out" if relative else str(output)
+        result = subprocess.run([sys.executable, str(SCRIPT), "--output", target] + list(extra),
+                                text=True, capture_output=True, env=env or self.env, cwd=self.root)
         report = output / "scan.json"
         return result, json.loads(report.read_text()) if report.exists() else None
 
@@ -122,6 +125,11 @@ class ReleaseScanTest(unittest.TestCase):
         self.assertEqual(self.calls().count("attestation verify"), 6)
         self.assertIn("--source-digest " + COMMIT, self.calls())
         self.assertIn("release.yaml@refs/tags/" + TAG, self.calls())
+
+    def test_relative_output_reaches_the_scanner_as_absolute_paths(self):
+        result, report = self.scan(relative=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(all(r["status"] == "clean" for r in report["results"]))
 
     def test_finding_fails_and_names_the_archive(self):
         self.publish({"rio_1.2.3_windows_arm64": b"VULN"})

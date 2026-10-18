@@ -71,6 +71,8 @@ def scan(args):
         raise ValueError("owner/name repository required")
     if args.output.exists():
         raise ValueError("scan output exists; use a fresh directory")
+    # The default scanner runs with go -C, so every path handed to it must be absolute.
+    args.output = args.output.resolve()
     args.tag, archives = resolve_tag(args.repo, args.tag)
     commit = command(["gh", "api", "repos/" + args.repo + "/commits/" + args.tag, "--jq", ".sha"]).strip()
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
