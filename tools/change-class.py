@@ -42,14 +42,31 @@ COMPILED = [(criterion, [glob(p) for p in patterns]) for criterion, patterns in 
 
 
 def modules(patch, sign):
-    """Module paths on added (+) or removed (-) require lines of a go.mod patch."""
-    found = set()
+    """Module path to version on added (+) or removed (-) require lines of a go.mod patch."""
+    found = {}
     for line in patch.splitlines():
         if line.startswith(sign) and not line.startswith(sign * 3):
-            match = re.match(r"^[+-]\s*(?:require\s+)?([a-z0-9.-]+\.[a-z]{2,}/[^\s]+)\s+v\S+", line)
+            match = re.match(r"^[+-]\s*(?:require\s+)?([a-z0-9.-]+\.[a-z]{2,}/[^\s]+)\s+(v\S+)", line)
             if match:
-                found.add(match[1])
+                found[match[1]] = match[2]
     return found
+
+
+def major(version):
+    match = re.match(r"v(\d+)\.", version)
+    return int(match[1]) if match else None
+
+
+def dependency_changes(patch):
+    """New module paths, and same-path major upgrades (v0 to v1, +incompatible)."""
+    added, removed = modules(patch, "+"), modules(patch, "-")
+    changes = []
+    for path, version in sorted(added.items()):
+        if path not in removed:
+            changes.append(path)
+        elif major(version) is None or major(removed[path]) is None or major(version) > major(removed[path]):
+            changes.append(path + " " + removed[path] + " to " + version)
+    return changes
 
 
 def classify(files, body, complete=True):
@@ -65,8 +82,8 @@ def classify(files, body, complete=True):
             if patch is None:
                 reasons.setdefault("new_or_major_dependency", []).append(entry["filename"] + " (patch unavailable)")
             else:
-                for module in sorted(modules(patch, "+") - modules(patch, "-")):
-                    reasons.setdefault("new_or_major_dependency", []).append(module)
+                for change in dependency_changes(patch):
+                    reasons.setdefault("new_or_major_dependency", []).append(change)
     if SUBSTANTIAL.search(body or ""):
         reasons.setdefault("cra_substantial_modification_question", []).append("ticked in the PR description")
     if not complete:
@@ -88,6 +105,9 @@ def label(repo, number):
     files = [json.loads(line) for line in lines if line.strip()]
     cls, reasons = classify(files, pr.get("body") or "", complete=len(files) == pr.get("changed_files"))
     current = {x["name"] for x in pr.get("labels", [])}
+    if cls == "standard" and LABELS["significant"] in current:
+        # Raise only: an earlier rule match or a maintainer set it. Lowering is a person's call.
+        return "significant", {"kept_significant": ["label already set; a maintainer removes it to lower the class"]}
     wanted, other = LABELS[cls], LABELS["standard" if cls == "significant" else "significant"]
     if wanted not in current:
         gh(["api", "-X", "POST", "repos/" + repo + "/issues/" + str(number) + "/labels", "-f", "labels[]=" + wanted])

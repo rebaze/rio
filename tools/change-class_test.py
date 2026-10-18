@@ -19,6 +19,9 @@ _spec.loader.exec_module(cc)
 BUMP = "@@ -5 +5 @@\n-\tgithub.com/bmatcuk/doublestar/v4 v4.10.2\n+\tgithub.com/bmatcuk/doublestar/v4 v4.10.3\n"
 MAJOR = "@@ -5 +5 @@\n-\tgithub.com/bmatcuk/doublestar/v4 v4.10.3\n+\tgithub.com/bmatcuk/doublestar/v5 v5.0.0\n"
 NEW = "@@ -5,0 +6 @@\n+\tgolang.org/x/net v0.50.0 // indirect\n"
+MINOR = "@@ -5 +5 @@\n-\tgolang.org/x/text v0.40.0\n+\tgolang.org/x/text v0.41.0\n"
+V0_TO_V1 = "@@ -5 +5 @@\n-\tgithub.com/spf13/pflag v0.9.0\n+\tgithub.com/spf13/pflag v1.0.0\n"
+INCOMPATIBLE = "@@ -5 +5 @@\n-\tgithub.com/old/lib v2.3.0+incompatible\n+\tgithub.com/old/lib v3.0.0+incompatible\n"
 
 
 def files(*names, patch=None):
@@ -55,8 +58,17 @@ class ClassifyTest(unittest.TestCase):
         entry = [{"filename": "docs/old-release.yaml", "previous_filename": ".github/workflows/release.yaml"}]
         self.assertEqual(cc.classify(entry, "")[1], {"pipeline_or_rules": [".github/workflows/release.yaml"]})
 
-    def test_dependency_patch_bump_is_standard(self):
-        self.assertEqual(cc.classify(files("go.mod", patch=BUMP) + files("go.sum"), "")[0], "standard")
+    def test_dependency_patch_and_minor_bumps_are_standard(self):
+        for patch in (BUMP, MINOR):
+            with self.subTest(patch=patch):
+                self.assertEqual(cc.classify(files("go.mod", patch=patch) + files("go.sum"), "")[0], "standard")
+
+    def test_same_path_major_upgrades_are_significant(self):
+        for patch, change in ((V0_TO_V1, "github.com/spf13/pflag v0.9.0 to v1.0.0"),
+                              (INCOMPATIBLE, "github.com/old/lib v2.3.0+incompatible to v3.0.0+incompatible")):
+            with self.subTest(change=change):
+                self.assertEqual(cc.classify(files("go.mod", patch=patch), ""),
+                                 ("significant", {"new_or_major_dependency": [change]}))
 
     def test_major_bump_and_new_module_are_significant(self):
         for patch, module in ((MAJOR, "github.com/bmatcuk/doublestar/v5"), (NEW, "golang.org/x/net")):
@@ -124,6 +136,13 @@ class LabelTest(unittest.TestCase):
             ["api", "-X", "POST", "repos/rebaze/rio/issues/7/labels", "-f", "labels[]=class:significant"],
             ["api", "-X", "DELETE", "repos/rebaze/rio/issues/7/labels/class:standard"]])
         self.assertIn("`pipeline_or_rules` | `.github/workflows/ci.yaml`", (self.root / "summary.md").read_text())
+
+    def test_existing_significant_label_is_never_lowered(self):
+        # For example after the author unticks the substantial-modification box.
+        result, writes = self.run_tool(["README.md"], labels=["class:significant"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(writes, [])
+        self.assertIn("kept_significant", (self.root / "summary.md").read_text())
 
     def test_existing_correct_label_is_left_alone(self):
         result, writes = self.run_tool(["README.md"], labels=["class:standard", "documentation"])

@@ -896,11 +896,13 @@ A PR is significant when any of these applies:
 | `external_interface` | `internal/delivery/**` |
 | `security_component` | `tools/rio-attest-sign.sh`, `tools/rio-attest-verify.sh` |
 | `pipeline_or_rules` | workflows, Dependabot config, PR template, `.goreleaser.yaml`, release and verification tools, `tools/security/**`, `install.sh`, `SECURITY.md` |
-| `new_or_major_dependency` | a module path added in `go.mod` or `tools/security/go.mod` (a major bump changes the path); patch and minor bumps stay standard |
+| `new_or_major_dependency` | a module path added in `go.mod` or `tools/security/go.mod`, or a higher major version on the same path (v0 to v1, `+incompatible`); patch and minor bumps stay standard |
 | `cra_substantial_modification_question` | the box in the PR template is ticked |
 | `incomplete_file_list` | the API did not return every changed file or a `go.mod` patch |
 
-Automation only raises the class. A maintainer can lower it by hand with a reason in the PR.
+Automation only raises the class. Once a PR is labelled significant, later pushes or an unticked box
+keep that label. A maintainer lowers the class by removing it, with a reason in the PR; a rule that
+still matches raises it again on the next push.
 Run against the 16 most recent merged PRs on 2026-10-18, it labelled 10 significant. All were
 workflow, release-tool or gate changes, including four Dependabot action bumps; the remaining
 6 were standard.
