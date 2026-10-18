@@ -862,6 +862,24 @@ binaries clean and all six v0.7.0 binaries vulnerable (Go 1.27 standard library 
 `golang.org/x/text`, fixed in later releases). `python3 tools/release-scan_test.py` runs offline with
 real archives, a fake `gh` and a fake scanner.
 
+## Revert the Homebrew cask
+
+`revert-cask.py` restores the cask of an earlier release when a release is withdrawn; the
+procedure is in [docs/recovery.md](../docs/recovery.md). It verifies the earlier release's
+`checksums.txt` with cosign against the release workflow identity and renders the cask from the
+template in `release.yaml` at that release's tag with those checksums. It then requires a
+byte-identical cask somewhere in rebaze/homebrew-tap's history (all pages). Matching hashes alone
+would not authenticate the cask's Ruby; a changed install hook is refused. It writes the file;
+committing it to the tap is a human step.
+
+```sh
+python3 tools/revert-cask.py --to v0.8.0 --output /absolute/new/rio.rb
+```
+
+Requires Python 3.9+, `gh` and `cosign`. `python3 tools/revert-cask_test.py` runs offline with the
+real published v0.8.0 and v0.8.1 casks, checksums and tagged release workflows under
+`tools/testdata/cask/`, a fake `gh` and a fake `cosign`.
+
 ## Full candidate validation
 
 Run `gh workflow run ci.yaml --ref BRANCH` and `gh workflow run codeql.yaml --ref BRANCH`
