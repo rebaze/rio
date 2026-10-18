@@ -27,12 +27,14 @@ the earlier version users should fall back to. For a vulnerability, follow
 python3 tools/revert-cask.py --to vPREVIOUS --output /absolute/new/rio.rb
 ```
 
-It verifies the earlier release's `checksums.txt` with cosign against the release workflow's
-identity, takes the newest tap commit whose cask has that version, and refuses unless every
-`sha256` in it equals the signed checksums. It restores the cask as it was published, because the
-template changed between releases: the v0.8.0 cask strips macOS quarantine, v0.8.1 and later are
-notarized and do not. Re-rendering an old release with today's template would install a binary
-that Gatekeeper kills. Commit the file as `Casks/rio.rb` with the message the tool prints and push
+A cask is Ruby that Homebrew executes, so matching archive hashes alone would not be enough. The
+tool verifies the earlier release's `checksums.txt` with cosign against the release workflow's
+identity, renders the cask from the template in `release.yaml` at that release's protected tag
+with those checksums, and requires a byte-identical cask in the tap's history. A cask edited by
+hand later, or one whose install hook differs, is refused; review the tap history by hand then.
+The template at the tag matters: the v0.8.0 cask strips macOS quarantine, v0.8.1 and later are
+notarized and do not, so today's template would install a v0.8.0 binary that Gatekeeper kills.
+Commit the file as `Casks/rio.rb` with the message the tool prints and push
 it. Homebrew does not downgrade existing installations: users who already installed the broken
 version run `brew uninstall rio && brew install rebaze/tap/rio`.
 
@@ -55,11 +57,12 @@ fixed release.
 
 ## Rehearsal
 
-On 2026-10-18 `revert-cask.py --to v0.8.0` restored the cask from rebaze/homebrew-tap commit
-`58ae66d`, byte-identical to the published v0.8.0 cask including its quarantine step, with all four
-hashes equal to the cosign-verified v0.8.0 checksums; `--to v0.7.2` passed the same checks against
-commit `530f4c8`. Nothing was pushed. Not rehearsed: pushing a reverted cask, installing it, and
+On 2026-10-18 `revert-cask.py` rendered the casks for v0.8.0, v0.7.2, v0.8.1 and v0.3.0 from their
+tags and signed checksums and found each byte-identical in the tap (`58ae66d`, `530f4c8`,
+`788b64f`, `bfbd978`); the v0.8.0 cask keeps its quarantine step. For v0.3.0 it chose the cask the
+workflow published, not the later hand edit. Nothing was pushed. Not rehearsed: pushing a reverted cask, installing it, and
 changing the latest marker of an immutable release.
 
-The tap's `main` branch has no branch protection. The hash check in `revert-cask.py` is what keeps
-a changed tap history from being restored unnoticed.
+The tap's `main` branch has no branch protection. Requiring the rendered cask to match is what keeps
+a changed tap history from being restored unnoticed; the template itself comes from a tag that
+cannot be moved.

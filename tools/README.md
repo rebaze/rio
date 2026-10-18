@@ -866,18 +866,19 @@ real archives, a fake `gh` and a fake scanner.
 
 `revert-cask.py` restores the cask of an earlier release when a release is withdrawn; the
 procedure is in [docs/recovery.md](../docs/recovery.md). It verifies the earlier release's
-`checksums.txt` with cosign against the release workflow identity, takes the newest
-rebaze/homebrew-tap commit whose cask declares that version, and refuses unless each of the four
-`sha256` values equals the signed checksums. It writes the file; committing it to the tap is a
-human step.
+`checksums.txt` with cosign against the release workflow identity and renders the cask from the
+template in `release.yaml` at that release's tag with those checksums. It then requires a
+byte-identical cask somewhere in rebaze/homebrew-tap's history (all pages). Matching hashes alone
+would not authenticate the cask's Ruby; a changed install hook is refused. It writes the file;
+committing it to the tap is a human step.
 
 ```sh
 python3 tools/revert-cask.py --to v0.8.0 --output /absolute/new/rio.rb
 ```
 
 Requires Python 3.9+, `gh` and `cosign`. `python3 tools/revert-cask_test.py` runs offline with the
-real published v0.8.0 and v0.8.1 casks and checksums under `tools/testdata/cask/`, a fake `gh`
-and a fake `cosign`.
+real published v0.8.0 and v0.8.1 casks, checksums and tagged release workflows under
+`tools/testdata/cask/`, a fake `gh` and a fake `cosign`.
 
 ## Full candidate validation
 
