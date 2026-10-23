@@ -91,11 +91,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Exclude GoReleaser's dist/ so the "source" SBOM reflects the
-          # repository, not the build outputs produced in the previous step.
-          syft dir:. \
-            --exclude './dist/**' \
-            --output "cyclonedx-json@1.6=dist/rio-${GITHUB_REF_NAME}-source.cdx.json"
+          # The same SBOM release preflight gated, named for the tag; the
+          # script leaves GoReleaser's dist/ out with everything that is not rio.
+          tools/source-sbom.sh "${GITHUB_REF_NAME#v}" "dist/rio-${GITHUB_REF_NAME}-source.cdx.json"
 
       - name: Select authored notes for the exact tag
         env:

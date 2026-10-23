@@ -91,6 +91,10 @@ gh issue comment <n> --body ... # record progress or findings
 
 ## Release
 
+Before the tag, run release preflight by hand with the version (`gh workflow run release-preflight.yaml -f version=vX.Y.Z`):
+it attests the candidate's source SBOM and rio's receipt for it, which a release gate can verify. `installer-tests.yaml` runs
+on every push to main. Both are described in `tools/README.md`.
+
 Releases are cut by pushing a `v*` tag. The release workflow runs GoReleaser, generates and attests a
 CycloneDX source SBOM, verifies the attestations, and then publishes the Homebrew cask to
 `rebaze/homebrew-tap`.

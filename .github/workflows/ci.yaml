@@ -70,7 +70,7 @@ jobs:
           # Fixtures, golden files and the embedded CycloneDX schemas are
           # inputs to the test suite, so a change to any of them has to run it.
           # Missing that is how a stale golden file reaches main.
-          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery|oci|dtrack-tls|normalization-evidence|client-record|attest-sign|recovery)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$|^tools/rio-attest-(sign(_test)?|verify)\.sh$)' <<<"$CHANGED" >/dev/null; then go=true; fi
+          if grep -E '(\.go$|(^|/)go\.(mod|sum)$|(^|/)testdata/|^internal/sbom/schemas/|^Makefile$|^tools/demo-(enrichment|context|artifact-sets|agent-integration|repair|delivery|oci|dtrack-tls|normalization-evidence|client-record|attest-sign|recovery)/|^docs/agent-integration\.md$|^tools/rio-context(_test)?\.py$|^tools/rio-attest-(sign(_test)?|verify)\.sh$|^tools/source-sbom\.sh$)' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.github/workflows/.*\.ya?ml$' <<<"$CHANGED" >/dev/null; then go=true; fi
           if grep -E '^\.goreleaser\.yaml$' <<<"$CHANGED" >/dev/null; then goreleaser=true; fi
           if grep -E '\.sh$' <<<"$CHANGED" >/dev/null; then shell=true; fi
@@ -176,7 +176,7 @@ jobs:
       - name: Exercise source-SBOM generation
         if: steps.changes.outputs.go == 'true'
         run: |
-          syft dir:. --exclude './dist/**' --output "cyclonedx-json@1.6=$RUNNER_TEMP/rio-source.cdx.json"
+          tools/source-sbom.sh 0.0.0 "$RUNNER_TEMP/rio-source.cdx.json" "$PWD/rio" "$RUNNER_TEMP/rio-source-receipt.json"
           python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["bomFormat"] == "CycloneDX" and d["specVersion"] == "1.6" and d["components"]' "$RUNNER_TEMP/rio-source.cdx.json"
 
       - name: Exercise GoReleaser without publishing
@@ -197,7 +197,7 @@ jobs:
             sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
           fi
           shellcheck --version
-          shellcheck -s sh tools/demo-repair/run.sh tools/demo-agent-integration/*.sh tools/demo-agent-integration/projects/*/build.sh tools/demo-artifact-sets/run.sh install.sh tools/demo-enrichment/run.sh tools/demo-context/run.sh tools/demo-context/check-replacement.sh
+          shellcheck -s sh tools/demo-repair/run.sh tools/demo-agent-integration/*.sh tools/demo-agent-integration/projects/*/build.sh tools/demo-artifact-sets/run.sh install.sh tools/demo-enrichment/run.sh tools/demo-context/run.sh tools/demo-context/check-replacement.sh tools/source-sbom.sh
           shellcheck install_test.sh
           shellcheck tools/rio-attest-sign.sh tools/rio-attest-sign_test.sh tools/rio-attest-verify.sh
 
