@@ -16,7 +16,29 @@ permissions:
   contents: read
 
 jobs:
+  # A version that is not vX.Y.Z stops the run before anything is built. A
+  # pull request's run has no version and checks none.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      number: ${{ steps.version.outputs.number }}
+    steps:
+      - name: Check the version
+        id: version
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "version must be vX.Y.Z, not \"$VERSION\"" >&2
+            exit 1
+          fi
+          printf 'number=%s\n' "${VERSION#v}" >> "$GITHUB_OUTPUT"
+
   validate:
+    needs: version
     uses: ./.github/workflows/ci.yaml
     with:
       full_validation: true
@@ -24,6 +46,7 @@ jobs:
       contents: read
 
   analyze:
+    needs: version
     uses: ./.github/workflows/codeql.yaml
     permissions:
       contents: read
@@ -40,6 +63,7 @@ jobs:
   # job before anything is attested. Only a manual run attests: a pull
   # request's run builds a merge commit.
   sbom:
+    needs: version
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
@@ -47,19 +71,6 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - name: Check the version
-        id: version
-        shell: bash
-        env:
-          VERSION: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-          if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "version must be vX.Y.Z, not \"$VERSION\"" >&2
-            exit 1
-          fi
-          printf 'number=%s\n' "${VERSION#v}" >> "$GITHUB_OUTPUT"
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -78,7 +89,7 @@ jobs:
         shell: bash
         env:
           CGO_ENABLED: "0"
-          VERSION: ${{ steps.version.outputs.number }}
+          VERSION: ${{ needs.version.outputs.number }}
         run: |
           set -euo pipefail
           go build -trimpath -o "$RUNNER_TEMP/rio" \
@@ -88,7 +99,7 @@ jobs:
       - name: Generate the source SBOM and check it with rio's gate
         shell: bash
         env:
-          VERSION: ${{ steps.version.outputs.number }}
+          VERSION: ${{ needs.version.outputs.number }}
         run: |
           set -euo pipefail
           tools/source-sbom.sh "$VERSION" "rio-${GITHUB_SHA}-source.cdx.json" "$RUNNER_TEMP/rio" "rio-${GITHUB_SHA}-receipt.json"
