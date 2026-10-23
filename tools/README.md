@@ -845,6 +845,71 @@ client demo. It is refused for v0.6.0 and newer, so it cannot waive this release
 Historical acceptance evidence is retained in the [v0.6.0 release verification report](../docs/release-verification/v0.6.0.md),
 including exact-commit workflow results, published downloads, native execution and Homebrew installation.
 
+## Published-release scan
+
+`release-scan.py` scans what users already downloaded. It resolves the latest release (or `--tag`),
+downloads the six archives, checks them against `checksums.txt` and verifies each archive's build
+provenance against the release workflow, tag and source commit. Only then does it extract every
+binary and run the pinned `govulncheck` in binary mode. Each archive is reported as clean,
+vulnerable (with advisory IDs) or error; anything but clean fails the run.
+
+```sh
+python3 tools/release-scan.py --output /absolute/new/private/scan
+python3 tools/release-scan.py --tag v0.7.0 --output /absolute/new/private/scan-v0.7.0
+```
+
+Requires Python 3.9+, `gh` and Go. The `Scan published release` workflow runs it every Monday and
+on demand, and retains `scan.json` and the scanner output. On 2026-10-18 it reported all six v0.8.1
+binaries clean and all six v0.7.0 binaries vulnerable (Go 1.27 standard library and
+`golang.org/x/text`, fixed in later releases). `python3 tools/release-scan_test.py` runs offline with
+real archives, a fake `gh` and a fake scanner.
+
+## Revert the Homebrew cask
+
+`revert-cask.py` restores the cask of an earlier release when a release is withdrawn; the
+procedure is in [docs/recovery.md](../docs/recovery.md). It verifies the earlier release's
+`checksums.txt` with cosign against the release workflow identity and renders the cask from the
+template in `release.yaml` at that release's tag with those checksums. It then requires a
+byte-identical cask somewhere in rebaze/homebrew-tap's history (all pages). Matching hashes alone
+would not authenticate the cask's Ruby; a changed install hook is refused. It writes the file;
+committing it to the tap is a human step.
+
+```sh
+python3 tools/revert-cask.py --to v0.8.0 --output /absolute/new/rio.rb
+```
+
+Requires Python 3.9+, `gh` and `cosign`. `python3 tools/revert-cask_test.py` runs offline with the
+real published v0.8.0 and v0.8.1 casks, checksums and tagged release workflows under
+`tools/testdata/cask/`, a fake `gh` and a fake `cosign`.
+
+## Change class
+
+`change-class.py` labels every pull request `class:standard` or `class:significant` and lists
+the triggering criteria in the job summary, so each release can state which of its changes were
+significant and why. The `Change class` workflow runs it on `pull_request_target`. It checks out
+the base branch's copy of the tool and reads only the PR body and changed-file list through the API.
+It never checks out or runs PR code.
+
+A PR is significant when any of these applies:
+
+| Criterion | Trigger |
+|---|---|
+| `critical_function` | `internal/receipt/**`, `internal/gate/**` |
+| `external_interface` | `internal/delivery/**` |
+| `security_component` | `tools/rio-attest-sign.sh`, `tools/rio-attest-verify.sh` |
+| `pipeline_or_rules` | workflows, Dependabot config, PR template, `.goreleaser.yaml`, release and verification tools, `tools/security/**`, `install.sh`, `SECURITY.md` |
+| `new_or_major_dependency` | a module path added in `go.mod` or `tools/security/go.mod`, or a higher major version on the same path (v0 to v1, `+incompatible`); patch and minor bumps stay standard |
+| `cra_substantial_modification_question` | the box in the PR template is ticked |
+| `incomplete_file_list` | the API did not return every changed file or a `go.mod` patch |
+
+Automation only raises the class. Once a PR is labelled significant, later pushes or an unticked box
+keep that label. A maintainer lowers the class by removing it, with a reason in the PR; a rule that
+still matches raises it again on the next push.
+Run against the 16 most recent merged PRs on 2026-10-18, it labelled 10 significant. All were
+workflow, release-tool or gate changes, including four Dependabot action bumps; the remaining
+6 were standard.
+`python3 tools/change-class_test.py` runs offline with a fake `gh`.
+
 ## Full candidate validation
 
 Run `gh workflow run ci.yaml --ref BRANCH` and `gh workflow run codeql.yaml --ref BRANCH`

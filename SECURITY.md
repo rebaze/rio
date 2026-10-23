@@ -76,6 +76,11 @@ manual, and push runs have separate concurrency groups so they cannot cancel eac
 uses the compiler selected by `go.mod`; it reports reachable vulnerabilities in that build,
 not a guarantee about every platform or previously released binary.
 
+Published binaries are scanned separately. Every Monday the `Scan published release` workflow
+downloads the latest release, verifies its archive checksums and build provenance, and runs the
+same pinned `govulncheck` in binary mode on all six released binaries. A finding or a scanner error
+fails the run. A finding in a published binary is fixed by a new release, never by replacing assets.
+
 Dependabot groups patch/minor security fixes separately for Go and GitHub Actions. The
 `Auto-merge security updates` workflow checks the bot's verified single commit, security-group
 metadata, and every dependency's update type. It waits for the required `build` and
@@ -114,6 +119,10 @@ metadata in `tools/demo-client-record/example/` and its `normalized/` directory.
 has its own advisory-specific `osv-scanner.toml`: the scanner does not apply the parent
 exception to nested SBOMs. These are preserved input/output bytes bound to published sample
 receipts, not installed Java libraries. No receipt, SBOM or digest is rewritten to silence a scan.
+
+The handoff-checks demo SBOM `tools/demo-handoff-checks/fixtures/cart-api.cdx.json` carries synthetic
+jackson-databind 2.17.1 metadata. Its directory has its own `osv-scanner.toml` listing the eleven
+advisories by ID; osv-scanner v2.7.0 reported them without that file and none with it on 2026-10-18.
 
 Verified on 2026-10-12 with Scorecard v5.5.0: after patching Go/x/text, scanning the repository
 reported this one Commons Lang advisory; adding the two example-local dispositions produced
