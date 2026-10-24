@@ -324,7 +324,7 @@ def publish(args):
     if current.get("prerelease") is not ("-" in args.tag):
         raise ValueError("draft prerelease flag changed before publication")
     only_draft(args, release_id)
-    run(["gh", "api", release_api, "--method", "PATCH", "-F", "draft=false"])
+    run(["gh", "api", release_api, "--method", "PATCH", "-F", "draft=false"], capture=True)
     # Immutable releases freeze what is there now; catch a swap in the last seconds.
     published = json.loads(run(["gh", "api", release_api], capture=True))
     if published.get("draft") is not False:
