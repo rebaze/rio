@@ -1,0 +1,38 @@
+{
+  "tag": "v0.8.2",
+  "commit": "25a9d490be8941eccc2e91f39d719f9d6f1780bf",
+  "repo": "rebaze/rio",
+  "releaseURL": "https://github.com/rebaze/rio/releases/tag/v0.8.2",
+  "assetSHA256": {
+    "checksums.txt": "5bc82490ce20d178403ac4c68a5ff06b16e7a604f54f3f115f056a05d1b36418",
+    "checksums.txt.sigstore.json": "7682fc1775f32cff976996814a5c5e6e163af9fa8dad0f65e7f99db77b5326d1",
+    "rio-v0.8.2-source.cdx.json": "c36268ab793ab77cbb40cf801d03b7655d8a64bf6e9916033fdd0446a453c4d7",
+    "rio-v0.8.2.intoto.jsonl": "dfd3d2e4f0431e90c61eed0d17aad68bb0737049bc664e7a876d26f7bbfe175d",
+    "rio_0.8.2_darwin_amd64.tar.gz": "453aa2cf780f03e5c005654695c4c33fc6bb26896cd7c1fd2ef957d5fe8268d3",
+    "rio_0.8.2_darwin_arm64.tar.gz": "773d8c6b6c02512ead79abffbd17f9954354c5580db9553aef9c13988fd8db90",
+    "rio_0.8.2_linux_amd64.tar.gz": "f1474e3faba0f9d4d5a35e3af3e42f6254d4a1e8d458387a0b482c3388d0e1b7",
+    "rio_0.8.2_linux_arm64.tar.gz": "7a287dfb35cdcf1064d4795ea4930c0db381e0e24c7d1d852782d1e3ab63012c",
+    "rio_0.8.2_windows_amd64.zip": "048102dd8dfa20bd3122837f8fb077c38514e35372414987ebdd640079ec3b28",
+    "rio_0.8.2_windows_arm64.zip": "f1a52ab817dd0c501b934911534f1183803789fbc0e8489eb473f3b5822b73d1"
+  },
+  "notesSHA256": "d67e5c7ed474adedf55762e4261e778714db8404eb9069c03880a8501565f825",
+  "cosignVerified": true,
+  "attestedSourceCommitVerified": true,
+  "nativeExecution": {
+    "os": "darwin",
+    "arch": "arm64",
+    "binarySHA256": "ac77cc04284a9521956634f648a6ddd3bc92527471da3a2197224bf6abab5c53",
+    "version": "rio 0.8.2 (commit: 25a9d490be8941eccc2e91f39d719f9d6f1780bf, built: 2026-10-23T12:16:14Z)"
+  },
+  "gatekeeper": {
+    "quarantinedExecution": true,
+    "assessment": [
+      "/Users/runner/work/_temp/rio-published/native/rio: accepted",
+      "source=Notarized Developer ID",
+      "origin=Developer ID Application: rebaze GmbH (32Z95ATB2T)"
+    ]
+  },
+  "clientDemoPassed": true,
+  "legacyVersionOnly": false,
+  "otherArchitectures": "verified archives; not executed by this host"
+}

@@ -8,6 +8,15 @@ on:
       commit:
         description: Exact verified source commit
         required: true
+  # release.yaml verifies every stable release once its cask is published.
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+      commit:
+        type: string
+        required: true
 permissions:
   contents: read
   attestations: read

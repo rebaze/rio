@@ -1,0 +1,3 @@
+/opt/homebrew/Caskroom/rio/0.8.2/rio: accepted
+source=Notarized Developer ID
+origin=Developer ID Application: rebaze GmbH (32Z95ATB2T)
