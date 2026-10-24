@@ -1,0 +1,1 @@
+rio 0.8.2 (commit: 25a9d490be8941eccc2e91f39d719f9d6f1780bf, built: 2026-10-23T12:16:14Z)

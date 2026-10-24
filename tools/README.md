@@ -835,9 +835,10 @@ python3 tools/verify-release.py --tag v0.7.0 --commit FULL_VERIFIED_COMMIT \
   --notes docs/releases/v0.7.0.md --output /absolute/new/private/verification
 ```
 
-Requires Python 3.9+, `gh` and `cosign`. The manual `Verify published release` workflow runs the same
+Requires Python 3.9+, `gh` and `cosign`. The `Verify published release` workflow runs the same
 checks with native Linux/macOS/Windows binaries and installs the Homebrew cask only on a disposable
-macOS runner. Its input commit is the exact verified integrated commit. Architecture execution is
+macOS runner. The release workflow runs it for every stable tag after the Homebrew update; start
+it by hand only to re-verify an earlier release. Its input commit is the exact verified integrated commit. Architecture execution is
 reported explicitly; verifying an archive is not a claim that its binary ran natively.
 `--legacy-smoke` permits version-only execution for older releases before v0.6.0, which lack this
 client demo. It is refused for v0.6.0 and newer, so it cannot waive this release's client gate.

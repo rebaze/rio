@@ -261,3 +261,15 @@ jobs:
           fi
           git commit -m "rio ${VERSION}"
           git push
+
+  verify:
+    # Download, check and run what users now get, including the cask. Skipped
+    # with publish-tap for pre-release tags.
+    needs: publish-tap
+    uses: ./.github/workflows/verify-release.yaml
+    with:
+      tag: ${{ github.ref_name }}
+      commit: ${{ github.sha }}
+    permissions:
+      contents: read
+      attestations: read
