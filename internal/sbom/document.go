@@ -198,6 +198,44 @@ func (d *Document) SubjectReferences(kind string) []string {
 	return urls
 }
 
+// SubjectReference is one external reference on metadata.component together
+// with the SHA-256 values it declares.
+type SubjectReference struct {
+	URL    string
+	SHA256 []string
+}
+
+// SubjectReferencesWithHashes returns metadata.component's external
+// references of the given type in document order, each with the content of its
+// SHA-256 hashes. A malformed hash entry is skipped, so it never counts as a
+// digest.
+func (d *Document) SubjectReferencesWithHashes(kind string) []SubjectReference {
+	comp := d.metadataComponent(false)
+	if comp == nil {
+		return nil
+	}
+	refs, _ := comp["externalReferences"].([]any)
+	var out []SubjectReference
+	for _, r := range refs {
+		ref, _ := r.(map[string]any)
+		if ref["type"] != kind {
+			continue
+		}
+		sr := SubjectReference{URL: stringField(ref, "url")}
+		hashes, _ := ref["hashes"].([]any)
+		for _, h := range hashes {
+			hash, _ := h.(map[string]any)
+			if hash["alg"] == "SHA-256" {
+				if c, ok := hash["content"].(string); ok {
+					sr.SHA256 = append(sr.SHA256, c)
+				}
+			}
+		}
+		out = append(out, sr)
+	}
+	return out
+}
+
 // SetSubject overrides metadata.component's name and version, returning the
 // values it replaced (§4.3d).
 func (d *Document) SetSubject(name, version string) (oldName, oldVersion string) {

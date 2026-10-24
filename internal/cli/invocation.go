@@ -123,6 +123,7 @@ func (r *invocation) consumePlan(plan delivery.BatchPlan, indexPath string) erro
 			if prior.ID == j.ArtifactID {
 				source := receipt.Bytes{Path: filepath.Join(filepath.Dir(indexPath), filepath.FromSlash(prior.Output.Path)), SHA256: ref.SHA256, Size: ref.Size}
 				a.Input = &source
+				a.Distributions = receiptDistributions(prior.Context)
 				output := source
 				a.Output = &output
 				gate := "pass"

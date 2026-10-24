@@ -258,3 +258,95 @@ func sameStrings(got, want []string) bool {
 	}
 	return true
 }
+
+func TestDistributionsParseResolveAndClone(t *testing.T) {
+	dir := t.TempDir()
+	input := []byte("original SBOM")
+	sumA, sumB := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	writeContext(t, dir, `{"contextVersion":1,"artifacts":[{"id":"app","sbom":{"sha256":"`+digest(input)+`"},"distributions":[{"name":"app.tar.gz","sha256":"`+sumA+`","url":"https://example.org/dl/app.tar.gz"},{"name":"app.zip","sha256":"`+sumB+`"}]}]}`)
+	f, err := buildcontext.Read(dir, "build-context.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := f.Resolve("app", digest(input), buildcontext.Binding{File: "build-context.json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []buildcontext.Distribution{
+		{Name: "app.tar.gz", SHA256: sumA, URL: "https://example.org/dl/app.tar.gz"},
+		{Name: "app.zip", SHA256: sumB},
+	}
+	if len(resolved.Artifact.Distributions) != 2 || resolved.Artifact.Distributions[0] != want[0] || resolved.Artifact.Distributions[1] != want[1] {
+		t.Fatalf("distributions = %+v, want %+v", resolved.Artifact.Distributions, want)
+	}
+	for _, field := range resolved.Fields {
+		if strings.Contains(field.Name, "distribution") {
+			t.Fatalf("distributions leaked into selectors: %+v", field)
+		}
+	}
+	resolved.Artifact.Distributions[0].Name = "changed"
+	again, err := f.Resolve("app", digest(input), buildcontext.Binding{File: "build-context.json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Artifact.Distributions[0] != want[0] {
+		t.Fatalf("resolve shares distribution storage: %+v", again.Artifact.Distributions[0])
+	}
+	if err := buildcontext.ValidateBinding(&buildcontext.Binding{File: "build-context.json", Replace: []string{"distributions"}}); err == nil {
+		t.Fatal("distributions accepted as a replace selector")
+	}
+}
+
+func TestDistributionsRejectInvalid(t *testing.T) {
+	sum := strings.Repeat("a", 64)
+	entry := func(dists string) string {
+		return `{"contextVersion":1,"artifacts":[{"id":"a","sbom":{"sha256":"` + sum + `"},"distributions":` + dists + `}]}`
+	}
+	var many []string
+	for i := 0; i < 1001; i++ {
+		many = append(many, `{"name":"f`+strings.Repeat("x", i%7)+string(rune('a'+i%26))+strings.Repeat("y", i/26)+`","sha256":"`+sum+`"}`)
+	}
+	for _, tc := range []struct{ name, body, want string }{
+		{"empty array", entry(`[]`), "artifacts[0].distributions"},
+		{"missing name", entry(`[{"sha256":"` + sum + `"}]`), "artifacts[0].distributions[0].name"},
+		{"missing sha256", entry(`[{"name":"a"}]`), "artifacts[0].distributions[0].sha256"},
+		{"uppercase sha256", entry(`[{"name":"a","sha256":"` + strings.Repeat("A", 64) + `"}]`), "artifacts[0].distributions[0].sha256"},
+		{"short sha256", entry(`[{"name":"a","sha256":"abc"}]`), "artifacts[0].distributions[0].sha256"},
+		{"slash name", entry(`[{"name":"dir/a","sha256":"` + sum + `"}]`), "artifacts[0].distributions[0].name"},
+		{"backslash name", entry(`[{"name":"dir\\a","sha256":"` + sum + `"}]`), "artifacts[0].distributions[0].name"},
+		{"padded name", entry(`[{"name":" a","sha256":"` + sum + `"}]`), "artifacts[0].distributions[0].name"},
+		{"duplicate name", entry(`[{"name":"a","sha256":"` + sum + `"},{"name":"a","sha256":"` + sum + `"}]`), "artifacts[0].distributions[1].name"},
+		{"duplicate url", entry(`[{"name":"a","sha256":"` + sum + `","url":"https://example.org/x"},{"name":"b","sha256":"` + sum + `","url":"https://example.org/x"}]`), "artifacts[0].distributions[1].url"},
+		{"dot name", entry(`[{"name":".","sha256":"` + sum + `"}]`), "artifacts[0].distributions[0].name"},
+		{"dotdot name", entry(`[{"name":"..","sha256":"` + sum + `"}]`), "artifacts[0].distributions[0].name"},
+		{"bad url", entry(`[{"name":"a","sha256":"` + sum + `","url":"https://u:p@example.org/a"}]`), "artifacts[0].distributions[0].url"},
+		{"unknown key", entry(`[{"name":"a","sha256":"` + sum + `","size":1}]`), "unknown key"},
+		{"null", entry(`null`), "artifacts[0].distributions"},
+		{"wrong type", entry(`{"name":"a"}`), "artifacts[0].distributions"},
+		{"entry wrong type", entry(`["a"]`), "artifacts[0].distributions[0]"},
+		{"too many", entry(`[` + strings.Join(many, ",") + `]`), "at most 1000"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeContext(t, dir, tc.body)
+			_, err := buildcontext.Read(dir, "build-context.json")
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseEffectiveAcceptsDistributions(t *testing.T) {
+	sum := strings.Repeat("a", 64)
+	a, err := buildcontext.ParseEffective([]byte(`{"id":"a","sbom":{"sha256":"` + sum + `"},"distributions":[{"name":"x","sha256":"` + sum + `"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Distributions) != 1 || a.Distributions[0].Name != "x" {
+		t.Fatalf("distributions = %+v", a.Distributions)
+	}
+	if _, err := buildcontext.ParseEffective([]byte(`{"id":"a","sbom":{"sha256":"` + sum + `"},"distributions":[]}`)); err == nil {
+		t.Fatal("empty distributions accepted")
+	}
+}

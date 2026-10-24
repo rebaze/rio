@@ -26,7 +26,8 @@ type ContextRecord struct {
 	Defaulted []string              `json:"defaulted"`
 	Changes   []ContextChange       `json:"changes"`
 	Assertion string                `json:"assertion"`
-	// OwnedReferences lists URL fields whose bare native reference Rio added.
+	// OwnedReferences lists URL fields whose bare native reference Rio added,
+	// and "distribution:<name>" for each distribution reference Rio added.
 	// Unlike Changes, it survives reapplication of an unchanged snapshot.
 	OwnedReferences []string `json:"ownedReferences"`
 }
@@ -137,6 +138,23 @@ func (d *Document) ApplyContext(cfg *buildcontext.Resolved) (*ContextRecord, err
 		if changed {
 			override := referenceConflict(before, native.kind, value)
 			rec.Changes = append(rec.Changes, ContextChange{Field: native.name, Target: "/metadata/component/externalReferences", Before: before, After: after, Selector: selectors[native.name], Override: override})
+		}
+	}
+	if prior != nil && len(prior.Effective.Distributions) > 0 && !sameDistributions(prior.Effective.Distributions, cfg.Artifact.Distributions) {
+		return nil, fmt.Errorf("context distributions conflict with prior owned assertion; distributions cannot be replaced: %s", firstDistributionDifference(prior.Effective.Distributions, cfg.Artifact.Distributions))
+	}
+	if dists := cfg.Artifact.Distributions; len(dists) > 0 {
+		selector := cfg.Selector + "/distributions"
+		if prior == nil || len(prior.Effective.Distributions) == 0 {
+			rec.Changes = append(rec.Changes, ContextChange{Field: "distributions", Target: "context:/distributions", After: append([]buildcontext.Distribution(nil), dists...), Selector: selector})
+		}
+		before, after, owned, changed, err := mergeDistributions(working.metadataComponent(false), dists, prior)
+		if err != nil {
+			return nil, err
+		}
+		rec.OwnedReferences = append(rec.OwnedReferences, owned...)
+		if changed {
+			rec.Changes = append(rec.Changes, ContextChange{Field: "distributions", Target: "/metadata/component/externalReferences", Before: before, After: after, Selector: selector})
 		}
 	}
 	if phase, ok := current["lifecycle"]; ok {
@@ -305,10 +323,15 @@ func parsePriorContext(value, id string) (*ContextRecord, error) {
 		}
 		owned = []string{}
 		seen := map[string]bool{}
+		distributions := map[string]bool{}
+		for _, d := range effective.Distributions {
+			distributions[distributionOwner+d.Name] = true
+		}
 		for _, item := range list {
 			field, ok := item.(string)
-			if !ok || (field != "source.repository" && field != "build.url") || leaves[field] == "" || seen[field] {
-				return nil, fmt.Errorf("ownedReferences must contain distinct active URL fields")
+			active := ((field == "source.repository" || field == "build.url") && leaves[field] != "") || distributions[field]
+			if !ok || !active || seen[field] {
+				return nil, fmt.Errorf("ownedReferences must contain distinct active URL fields or distributions")
 			}
 			seen[field] = true
 			owned = append(owned, field)
@@ -356,7 +379,7 @@ func parsePriorContext(value, id string) (*ContextRecord, error) {
 		if !ok {
 			return nil, fmt.Errorf("%s.override must be a boolean", label)
 		}
-		nativeRemoval := target == "/metadata/component/externalReferences" && leaves[field] == "" && source == selector
+		nativeRemoval := target == "/metadata/component/externalReferences" && field != "distributions" && leaves[field] == "" && source == selector
 		if (!nativeRemoval && !validChangeSelector(selector, source, field, target, change["after"], defaulted)) || !validContextChange(field, target, change["before"], change["after"]) {
 			return nil, fmt.Errorf("%s has invalid target or selector", label)
 		}
@@ -443,6 +466,13 @@ func validChangeSelector(entry, source, field, target string, after any, default
 }
 
 func validContextChange(field, target string, before, after any) bool {
+	if field == "distributions" {
+		// Distributions are only ever added, never replaced or removed.
+		if target == "context:/distributions" {
+			return before == nil && validDistributionClaim(after)
+		}
+		return target == "/metadata/component/externalReferences" && validNativeArray(before, "reference") && validNativeArray(after, "reference")
+	}
 	if err := buildcontext.ValidateBinding(&buildcontext.Binding{File: "prior", Require: []string{field}}); err != nil {
 		return false
 	}
@@ -457,6 +487,39 @@ func validContextChange(field, target string, before, after any) bool {
 		return validNativeArray(before, "lifecycle") && validNativeArray(after, "lifecycle")
 	}
 	return false
+}
+
+func validDistributionClaim(v any) bool {
+	list, ok := v.([]any)
+	if !ok || len(list) == 0 {
+		return false
+	}
+	for i, item := range list {
+		label := fmt.Sprintf("distributions[%d]", i)
+		entry, ok := item.(map[string]any)
+		if !ok {
+			return false
+		}
+		keys := []string{"name", "sha256"}
+		if _, exists := entry["url"]; exists {
+			keys = append(keys, "url")
+		}
+		if _, err := recordObject(entry, label, keys...); err != nil {
+			return false
+		}
+		if _, err := recordString(entry["name"], label+".name"); err != nil {
+			return false
+		}
+		if sum, _ := entry["sha256"].(string); !contextDigest(sum) {
+			return false
+		}
+		if _, exists := entry["url"]; exists {
+			if _, err := recordString(entry["url"], label+".url"); err != nil {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func optionalStringClaim(v any) bool {
@@ -578,6 +641,157 @@ func referenceConflict(before any, kind, url string) bool {
 	for _, raw := range refs {
 		ref, _ := raw.(map[string]any)
 		if ref["type"] == kind && ref["url"] != url {
+			return true
+		}
+	}
+	return false
+}
+
+// distributionOwner prefixes a distribution name in OwnedReferences. URL
+// field names contain no colon, and names are unique within an entry.
+const distributionOwner = "distribution:"
+
+func sameDistributions(a, b []buildcontext.Distribution) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	byName := map[string]buildcontext.Distribution{}
+	for _, d := range a {
+		byName[d.Name] = d
+	}
+	for _, d := range b {
+		if other, ok := byName[d.Name]; !ok || other != d {
+			return false
+		}
+	}
+	return true
+}
+
+// firstDistributionDifference names the first distribution, by sorted name,
+// that was added, removed or changed between prior and next.
+func firstDistributionDifference(prior, next []buildcontext.Distribution) string {
+	old := map[string]buildcontext.Distribution{}
+	cur := map[string]buildcontext.Distribution{}
+	var names []string
+	for _, d := range prior {
+		old[d.Name] = d
+		names = append(names, d.Name)
+	}
+	for _, d := range next {
+		cur[d.Name] = d
+		names = append(names, d.Name)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		o, inOld := old[n]
+		c, inCur := cur[n]
+		switch {
+		case inOld && !inCur:
+			return fmt.Sprintf("%q removed", n)
+		case !inOld && inCur:
+			return fmt.Sprintf("%q added", n)
+		case o != c:
+			return fmt.Sprintf("%q changed", n)
+		}
+	}
+	return "distributions differ"
+}
+
+func distributionReference(url, sum string) map[string]any {
+	return map[string]any{"type": "distribution", "url": url, "hashes": []any{map[string]any{"alg": "SHA-256", "content": sum}}}
+}
+
+// distributionNameURL encodes name as one relative path segment: every byte
+// outside RFC 3986 unreserved becomes %XX, like Python's quote(name, safe="").
+func distributionNameURL(name string) string {
+	const hex = "0123456789ABCDEF"
+	var b strings.Builder
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '.' || c == '_' || c == '~' {
+			b.WriteByte(c)
+		} else {
+			b.WriteByte('%')
+			b.WriteByte(hex[c>>4])
+			b.WriteByte(hex[c&15])
+		}
+	}
+	return b.String()
+}
+
+// mergeDistributions appends one distribution reference per distribution, in
+// context order. A reference with the same URL must carry the same SHA-256;
+// it is kept and owned only if the prior record owned this exact bare form.
+// mergeReference cannot serve here because it allows one URL per type.
+func mergeDistributions(parent map[string]any, dists []buildcontext.Distribution, prior *ContextRecord) (before, after any, owned []string, changed bool, err error) {
+	before = parent["externalReferences"]
+	refs, _ := before.([]any)
+	next := append([]any{}, refs...)
+	owned = []string{}
+	for _, d := range dists {
+		url := d.URL
+		if url == "" {
+			url = distributionNameURL(d.Name)
+		}
+		bare := distributionReference(url, d.SHA256)
+		present := false
+		for _, raw := range next {
+			ref, _ := raw.(map[string]any)
+			if ref["type"] != "distribution" || ref["url"] != url {
+				continue
+			}
+			if !referenceSHA256(ref, d.SHA256) {
+				return nil, nil, nil, false, fmt.Errorf("context distribution %q conflicts with existing distribution external reference %s with a different or missing SHA-256 hash; distributions cannot be replaced", d.Name, url)
+			}
+			present = true
+		}
+		if !present {
+			next = append(next, bare)
+			owned = append(owned, distributionOwner+d.Name)
+			continue
+		}
+		if prior != nil && containsString(prior.OwnedReferences, distributionOwner+d.Name) && containsValue(next, bare) {
+			owned = append(owned, distributionOwner+d.Name)
+		}
+	}
+	if len(next) == len(refs) {
+		return before, before, owned, false, nil
+	}
+	parent["externalReferences"] = next
+	return before, next, owned, true, nil
+}
+
+// referenceSHA256 reports whether ref carries at least one SHA-256 hash and
+// every SHA-256 hash it carries equals sum.
+func referenceSHA256(ref map[string]any, sum string) bool {
+	hashes, _ := ref["hashes"].([]any)
+	found := false
+	for _, raw := range hashes {
+		hash, _ := raw.(map[string]any)
+		if hash["alg"] != "SHA-256" {
+			continue
+		}
+		content, _ := hash["content"].(string)
+		if !strings.EqualFold(content, sum) {
+			return false
+		}
+		found = true
+	}
+	return found
+}
+
+func containsString(list []string, s string) bool {
+	for _, item := range list {
+		if item == s {
+			return true
+		}
+	}
+	return false
+}
+
+func containsValue(list []any, v any) bool {
+	for _, item := range list {
+		if reflect.DeepEqual(item, v) {
 			return true
 		}
 	}

@@ -64,6 +64,8 @@ func subjectAdvice(field, detail string) string {
 			return strings.ToUpper(detail[:1]) + detail[1:] + ". Fix the SBOM generator, or set the reviewed contact as enrichment.subject.securityContact in rio.yaml and list subject.securityContact in enrichment.replace."
 		}
 		return "the SBOM subject has no security-contact reference. Set the reviewed contact as enrichment.subject.securityContact in rio.yaml, or have the SBOM generator emit one. Rio does not look it up."
+	case string(gate.RequireDigest):
+		return "the SBOM subject has no distribution digest. Add the shipped files under distributions in the build context file. Rio does not hash them."
 	default:
 		return fmt.Sprintf("the SBOM subject (metadata.component) has no %s. Fix the SBOM generator, or set it with artifacts[].subject or enrichment.subject.%s in rio.yaml.", field, field)
 	}
