@@ -581,3 +581,61 @@ func TestEveryComponentOnADocumentWithNoComponents(t *testing.T) {
 		t.Fatalf("EveryComponent() = %v, want none", got)
 	}
 }
+
+func TestAddToolRecordsRioOncePerVersion(t *testing.T) {
+	toolsOf := func(t *testing.T, doc *sbom.Document) []any {
+		t.Helper()
+		out, err := doc.Bytes()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var d struct {
+			Metadata struct {
+				Tools json.RawMessage `json:"tools"`
+			} `json:"metadata"`
+		}
+		if err := json.Unmarshal(out, &d); err != nil {
+			t.Fatal(err)
+		}
+		var list []any
+		if json.Unmarshal(d.Metadata.Tools, &list) == nil {
+			return list
+		}
+		var obj struct {
+			Components []any `json:"components"`
+		}
+		if err := json.Unmarshal(d.Metadata.Tools, &obj); err != nil {
+			t.Fatal(err)
+		}
+		return obj.Components
+	}
+	for name, src := range map[string]string{
+		"object form": `{"bomFormat":"CycloneDX","specVersion":"1.6","version":1,"metadata":{"tools":{"components":[{"type":"application","name":"gen","version":"1"}]}}}`,
+		"flat array":  `{"bomFormat":"CycloneDX","specVersion":"1.4","version":1,"metadata":{"tools":[{"vendor":"x","name":"gen","version":"1"}]}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			doc := load(t, []byte(src))
+			doc.AddTool("0.1.0")
+			doc.AddTool("0.1.0")
+			if got := len(toolsOf(t, doc)); got != 2 {
+				t.Fatalf("equal entry was added again: %d entries, want 2", got)
+			}
+			doc.AddTool("0.2.0")
+			entries := toolsOf(t, doc)
+			if len(entries) != 3 {
+				t.Fatalf("a different version must be appended: %d entries, want 3", len(entries))
+			}
+			if entries[0].(map[string]any)["name"] != "gen" {
+				t.Fatalf("generator entry changed: %v", entries[0])
+			}
+		})
+	}
+
+	t.Run("a generator named rio is not rio", func(t *testing.T) {
+		doc := load(t, []byte(`{"bomFormat":"CycloneDX","specVersion":"1.6","version":1,"metadata":{"tools":{"components":[{"type":"application","group":"other","name":"rio","version":"0.1.0"}]}}}`))
+		doc.AddTool("0.1.0")
+		if got := len(toolsOf(t, doc)); got != 2 {
+			t.Fatalf("%d entries, want 2", got)
+		}
+	})
+}

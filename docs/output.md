@@ -80,7 +80,8 @@ component array in equals the component array out, member for member.
 
 An input-versus-output diff still shows more than the repaired purls. rio appends itself to
 `metadata.tools`, in whichever shape the document already uses: an entry in the flat array, or a
-component under `tools.components`. It adds the repair and run records described below to
+component under `tools.components`, once per rio version: output that rio already normalized with the
+same version keeps its single entry. It adds the repair and run records described below to
 `metadata.properties`, and the identity evidence and dropped Eclipse qualifier to the components
 they belong to. What it never changes is the set of components. A change there is a bug.
 

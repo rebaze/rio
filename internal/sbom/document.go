@@ -244,12 +244,17 @@ func (d *Document) AddMetadataProperty(name, value string) {
 
 // AddTool records rio in metadata.tools, using whichever shape the document
 // already carries. The deprecated flat array form is extended in place rather
-// than converted (§4.3c).
+// than converted (§4.3c). rio is recorded once per version: an equal entry
+// already present (rio normalizing its own output) is left alone, while a
+// different version is appended so the chain of normalizers stays visible.
 func (d *Document) AddTool(version string) {
 	meta := d.metadata(true)
 
 	switch tools := meta["tools"].(type) {
 	case []any:
+		if hasRioTool(tools, "vendor", version) {
+			return
+		}
 		meta["tools"] = append(tools, map[string]any{
 			"vendor":  "rebaze",
 			"name":    "rio",
@@ -257,6 +262,9 @@ func (d *Document) AddTool(version string) {
 		})
 	case map[string]any:
 		comps, _ := tools["components"].([]any)
+		if hasRioTool(comps, "group", version) {
+			return
+		}
 		tools["components"] = append(comps, map[string]any{
 			"type":    "application",
 			"group":   "rebaze",
@@ -284,6 +292,18 @@ func (d *Document) AddTool(version string) {
 			}}
 		}
 	}
+}
+
+// hasRioTool reports whether entries already holds rio at this version.
+// ownerKey is "vendor" for the flat array and "group" for components.
+func hasRioTool(entries []any, ownerKey, version string) bool {
+	for _, raw := range entries {
+		e, ok := raw.(map[string]any)
+		if ok && e[ownerKey] == "rebaze" && e["name"] == "rio" && e["version"] == version {
+			return true
+		}
+	}
+	return false
 }
 
 // Finalize appends every queued property. Call it once, after all transforms
