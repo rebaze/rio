@@ -177,6 +177,13 @@ func TestGateSubjectRequire(t *testing.T) {
 	if diff := cmp.Diff([]string{"securityContact"}, m.Gate.SubjectRequire); diff != "" {
 		t.Errorf("SubjectRequire (-want +got):\n%s", diff)
 	}
+	m, err = manifest.Load(write(t, "version: 1\nartifacts:\n  - id: only\n    sbom: bom.json\ngate:\n  subject:\n    require: [digest, securityContact]\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if diff := cmp.Diff([]string{"digest", "securityContact"}, m.Gate.SubjectRequire); diff != "" {
+		t.Errorf("SubjectRequire (-want +got):\n%s", diff)
+	}
 	if diff := cmp.Diff([]string{"name", "version", "purl"}, m.Gate.Require); diff != "" {
 		t.Errorf("component requirements must keep their default (-want +got):\n%s", diff)
 	}
@@ -558,7 +565,12 @@ func TestLoadRejects(t *testing.T) {
 		{
 			name: "gate subject requires unknown field",
 			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\ngate:\n  subject:\n    require: [version]\n",
-			want: []string{"gate.subject.require", `"version"`, "securityContact", "always required"},
+			want: []string{"gate.subject.require", `"version"`, "securityContact and digest", "always required"},
+		},
+		{
+			name: "gate subject requires digest twice",
+			src:  "version: 1\nartifacts:\n  - id: a\n    sbom: bom.json\ngate:\n  subject:\n    require: [digest, digest]\n",
+			want: []string{"gate.subject.require", `"digest"`, "more than once"},
 		},
 		{
 			name: "gate subject requires duplicate",

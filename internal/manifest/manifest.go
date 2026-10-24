@@ -48,9 +48,12 @@ const (
 // DefaultRequire is what gate.require means when it is not given.
 func DefaultRequire() []string { return []string{RequireName, RequireVersion, RequirePURL} }
 
-// RequireSecurityContact is the one opt-in subject requirement in
-// gate.subject.require. The subject's name and version are always required.
-const RequireSecurityContact = "securityContact"
+// RequireSecurityContact and RequireDigest are the opt-in subject requirements
+// in gate.subject.require. The subject's name and version are always required.
+const (
+	RequireSecurityContact = "securityContact"
+	RequireDigest          = "digest"
+)
 
 // DefaultSpecVersionFloor is what output.specVersionFloor means when it is not
 // given (§2).
@@ -433,9 +436,9 @@ func (l loader) gate(f *fileSection, m *Manifest) error {
 	if f.Gate != nil && f.Gate.Subject != nil {
 		seen := map[string]bool{}
 		for _, r := range f.Gate.Subject.Require {
-			if r != RequireSecurityContact {
-				return l.errf("gate.subject.require", "%q is not a subject requirement, the only allowed value is %s (name and version are always required)",
-					r, RequireSecurityContact)
+			if r != RequireSecurityContact && r != RequireDigest {
+				return l.errf("gate.subject.require", "%q is not a subject requirement, the allowed values are %s and %s (name and version are always required)",
+					r, RequireSecurityContact, RequireDigest)
 			}
 			if seen[r] {
 				return l.errf("gate.subject.require", "%q is listed more than once", r)

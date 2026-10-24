@@ -115,7 +115,7 @@ type FailedRequirement struct {
 // FailedRequirementIDs are the stable requirement identifiers, in reporting
 // order: the scope, a dot, and the field the requirement concerns.
 func FailedRequirementIDs() []string {
-	return []string{"subject.name", "subject.version", "subject.securityContact", "components.name", "components.version", "components.purl"}
+	return []string{"subject.name", "subject.version", "subject.securityContact", "subject.digest", "components.name", "components.version", "components.purl"}
 }
 
 type Target struct {
