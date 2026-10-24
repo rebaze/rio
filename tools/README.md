@@ -680,7 +680,23 @@ merge entries. Available flags cover all v1 leaves: `--source-repository`,
 `--source-revision`, `--source-subdirectory`, `--source-ref`, `--source-workspace`,
 `--build-url`, `--build-id`, `--build-timestamp`, `--build-system-name`,
 `--build-system-version`, `--generator-name`, `--generator-version`, and `--lifecycle`.
-`--artifact-id` and `--sbom` are mandatory. The helper checks obvious format errors before
+`--artifact-id` and `--sbom` are mandatory.
+
+Two further options declare the shipped files as `distributions`. `--checksums FILE` reads a
+`sha256sum` or GoReleaser `checksums.txt` (`<64 lowercase hex>`, two spaces or a space and `*`,
+then the file name; one per line, order kept). Malformed lines, uppercase or short digests,
+duplicate names, names with `/` or `\`, an empty file and more than 1000 files are refused.
+`--distribution-url PREFIX` requires `--checksums`, must be an absolute HTTP(S) URL ending in `/`,
+and sets each `url` to the prefix plus the name. The digests are the producer's assertion: the
+helper and Rio do not hash the files.
+
+```sh
+python3 tools/rio-context.py --artifact-id console --sbom target/console.cdx.json \
+  --checksums dist/checksums.txt \
+  --distribution-url https://github.com/example/console/releases/download/v1.0.0/ \
+  > build-context.tmp.json
+```
+ The helper checks obvious format errors before
 writing any JSON; Rio remains the final validator of the context and manifest binding. See
 the [native context contract](../docs/context.md) for field meaning and
 authority limits.

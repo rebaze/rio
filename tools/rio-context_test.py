@@ -123,6 +123,109 @@ class ContextProducerTest(unittest.TestCase):
         self.assertEqual(index["artifacts"][0]["context"]["effective"]["source"]["repository"],
                          "https://code.example.org/widgets/console")
 
+    def write_checksums(self, text):
+        path = Path(self.directory.name) / "checksums.txt"
+        path.write_text(text)
+        return str(path)
+
+    def test_checksums_become_ordered_distributions(self):
+        a, b = "a" * 64, "b" * 64
+        path = self.write_checksums("%s  widget_1.0_linux.tar.gz\n\n%s *widget_1.0_darwin.tar.gz\n" % (a, b))
+        result = self.run_helper("--checksums", path,
+                                 "--distribution-url", "https://dl.example.org/widget/v1.0/")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["artifacts"][0]["distributions"], [
+            {"name": "widget_1.0_linux.tar.gz", "sha256": a,
+             "url": "https://dl.example.org/widget/v1.0/widget_1.0_linux.tar.gz"},
+            {"name": "widget_1.0_darwin.tar.gz", "sha256": b,
+             "url": "https://dl.example.org/widget/v1.0/widget_1.0_darwin.tar.gz"},
+        ])
+
+    def test_checksums_without_url_omit_url(self):
+        path = self.write_checksums("%s  a.tgz\n" % ("c" * 64))
+        result = self.run_helper("--checksums", path)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["artifacts"][0]["distributions"],
+                         [{"name": "a.tgz", "sha256": "c" * 64}])
+
+    def test_invalid_checksums_emit_no_partial_json(self):
+        good = "a" * 64
+        cases = {
+            "malformed": "nothex  a.tgz\n",
+            "one space": "%s a.tgz\n" % good,
+            "uppercase": "%s  a.tgz\n" % ("A" * 64),
+            "short": "%s  a.tgz\n" % ("a" * 63),
+            "long": "%s  a.tgz\n" % ("a" * 65),
+            "duplicate": "%s  a.tgz\n%s  a.tgz\n" % (good, "b" * 64),
+            "slash": "%s  dist/a.tgz\n" % good,
+            "backslash": "%s  dist\\a.tgz\n" % good,
+            "blank name": "%s   \n" % good,
+            "padded name": "%s   a.tgz\n" % good,
+            "trailing space": "%s  a.tgz \n" % good,
+            "empty": "",
+            "only blank lines": "\n\n",
+            "too many": "".join("%s  f%d\n" % (good, i) for i in range(1001)),
+        }
+        for label, text in cases.items():
+            with self.subTest(label):
+                result = self.run_helper("--checksums", self.write_checksums(text))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, "")
+
+    def test_exactly_1000_checksums_are_accepted(self):
+        text = "".join("%s  f%d\n" % ("a" * 64, i) for i in range(1000))
+        result = self.run_helper("--checksums", self.write_checksums(text))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(json.loads(result.stdout)["artifacts"][0]["distributions"]), 1000)
+
+    def test_missing_checksums_file_emits_nothing(self):
+        result = self.run_helper("--checksums", str(Path(self.directory.name) / "absent.txt"))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "")
+
+    def test_invalid_distribution_url_emits_no_partial_json(self):
+        path = self.write_checksums("%s  a.tgz\n" % ("a" * 64))
+        for prefix in ("https://dl.example.org/widget", "dl.example.org/", "ftp://dl.example.org/",
+                       "https://user:pw@dl.example.org/", "https://dl.example.org/?x=1/",
+                       "https://dl.example.org/#f/", "/relative/", ""):
+            with self.subTest(prefix=prefix):
+                result = self.run_helper("--checksums", path, "--distribution-url", prefix)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, "")
+                self.assertNotIn("pw@", result.stderr)
+
+    def test_distribution_url_requires_checksums(self):
+        result = self.run_helper("--distribution-url", "https://dl.example.org/")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("--checksums", result.stderr)
+
+    @unittest.skipUnless(os.environ.get("RIO_BIN"), "set RIO_BIN to run Rio interoperability smoke")
+    def test_generated_distributions_normalize_with_rio(self):
+        rio = os.environ["RIO_BIN"]
+        self.sbom.write_bytes((SCRIPT.parent / "demo-context/inputs/console.cdx.json").read_bytes())
+        digest = "d" * 64
+        result = self.run_helper(
+            "--checksums", self.write_checksums("%s  widget.tar.gz\n" % digest),
+            "--distribution-url", "https://dl.example.org/widget/",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        (Path(self.directory.name) / "context.json").write_text(result.stdout)
+        (Path(self.directory.name) / "rio.yaml").write_text(
+            "version: 1\nartifacts:\n  - id: widget\n    sbom: input.json\n"
+            "    context:\n      file: context.json\n"
+        )
+        normalized = subprocess.run(
+            [rio, "normalize", "--manifest", "rio.yaml", "--out", "normalized", "--json"],
+            cwd=self.directory.name, text=True, capture_output=True,
+        )
+        self.assertEqual(normalized.returncode, 0, normalized.stderr)
+        run_directory = Path(self.directory.name) / json.loads(normalized.stdout)["runDirectory"]
+        index = json.loads((run_directory / "index.json").read_text())
+        self.assertEqual(index["artifacts"][0]["context"]["effective"]["distributions"],
+                         [{"name": "widget.tar.gz", "sha256": digest,
+                           "url": "https://dl.example.org/widget/widget.tar.gz"}])
+
 
 if __name__ == "__main__":
     unittest.main()
