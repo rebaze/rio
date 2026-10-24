@@ -48,14 +48,23 @@ type Bytes struct {
 	Transformation string `json:"transformation,omitempty"`
 }
 type Artifact struct {
-	ID          string   `json:"id"`
-	State       string   `json:"state"`
-	Input       *Bytes   `json:"input,omitempty"`
-	Output      *Bytes   `json:"output,omitempty"`
-	Changes     *Changes `json:"changes,omitempty"`
-	Checks      *Checks  `json:"checks,omitempty"`
-	ErrorCode   string   `json:"errorCode,omitempty"`
-	PreExisting bool     `json:"preExisting,omitempty"`
+	ID            string         `json:"id"`
+	State         string         `json:"state"`
+	Input         *Bytes         `json:"input,omitempty"`
+	Output        *Bytes         `json:"output,omitempty"`
+	Changes       *Changes       `json:"changes,omitempty"`
+	Checks        *Checks        `json:"checks,omitempty"`
+	Distributions []Distribution `json:"distributions,omitempty"`
+	ErrorCode     string         `json:"errorCode,omitempty"`
+	PreExisting   bool           `json:"preExisting,omitempty"`
+}
+
+// Distribution is a producer-asserted digest of a shipped file; Rio never hashes
+// the file, so the assertion is always "producer".
+type Distribution struct {
+	Name      string `json:"name"`
+	SHA256    string `json:"sha256"`
+	Assertion string `json:"assertion"`
 }
 type Changes struct {
 	Metadata    []Change     `json:"metadata,omitempty"`

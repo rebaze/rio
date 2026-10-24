@@ -111,6 +111,12 @@ func Text(raw []byte, w io.Writer) error {
 				printf("  %s: %s → %s (%s assertion, %s)\n", c.Field, displayValue(c.Before), displayValue(c.After), c.Assertion, c.Source)
 			}
 		}
+		if n := len(a.Distributions); n > 0 {
+			printf("  %d distribution%s (producer assertion)\n", n, plural(n))
+			for _, dist := range a.Distributions {
+				printf("    %s sha256=%s\n", dist.Name, dist.SHA256)
+			}
+		}
 		if a.Checks != nil {
 			printf("  gate=%s mode=%s schema=%s findings=%d\n", a.Checks.Gate, a.Checks.Mode, a.Checks.Schema, a.Checks.Findings)
 		}
@@ -155,4 +161,11 @@ func PublishReport(path string, html []byte) (Publication, error) {
 		return Publication{}, invalid("HTML byte limit")
 	}
 	return publishNew(path, html)
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
