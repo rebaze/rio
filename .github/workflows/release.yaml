@@ -28,12 +28,13 @@ jobs:
       actions: read
       security-events: write
 
-  release:
+  # Builds, signs and attests the release and leaves it as a verified draft.
+  # The Apple signing and notary credentials are secrets of release-build, which
+  # only v* tags may deploy to and which no gate holds.
+  build:
     needs: [validate, analyze]
     runs-on: ubuntu-latest
-    # The Apple signing and notary credentials are secrets of this environment,
-    # which only v* tags may deploy to.
-    environment: release
+    environment: release-build
     permissions:
       contents: write
       id-token: write
@@ -109,7 +110,10 @@ jobs:
             --dist dist --stage release-assets --inventory release-inventory.json \
             --tag "$TAG" --repo "$GITHUB_REPOSITORY"
 
-      - name: Attest build provenance for release archives
+      # Every asset that can carry provenance does: the gate compares the
+      # draft's digests with it (cleartoship decision 0024). The checksum
+      # signature and the attestation bundle are made after it.
+      - name: Attest build provenance for the release assets
         id: attest-provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
@@ -117,6 +121,7 @@ jobs:
             release-assets/*.tar.gz
             release-assets/*.zip
             release-assets/checksums.txt
+            release-assets/rio-${{ github.ref_name }}-source.cdx.json
 
       - name: Attest source SBOM (CycloneDX) against all archives
         id: attest-sbom
@@ -127,7 +132,7 @@ jobs:
             release-assets/*.zip
           sbom-path: release-assets/rio-${{ github.ref_name }}-source.cdx.json
 
-      - name: Verify staged assets and publish
+      - name: Verify staged assets and upload them as a draft
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -145,9 +150,19 @@ jobs:
           # Keep the assembled bundle outside the frozen staging directory.
           # awk terminates each record even when an input lacks a final newline.
           awk 1 "$PROVENANCE_BUNDLE" "$SBOM_BUNDLE" > release-attestations.jsonl
-          python3 tools/release-publish.py publish \
+          python3 tools/release-publish.py draft \
             --stage release-assets --inventory release-inventory.json \
-            --bundle release-attestations.jsonl --tag "$TAG" --repo "$GITHUB_REPOSITORY"
+            --bundle release-attestations.jsonl --record release-draft.json \
+            --tag "$TAG" --repo "$GITHUB_REPOSITORY"
+
+      - name: Hand the inventory and draft record to the publish job
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-draft
+          path: |
+            release-inventory.json
+            release-draft.json
+          retention-days: 7
 
       - name: Retain verified assets for downstream jobs
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -156,8 +171,35 @@ jobs:
           path: release-assets/
           retention-days: 7
 
+  # Makes the verified draft public. The Clear to Ship App holds this job in
+  # the release environment until the gate for the commit is clear. No signing
+  # secret reaches it; it only checks the draft again and publishes it.
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download the inventory and draft record
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-draft
+          path: release-draft
+
+      - name: Check the draft again and publish it
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          python3 tools/release-publish.py publish \
+            --inventory release-draft/release-inventory.json --record release-draft/release-draft.json \
+            --tag "$TAG" --repo "$GITHUB_REPOSITORY"
+
   publish-tap:
-    needs: release
+    needs: publish
     runs-on: ubuntu-latest
     # Skip pre-release tags (e.g. v1.2.3-rc1) — they are for testing the
     # pipeline and must NOT overwrite the production cask in rebaze/homebrew-tap.

@@ -545,35 +545,55 @@ python3 tools/release-publish.py stage \
   --tag "$TAG" --repo "$GITHUB_REPOSITORY"
 ```
 
-The GitHub attestation actions consume these staged files. The workflow combines their
-bundles into `release-attestations.jsonl`, outside the frozen asset directory, then runs:
+The GitHub attestation actions consume these staged files. Build provenance covers every asset
+that can carry it: the archives, `checksums.txt` and the source SBOM. Only the checksum signature
+and the attestation bundle, made after it, have none. The workflow combines the bundles into
+`release-attestations.jsonl`, outside the frozen asset directory, then uploads a draft:
 
 ```sh
-python3 tools/release-publish.py publish \
+python3 tools/release-publish.py draft \
   --stage release-assets --inventory release-inventory.json \
-  --bundle release-attestations.jsonl --tag "$TAG" --repo "$GITHUB_REPOSITORY"
+  --bundle release-attestations.jsonl --record release-draft.json \
+  --tag "$TAG" --repo "$GITHUB_REPOSITORY"
 ```
 
-Before creating a draft, the guard checks the asset inventory, archive checksums, both
-provenance and CycloneDX attestations for each archive, provenance for the checksum file,
-and the checksum signature. It constrains the signer to this repository's release workflow
-at the requested tag. The verified CycloneDX predicate must match the staged source SBOM.
+Before creating the draft, the guard checks the asset inventory, archive checksums, both
+provenance and CycloneDX attestations for each archive, provenance for the checksum file and the
+source SBOM, and the checksum signature. It constrains the signer to this repository's release
+workflow at the requested tag. The verified CycloneDX predicate must match the staged source SBOM.
 The source SBOM describes rio's source, as [`source-sbom.sh`](#rios-source-sbom-and-candidate-checks)
 makes it; attaching it to an archive does not establish a complete inventory of that archive's
 assembled binary.
 
-Verification and upload use the same private copy of the staged bytes. The guard downloads
-the draft's assets and compares their names and SHA-256 digests before publishing the
-identified draft. Homebrew runs only after successful publication and receives the staged
-checksums. Prereleases keep their prerelease designation and do not update the tap.
+Verification and upload use the same private copy of the staged bytes. After the upload the guard
+compares each draft asset's GitHub `digest` and its downloaded bytes with the inventory, then
+writes `release-draft.json` naming the draft and its assets. The draft is not public yet.
 
-An existing release **or draft** for the tag blocks creation. Lookup and verification errors
-also block it. Failure after draft creation leaves the draft unpublished; the tool never
-deletes tags, replaces assets, or recreates a release. Inspect the failure and use a new patch
-tag for a corrected release. Do not rerun this tool to overwrite an existing tag's release.
-The workflow serializes runs per tag. Its credentials, staging directory, inventory and
-other release writers remain a trust boundary: this is not protection against an administrator
-or another authorized process deliberately changing a draft during the final API calls.
+The `publish` job runs in the `release` environment, which the Clear to Ship App holds until the
+gate for the commit is clear. Under [Clear to Ship decision 0024](https://github.com/rebaze/cleartoship/issues/79)
+the App compares the draft's digests with the build provenance before it lets the job run. The job
+holds no signing secret. It checks the draft once more and makes it public:
+
+```sh
+python3 tools/release-publish.py publish \
+  --inventory release-inventory.json --record release-draft.json \
+  --tag "$TAG" --repo "$GITHUB_REPOSITORY"
+```
+
+It requires the tag to have exactly that one draft, every asset's GitHub `digest` and downloaded
+bytes to equal the record and the inventory, and no missing or extra asset. Only then does it
+publish the identified draft. Homebrew runs only after successful publication and receives the
+staged checksums. Prereleases keep their prerelease designation and do not update the tap.
+
+An existing release **or draft** for the tag blocks `draft`. Lookup and verification errors
+also block it. A failure after draft creation, or a refused `publish`, leaves the draft
+unpublished. Re-run the failed `publish` job once the cause is fixed. Re-running the whole
+workflow stops at `draft`, because the draft exists. The tool never deletes tags, replaces assets,
+or recreates a release. A draft whose bytes are wrong is deleted by a maintainer, and the fix ships
+under a new patch tag. The workflow serializes runs per tag. Its credentials, staging directory,
+inventory and other release writers remain a trust boundary: this is not protection against an
+administrator or another authorized process deliberately changing a draft during the final API
+calls.
 
 ### Run the offline terminal demo
 
@@ -585,7 +605,7 @@ python3 tools/release-publish_test.py
 Use a new output directory for each run. The demo executes the production guard with synthetic
 files and explicit offline substitutes for GitHub and signature verification. It performs real
 hashing, inventory checks, byte comparisons and publication decisions, but does not authenticate
-signatures or create a GitHub release. Four cases show an unchanged candidate proceeding and
+signatures or create a GitHub release. Each case runs `draft` and then `publish`. Four cases show an unchanged candidate proceeding and
 replaced bytes, missing attestations and rejected verification stopping publication.
 
 The output directory retains each scenario's files, inventories, service-call log, exact shell
