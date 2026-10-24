@@ -41,7 +41,7 @@ def main():
     summary, plain = [], []
     stage = "python3 release-publish.py stage \\\n  --dist dist --stage stage \\\n  --inventory inventory.json \\\n  --tag v1.2.3 --repo rebaze/rio"
     publish = ("python3 release-publish.py draft \\\n  --stage stage --inventory inventory.json \\\n  --bundle bundle.jsonl --record draft.json \\\n  --tag v1.2.3 --repo rebaze/rio &&\n"
-               "python3 release-publish.py publish \\\n  --inventory inventory.json --record draft.json \\\n  --tag v1.2.3 --repo rebaze/rio")
+               "python3 release-publish.py publish \\\n  --inventory inventory.json --record draft.json --run 1 \\\n  --tag v1.2.3 --repo rebaze/rio")
     scenarios = [
         ("unchanged", "The unchanged candidate", "All required files are present. The archive stays unchanged.",
          "PUBLISH", "The verified bytes are the bytes uploaded.",

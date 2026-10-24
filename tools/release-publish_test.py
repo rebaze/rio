@@ -37,7 +37,7 @@ class ReleaseTest(unittest.TestCase):
         elif operation == "draft":
             args += ["--stage", str(self.stage), "--bundle", str(self.bundle), "--record", str(self.record)]
         else:
-            args += ["--record", str(self.record)]
+            args += ["--record", str(self.record), "--run", "4242"]
         return subprocess.run(args, text=True, capture_output=True,
                               env=dict(self.env, **extra_env))
 
@@ -235,6 +235,17 @@ class ReleaseTest(unittest.TestCase):
         events = (self.root / "events.jsonl").read_text()
         self.assertNotIn('"download"', events)
         self.assertIn("/releases/assets/1000", events)
+
+    def test_publish_requires_each_release_file_as_a_run_artifact(self):
+        self.drafted()
+        for env, reason in (({"FAKE_ARTIFACT_MISSING": self.archive}, "missing or ambiguous"),
+                            ({"FAKE_ARTIFACT_DUPLICATE": "1"}, "missing or ambiguous"),
+                            ({"FAKE_ARTIFACT_CHANGED": self.archive}, "artifact digest differs"),
+                            ({"FAKE_ARTIFACT_EXPIRED": "checksums.txt"}, "artifact digest differs")):
+            with self.subTest(env=env):
+                self.assert_blocked(self.command("publish", **env), reason)
+        events = (self.root / "events.jsonl").read_text()
+        self.assertIn("/actions/runs/4242/artifacts", events)
 
     def test_publish_without_a_draft_record_does_nothing(self):
         self.prepare()

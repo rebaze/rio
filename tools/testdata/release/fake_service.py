@@ -84,6 +84,21 @@ elif tool == "gh" and args[:2] == ["api", "-H"] and "/releases/assets/" in args[
     if path is None:
         fail("no such asset")
     sys.stdout.buffer.write(path.read_bytes())
+elif tool == "gh" and args[0] == "api" and "/actions/runs/" in args[1] and args[1].endswith("/artifacts"):
+    # The build job uploads each release file unzipped, so each artifact's
+    # digest is the file's own; a zipped evidence artifact sits beside them.
+    recorded = json.loads((root / "remote-digests.json").read_text())
+    artifacts = [{"name": name, "digest": sha, "expired": False} for name, sha in sorted(recorded.items())
+                 if name != os.environ.get("FAKE_ARTIFACT_MISSING")]
+    for item in artifacts:
+        if item["name"] == os.environ.get("FAKE_ARTIFACT_CHANGED"):
+            item["digest"] = "sha256:" + "d" * 64
+        if item["name"] == os.environ.get("FAKE_ARTIFACT_EXPIRED"):
+            item["expired"] = True
+    if os.environ.get("FAKE_ARTIFACT_DUPLICATE"):
+        artifacts.append(dict(artifacts[0]))
+    artifacts.append({"name": "dist", "digest": "sha256:" + "a" * 64, "expired": False})
+    print(json.dumps([{"total_count": len(artifacts), "artifacts": artifacts}]))
 elif tool == "gh" and args[0] == "api" and args[1].endswith("/123/assets"):
     # GitHub reports each asset's own SHA-256 as "digest" (cleartoship 0024).
     recorded = json.loads((root / "remote-digests.json").read_text())

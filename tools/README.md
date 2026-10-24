@@ -569,7 +569,12 @@ assembled binary.
 Verification and upload use the same private copy of the staged bytes. After the upload the guard
 compares each draft asset's GitHub `digest` and its bytes, downloaded by asset ID from that
 draft, with the inventory, then writes `release-draft.json` naming the draft and its assets. The
-inventory and record go to the next job as job outputs, not artifacts. The draft is not public yet.
+inventory and record go to the next job as job outputs. The draft is not public yet.
+
+The build job also uploads every release file as its own run artifact with `upload-artifact`
+`archive: false`, so each artifact's digest is that file's SHA-256. There are ten: the six archives,
+`checksums.txt`, its signature, the source SBOM and the attestation bundle. Clear to Ship's App
+reads these while `publish` waits ([cleartoship#79](https://github.com/rebaze/cleartoship/issues/79)).
 
 The `publish` job runs in the `release` environment, which the Clear to Ship App holds until the
 gate for the commit is clear. It uses no signing secret. It checks the draft once more and makes
@@ -578,21 +583,22 @@ it public:
 ```sh
 python3 tools/release-publish.py publish \
   --inventory release-inventory.json --record release-draft.json \
-  --tag "$TAG" --repo "$GITHUB_REPOSITORY"
+  --run "$GITHUB_RUN_ID" --tag "$TAG" --repo "$GITHUB_REPOSITORY"
 ```
 
 It requires all of these before it publishes the identified draft:
 
+- every release file is exactly one unexpired artifact of the run, with the same digest;
 - the tag has exactly that one draft, with an unchanged prerelease flag;
 - every asset's GitHub `digest` and downloaded bytes equal the record and the inventory;
 - no asset is missing or extra.
 
 Right after publication it lists the assets again and fails if any differ, which keeps a
-swapped asset out of the tap. That re-check is today's byte check. The App comparing the staged
-digests with the build provenance itself is planned under
-[Clear to Ship decision 0024](https://github.com/rebaze/cleartoship/issues/79). Where the App reads
-the staged digests is still open there, because it cannot read drafts. `publish-tap` reads
-`checksums.txt` from the published release, and only stable tags update the tap.
+swapped asset out of the tap. So what becomes public equals the run's release artifacts. The App
+comparing those artifacts with the build provenance before it approves is Clear to Ship's side of
+[decision 0024](https://github.com/rebaze/cleartoship/issues/79). Until the App does that,
+`publish`'s checks are the byte check. `publish-tap` reads `checksums.txt` from the published
+release, and only stable tags update the tap.
 
 `vacant` and `draft` refuse a tag that already has a release **or draft**, and lookup and
 verification errors also block them. The tool never deletes tags, replaces assets, or

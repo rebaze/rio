@@ -98,8 +98,8 @@ on every push to main. Both are described in `tools/README.md`.
 Releases are cut by pushing a `v*` tag; only repository admins may create one. The release workflow's
 `build` job (environment `release-build`, which holds the Apple signing secrets) runs GoReleaser,
 generates and attests a CycloneDX source SBOM and build provenance, verifies the attestations and
-uploads the assets to a draft release. The `publish` job (environment `release`) checks the draft's
-digests and bytes again and makes it public; the Clear to Ship App holds it until the gate for the
+uploads the assets to a draft release and, unzipped, as run artifacts. The `publish` job (environment
+`release`) checks that the draft and those artifacts hold the same files and digests and makes it public; the Clear to Ship App holds it until the gate for the
 commit is clear. Then the workflow publishes the Homebrew cask to `rebaze/homebrew-tap` and verifies
 the published release; commit its summaries as `docs/release-verification/<tag>.md` with the files in
 `docs/release-verification/<tag>/`. If `publish` fails, re-run only that job. If `build` fails after
