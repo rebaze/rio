@@ -95,11 +95,15 @@ Before the tag, run release preflight by hand with the version (`gh workflow run
 it attests the candidate's source SBOM and rio's receipt for it, which a release gate can verify. `installer-tests.yaml` runs
 on every push to main. Both are described in `tools/README.md`.
 
-Releases are cut by pushing a `v*` tag. The release workflow runs GoReleaser, generates and attests a
-CycloneDX source SBOM, verifies the attestations, and then publishes the Homebrew cask to
-`rebaze/homebrew-tap`. The Clear to Ship App holds the `release` job until the gate for the commit
-is clear. After the cask update the workflow verifies the published release; commit its summaries
-as `docs/release-verification/<tag>.md` with the files in `docs/release-verification/<tag>/`.
+Releases are cut by pushing a `v*` tag; only repository admins may create one. The release workflow's
+`build` job (environment `release-build`, which holds the Apple signing secrets) runs GoReleaser,
+generates and attests a CycloneDX source SBOM and build provenance, verifies the attestations and
+uploads the assets to a draft release and, unzipped, as run artifacts. The `publish` job (environment
+`release`) checks that the draft and those artifacts hold the same files and digests and makes it public; the Clear to Ship App holds it until the gate for the
+commit is clear. Then the workflow publishes the Homebrew cask to `rebaze/homebrew-tap` and verifies
+the published release; commit its summaries as `docs/release-verification/<tag>.md` with the files in
+`docs/release-verification/<tag>/`. If `publish` fails, re-run only that job. If `build` fails after
+the draft exists, delete the unpublished draft and re-run all jobs (`tools/README.md`).
 
 - **NEVER delete tags** — tags are immutable, even if a release is broken
 - **NEVER re-create releases** on existing tags — instead, bump the version and create a new release
