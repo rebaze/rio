@@ -1,0 +1,29 @@
+name: Verify release app token (temporary, #183)
+
+# Mints the release bot token exactly as publish-tap does and reads the tap.
+# Removed again before merge.
+on:
+  push:
+    branches: [ci/183-deprecated-actions]
+    paths: ['.github/workflows/tmp-verify-release-app.yaml']
+
+permissions:
+  contents: read
+
+jobs:
+  token:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: Iv23liT1QG6HgP86rzYg
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: rebaze
+          repositories: homebrew-tap
+
+      - name: Read the tap with the token
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: gh api repos/rebaze/homebrew-tap --jq '"\(.full_name) push=\(.permissions.push)"'
