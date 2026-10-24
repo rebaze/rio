@@ -26,7 +26,18 @@
         "name": "CycloneDX Gradle Plugin",
         "version": "3.0.0"
       },
-      "lifecycle": "build"
+      "lifecycle": "build",
+      "distributions": [
+        {
+          "name": "console-1.0.0-linux-amd64.tar.gz",
+          "sha256": "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+          "url": "https://downloads.example.org/console/1.0.0/console-1.0.0-linux-amd64.tar.gz"
+        },
+        {
+          "name": "console-1.0.0-windows-amd64.zip",
+          "sha256": "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2"
+        }
+      ]
     },
     {
       "id": "agent",

@@ -1,6 +1,7 @@
 # CI build context demo
 
-Run the committed synthetic fixtures with an **installed Rio v0.7.0+ release**. A POSIX
+Run the committed synthetic fixtures with an **installed Rio v0.9.0+ release** (distributions
+need v0.9.0; the rest of the demo needs v0.7.0). A POSIX
 shell, Python 3.9+ (standard library only), and standard `cp`, `cmp`, `grep`, `find`, `mktemp`,
 `mv`, `cat`, `sed` and `dirname` commands suffice. No Go, jq, source build, credentials or network are needed. Copy this complete directory from
 the matching tagged source archive, or run it in a checkout:
@@ -23,6 +24,7 @@ normalization and authorized replacement must succeed first and last.
 | Plan before production | `rio.yaml` | The script moves `context.json` aside; `plan --json` still reports each binding without opening the file or SBOMs. |
 | Shared file | `context.json`, `inputs/console.cdx.json`, `inputs/agent.cdx.json` | Both IDs select their own entry and original-SBOM digest. The subjects gain distinct source `vcs` and build `build-system` references. Console reports explicit `clean`; agent defaults to `unknown`. |
 | Repeat | same files and manifest | A second run produces byte-identical index and output SBOMs. |
+| Shipped-file digests | `context.json` | The console entry declares two synthetic `distributions`. Its subject gains one `distribution` reference per file, in context order, and its receipt entry lists both as producer assertions. Agent declares none, so its SBOM gains none and its receipt omits the field. |
 | Stale bytes | `stale.yaml`, `context-stale.json` | The recorded digest is deliberately wrong; exit 2 with `sha256`, failed receipt only. |
 | Missing claim | `missing.yaml`, `context-missing.json` | The selected entry omits required `build.url`; exit 2 with that field, failed receipt only. |
 | Prior revision conflict | `conflict.yaml`, `inputs/prior-console.cdx.json`, `context-prior.json` | The prior Rio-owned revision differs. Only build ID removal and workspace change are authorized here, so exit 2 names `source.revision`. |
@@ -53,6 +55,23 @@ remove that specific directory yourself when finished.
 Its entry digest identifies the separately retained original `inputs/console.cdx.json` bytes;
 `context-prior.json` then binds the newer `inputs/prior-console.cdx.json` fixture. This avoids
 depending on the bytes of a normalized SBOM from any particular Rio release.
+
+Step 3 prints the distribution references read back from the console SBOM and the receipt's
+`distributions` list:
+
+```text
+3. Shipped-file digests declared for console (synthetic values, producer assertions)
+console SBOM metadata.component.externalReferences:
+  distribution https://downloads.example.org/console/1.0.0/console-1.0.0-linux-amd64.tar.gz SHA-256 c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1
+  distribution console-1.0.0-windows-amd64.zip SHA-256 c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2
+console receipt distributions:
+  console-1.0.0-linux-amd64.tar.gz sha256=c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1 assertion=producer
+  console-1.0.0-windows-amd64.zip sha256=c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2 assertion=producer
+agent: no distributions declared; the SBOM gains none and the receipt omits the field
+```
+
+The second file has no `url`, so its reference URL is the file name. The digests are synthetic
+repeated bytes; no such files exist, and Rio would not hash them if they did.
 
 These are producer assertions, not authenticated source/build or built-artifact provenance.
 The repository and CI URLs are example domains and are never fetched. Retain original SBOMs,

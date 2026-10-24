@@ -67,6 +67,32 @@ for file in index.json console.cdx.json agent.cdx.json; do
 done
 printf 'PASS: two products normalized; same inputs produced identical index and SBOM bytes.\n'
 
+printf '\n3. Shipped-file digests declared for console (synthetic values, producer assertions)\n'
+python3 - context.json "$first_dir" first-result.json.inspection.json <<'PY_DISTRIBUTIONS'
+import json, os, sys
+declared = {a["id"]: a.get("distributions", []) for a in json.load(open(sys.argv[1]))["artifacts"]}
+receipt = {a["id"]: a for a in json.load(open(sys.argv[3]))["record"]["artifacts"]}
+for artifact in ("console", "agent"):
+    sbom = json.load(open(os.path.join(sys.argv[2], artifact + ".cdx.json")))
+    refs = [r for r in sbom["metadata"]["component"].get("externalReferences", []) if r["type"] == "distribution"]
+    expected = [{"type": "distribution", "url": d.get("url", d["name"]),
+                 "hashes": [{"alg": "SHA-256", "content": d["sha256"]}]} for d in declared[artifact]]
+    assert refs == expected, (artifact, refs)
+    listed = receipt[artifact].get("distributions")
+    if not declared[artifact]:
+        assert listed is None, (artifact, listed)
+        print("%s: no distributions declared; the SBOM gains none and the receipt omits the field" % artifact)
+        continue
+    assert listed == [{"name": d["name"], "sha256": d["sha256"], "assertion": "producer"} for d in declared[artifact]], listed
+    print("%s SBOM metadata.component.externalReferences:" % artifact)
+    for ref in refs:
+        print("  distribution %s SHA-256 %s" % (ref["url"], ref["hashes"][0]["content"]))
+    print("%s receipt distributions:" % artifact)
+    for item in listed:
+        print("  %s sha256=%s assertion=%s" % (item["name"], item["sha256"], item["assertion"]))
+PY_DISTRIBUTIONS
+printf 'PASS: each declared file became a distribution reference and a receipt entry; Rio did not hash any file.\n'
+
 refuse() {
   manifest=$1
   diagnostic=$2
@@ -86,12 +112,12 @@ refuse() {
   printf 'PASS: %s refused with %s; failed receipt retained, no normalized outputs.\n' "$manifest" "$diagnostic"
 }
 
-printf '\n3. Refuse stale digest, missing required field, and prior revision conflict\n'
+printf '\n4. Refuse stale digest, missing required field, and prior revision conflict\n'
 refuse stale.yaml sha256 stale-refused
 refuse missing.yaml build.url missing-refused
 refuse conflict.yaml source.revision conflict-refused
 
-printf '\n4. Explicit replacement of revision and removal of old owned claims\n'
+printf '\n5. Explicit replacement of revision and removal of old owned claims\n'
 "$rio_bin" normalize --manifest replace.yaml --out replaced --json > replacement-result.json
 replaced_dir=$(result_dir replacement-result.json)
 inspect_result replacement-result.json
