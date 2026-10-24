@@ -141,8 +141,15 @@ func Validate(d Document) error {
 		}
 		names := map[string]bool{}
 		for _, dist := range a.Distributions {
-			if strings.TrimSpace(dist.Name) == "" || len(dist.Name) > MaxValueBytes || names[dist.Name] || !delivery.ValidDigest(dist.SHA256) || dist.Assertion != "producer" {
-				return invalid("distribution")
+			switch {
+			case strings.TrimSpace(dist.Name) == "" || len(dist.Name) > MaxValueBytes:
+				return invalid("distribution name")
+			case names[dist.Name]:
+				return invalid("duplicate distribution name")
+			case !delivery.ValidDigest(dist.SHA256):
+				return invalid("distribution sha256")
+			case dist.Assertion != "producer":
+				return invalid("distribution assertion")
 			}
 			names[dist.Name] = true
 		}

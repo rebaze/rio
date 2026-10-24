@@ -115,9 +115,14 @@ func TestPipelineSecurityContactRequirement(t *testing.T) {
 				if tc.sbomContact == "" {
 					continue
 				}
-				raw, _ := os.ReadFile(id + ".cdx.json")
+				raw, err := os.ReadFile(id + ".cdx.json")
+				if err != nil {
+					t.Fatal(err)
+				}
 				raw = bytes.Replace(raw, []byte(`"version":"1.0.0"}`), []byte(`"version":"1.0.0","externalReferences":[{"type":"security-contact","url":"`+tc.sbomContact+`"}]}`), 1)
-				os.WriteFile(id+".cdx.json", raw, 0600)
+				if err := os.WriteFile(id+".cdx.json", raw, 0600); err != nil {
+					t.Fatal(err)
+				}
 			}
 			appendManifest(t, tc.manifest)
 
@@ -332,9 +337,14 @@ func TestPipelineDigestRequirement(t *testing.T) {
 			t.Setenv("DTRACK_API_KEY", "synthetic")
 			if tc.refs != "" {
 				for _, id := range []string{"api", "worker"} {
-					raw, _ := os.ReadFile(id + ".cdx.json")
+					raw, err := os.ReadFile(id + ".cdx.json")
+					if err != nil {
+						t.Fatal(err)
+					}
 					raw = bytes.Replace(raw, []byte(`"version":"1.0.0"}`), []byte(`"version":"1.0.0",`+tc.refs+`}`), 1)
-					os.WriteFile(id+".cdx.json", raw, 0600)
+					if err := os.WriteFile(id+".cdx.json", raw, 0600); err != nil {
+						t.Fatal(err)
+					}
 				}
 			}
 			appendManifest(t, requireDigest)

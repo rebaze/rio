@@ -141,7 +141,7 @@ func (d *Document) ApplyContext(cfg *buildcontext.Resolved) (*ContextRecord, err
 		}
 	}
 	if prior != nil && len(prior.Effective.Distributions) > 0 && !sameDistributions(prior.Effective.Distributions, cfg.Artifact.Distributions) {
-		return nil, fmt.Errorf("context distributions conflict with prior owned assertion; distributions cannot be replaced or removed")
+		return nil, fmt.Errorf("context distributions conflict with prior owned assertion; distributions cannot be replaced: %s", firstDistributionDifference(prior.Effective.Distributions, cfg.Artifact.Distributions))
 	}
 	if dists := cfg.Artifact.Distributions; len(dists) > 0 {
 		selector := cfg.Selector + "/distributions"
@@ -665,6 +665,36 @@ func sameDistributions(a, b []buildcontext.Distribution) bool {
 		}
 	}
 	return true
+}
+
+// firstDistributionDifference names the first distribution, by sorted name,
+// that was added, removed or changed between prior and next.
+func firstDistributionDifference(prior, next []buildcontext.Distribution) string {
+	old := map[string]buildcontext.Distribution{}
+	cur := map[string]buildcontext.Distribution{}
+	var names []string
+	for _, d := range prior {
+		old[d.Name] = d
+		names = append(names, d.Name)
+	}
+	for _, d := range next {
+		cur[d.Name] = d
+		names = append(names, d.Name)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		o, inOld := old[n]
+		c, inCur := cur[n]
+		switch {
+		case inOld && !inCur:
+			return fmt.Sprintf("%q removed", n)
+		case !inOld && inCur:
+			return fmt.Sprintf("%q added", n)
+		case o != c:
+			return fmt.Sprintf("%q changed", n)
+		}
+	}
+	return "distributions differ"
 }
 
 func distributionReference(url, sum string) map[string]any {

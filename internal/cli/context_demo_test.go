@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -80,14 +81,20 @@ func TestContextDemoFixtures(t *testing.T) {
 				distributions = append(distributions, ref)
 			}
 		}
-		declared, _ := claim["effective"].(map[string]any)["distributions"].([]any)
+		// Expectations come from the declared fixture, not from rio's own record.
+		var declared []any
+		for _, a := range decode(t, contextBytes)["artifacts"].([]any) {
+			if a.(map[string]any)["id"] == tc.id {
+				declared, _ = a.(map[string]any)["distributions"].([]any)
+			}
+		}
 		var wantRefs, wantReceipt []any
 		wantOwned := []any{}
 		for _, value := range declared {
 			d := value.(map[string]any)
 			url, ok := d["url"].(string)
 			if !ok {
-				url = d["name"].(string)
+				url = strings.ReplaceAll(neturl.QueryEscape(d["name"].(string)), "+", "%20")
 			}
 			wantRefs = append(wantRefs, map[string]any{"type": "distribution", "url": url, "hashes": []any{map[string]any{"alg": "SHA-256", "content": d["sha256"]}}})
 			wantOwned = append(wantOwned, "distribution:"+d["name"].(string))

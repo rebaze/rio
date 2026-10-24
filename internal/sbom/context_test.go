@@ -3,6 +3,7 @@ package sbom_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -647,12 +648,13 @@ func TestContextPriorDistributionsCannotBeReplacedOrRemoved(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		dists []buildcontext.Distribution
+		want  string
 	}{
-		{"changed digest", []buildcontext.Distribution{changed, distB}},
-		{"changed url", []buildcontext.Distribution{moved, distB}},
-		{"added", []buildcontext.Distribution{distA, distB, extra}},
-		{"removed", []buildcontext.Distribution{distA}},
-		{"omitted", nil},
+		{"changed digest", []buildcontext.Distribution{changed, distB}, fmt.Sprintf("distributions cannot be replaced: %q changed", distA.Name)},
+		{"changed url", []buildcontext.Distribution{moved, distB}, fmt.Sprintf("distributions cannot be replaced: %q changed", distA.Name)},
+		{"added", []buildcontext.Distribution{distA, distB, extra}, fmt.Sprintf("distributions cannot be replaced: %q added", extra.Name)},
+		{"removed", []buildcontext.Distribution{distA}, fmt.Sprintf("distributions cannot be replaced: %q removed", distB.Name)},
+		{"omitted", nil, fmt.Sprintf("distributions cannot be replaced: %q removed", distB.Name)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			d := load(t, []byte(`{"bomFormat":"CycloneDX","specVersion":"1.6","metadata":{"component":{"type":"application","name":"app"}}}`))
@@ -664,8 +666,8 @@ func TestContextPriorDistributionsCannotBeReplacedOrRemoved(t *testing.T) {
 			cfg := withDistributions(contextResolved(contextField("build.id", "42")), tc.dists...)
 			cfg.Replace = []string{"build.id"}
 			_, err := d.ApplyContext(cfg)
-			if err == nil || !strings.Contains(err.Error(), "distributions cannot be replaced") {
-				t.Fatalf("want distributions refusal: %v", err)
+			if err == nil || !strings.HasSuffix(err.Error(), tc.want) {
+				t.Fatalf("want refusal ending %q: %v", tc.want, err)
 			}
 			if !bytes.Equal(before, mustContextBytes(t, d)) {
 				t.Fatal("refusal mutated document")

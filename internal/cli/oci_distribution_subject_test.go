@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/rebaze/rio/internal/index"
+	"github.com/rebaze/rio/internal/receipt"
 )
 
 // distributionSubjectProject writes a project whose OCI target attaches the SBOM
@@ -76,12 +78,48 @@ func TestOCISubjectMustBeDeclaredDistribution(t *testing.T) {
 		t.Chdir(dir)
 		// Produce the index with a matching subject, then point the manifest elsewhere.
 		ip := normalizedIndex(t, dir)
-		raw, _ := os.ReadFile("rio.yaml")
-		os.WriteFile("rio.yaml", bytes.ReplaceAll(raw, []byte("sha256:"+declared), []byte("sha256:"+other)), 0o644)
+		raw, err := os.ReadFile("rio.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile("rio.yaml", bytes.ReplaceAll(raw, []byte("sha256:"+declared), []byte("sha256:"+other)), 0o644); err != nil {
+			t.Fatal(err)
+		}
 		for _, args := range [][]string{{"delivery", "plan"}, {"deliver"}} {
 			c, result, _ := runBatch(t, append(args, "--index", ip, "--manifest", "rio.yaml")...)
+
 			if c == 0 || requests.Load() != 0 || !strings.Contains(fmt.Sprint(result), code) {
 				t.Fatalf("%v: exit=%d requests=%d %v", args, c, requests.Load(), result)
+			}
+			items, _ := result["items"].([]any)
+			if len(items) != 1 {
+				t.Fatalf("%v: items %v", args, result["items"])
+			}
+			item := items[0].(map[string]any)
+			if item["state"] != "error" || item["error"].(map[string]any)["code"] != code {
+				t.Fatalf("%v: item %v", args, item)
+			}
+			if args[0] != "deliver" {
+				continue
+			}
+			// The per-artifact entry is the intake result and stays completed; the refusal is
+			// recorded on the delivery (never attempted) and in the run exceptions.
+			var rec receipt.Document
+			raw, err := os.ReadFile(result["receipt"].(map[string]any)["path"].(string))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(raw, &rec); err != nil {
+				t.Fatal(err)
+			}
+			if len(rec.Artifacts) != 1 || rec.Artifacts[0].ErrorCode != "" {
+				t.Fatalf("receipt artifacts %+v", rec.Artifacts)
+			}
+			if len(rec.Deliveries) != 1 || rec.Deliveries[0].State != "unattempted" || rec.Deliveries[0].RequestMayHaveOccurred {
+				t.Fatalf("receipt deliveries %+v", rec.Deliveries)
+			}
+			if len(rec.Exceptions) != 1 || rec.Exceptions[0] != code {
+				t.Fatalf("receipt exceptions %v", rec.Exceptions)
 			}
 		}
 	})
