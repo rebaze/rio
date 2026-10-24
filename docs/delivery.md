@@ -54,7 +54,7 @@ delivery:
 
 A registry is an authority, without a scheme or repository path. The repository is a separate value. Authentication can instead use `auth: {anonymous: true}` or a supported bearer-token environment reference. CA files and explicit local-test HTTP are supported. OCI does not offer certificate-verification bypass.
 
-Rio packages the exact verified SBOM bytes as an OCI blob and creates a deterministic manifest and generated tag. Optional `subject` uses a descriptor with `digest`, `mediaType` and `size`; attachment needs supported Referrers behavior. No fallback tag scheme is silently substituted. [Detailed adapter examples and tested registry scope](../tools/demo-oci/README.md).
+Rio packages the exact verified SBOM bytes as an OCI blob and creates a deterministic manifest and generated tag. Optional `subject` uses a descriptor with `digest`, `mediaType` and `size`; attachment needs supported Referrers behavior. When the artifact's build context declares `distributions`, the `subject` digest must be one of them, otherwise the plan is refused with `subject_digest_mismatch` before any request. No fallback tag scheme is silently substituted. [Detailed adapter examples and tested registry scope](../tools/demo-oci/README.md).
 
 Receipts retain applicable immutable references, not a DTrack-shaped token. Intended config, SBOM and manifest representations have distinct digests, sizes and media types. `submitted` includes only bodies whose complete write was observed. Already-present content can be accepted after exact read-back without another upload, so acceptance need not imply a new submitted body. A complete body write does not prove what the server retained.
 

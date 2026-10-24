@@ -3,10 +3,12 @@ package delivery
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"github.com/rebaze/rio/internal/index"
 	"gopkg.in/yaml.v3"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 const SnapshotBudget int64 = 256 << 20
@@ -284,6 +286,9 @@ func planResolved(plan BatchPlan, c Config, indexPath string, idx index.Index, o
 			if e != nil {
 				return failJob(e)
 			}
+			if e := checkSubjectDeclared(a, d); e != nil {
+				return failJob(e)
+			}
 			refs := []PayloadRef{}
 			for _, payload := range v.Payloads() {
 				refs = append(refs, payload.Ref())
@@ -338,4 +343,28 @@ func PairKey(s Source, d Description) string {
 		Identity     json.RawMessage `json:"identity"`
 	}{s.IndexSHA256, s.ArtifactID, s.OutputSHA256, d.Type, d.Identity})
 	return Digest(b)
+}
+
+// checkSubjectDeclared refuses an OCI subject descriptor that is not one of
+// the distributions the artifact's build context declares. Without declared
+// distributions nothing is checked; the digests are producer assertions.
+func checkSubjectDeclared(a index.Artifact, d Description) error {
+	if d.Type != "oci" || a.Context == nil || len(a.Context.Effective.Distributions) == 0 {
+		return nil
+	}
+	var id struct {
+		Subject *struct {
+			Digest string `json:"digest"`
+		} `json:"subject"`
+	}
+	if json.Unmarshal(d.Identity, &id) != nil || id.Subject == nil {
+		return nil
+	}
+	digest := strings.ToLower(strings.TrimPrefix(id.Subject.Digest, "sha256:"))
+	for _, dist := range a.Context.Effective.Distributions {
+		if strings.ToLower(dist.SHA256) == digest {
+			return nil
+		}
+	}
+	return Fail("subject_digest_mismatch", fmt.Sprintf("artifact %s: subject digest %s is not among the declared distributions", a.ID, id.Subject.Digest))
 }
