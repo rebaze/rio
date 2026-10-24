@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Stage Rio release assets and verify their exact bytes before publication.
 
+vacant refuses a tag that already has a release or draft, before anything is
+built or signed. stage freezes the built files, draft verifies and uploads them
+to a draft release, and publish (the gated job) checks that draft again and
+only then makes it public.
+
 Python 3.9+, gh and cosign. Network access belongs here, never in the Rio CLI.
 The inventory is a local consistency boundary, not a signature or an approval.
 """
@@ -36,9 +41,17 @@ def archive(name):
     return name.endswith((".tar.gz", ".zip"))
 
 
+def source_sbom(tag):
+    return "rio-" + tag + "-source.cdx.json"
+
+
+def bundle_name(tag):
+    return "rio-" + tag + ".intoto.jsonl"
+
+
 def required(tag):
     return {"checksums.txt", "checksums.txt.sigstore.json", "CHANGELOG.md",
-            "rio-" + tag + "-source.cdx.json"}
+            source_sbom(tag)}
 
 
 def validate_inventory(data, args):
@@ -127,13 +140,22 @@ def releases_for_tag(args):
     return found
 
 
-def publish(args):
+def vacant(args):
+    if releases_for_tag(args):
+        raise ValueError("release or draft already exists for " + args.tag
+                         + "; delete an unpublished draft before re-running, never a release")
+    print("VACANT: no release or draft for " + args.tag, flush=True)
+
+
+def draft(args):
     digest(args.inventory)
     data = json.loads(args.inventory.read_text())
     files = validate_inventory(data, args)
     check_files(args.stage, files)
     check_checksums(args.stage, files)
     bundle_sha = digest(args.bundle)
+    if args.record.exists():
+        raise ValueError("draft record already exists; use a fresh run directory")
     if releases_for_tag(args):
         raise ValueError("release or draft already exists for " + args.tag + "; refusing to replace it")
     identity = "https://github.com/" + args.repo + "/.github/workflows/release.yaml@refs/tags/" + args.tag
@@ -144,22 +166,23 @@ def publish(args):
         for name in files:
             shutil.copyfile(args.stage / name, snapshot / name)
         check_files(snapshot, files)
-        bundle_name = "rio-" + args.tag + ".intoto.jsonl"
-        shutil.copyfile(args.bundle, snapshot / bundle_name)
-        expected = dict(files, **{bundle_name: bundle_sha})
+        shutil.copyfile(args.bundle, snapshot / bundle_name(args.tag))
+        expected = dict(files, **{bundle_name(args.tag): bundle_sha})
         check_files(snapshot, expected)
         print("VERIFY: exact staged bytes, release workflow identity and tag", flush=True)
         for name in sorted(files):
-            if archive(name) or name == "checksums.txt":
+            # Every asset that can carry build provenance must, so its digest is
+            # signed where it was built (cleartoship decision 0024).
+            if archive(name) or name in ("checksums.txt", source_sbom(args.tag)):
                 predicates = [PROVENANCE, SBOM] if archive(name) else [PROVENANCE]
                 for predicate in predicates:
                     command = ["gh", "attestation", "verify", snapshot / name,
-                               "--bundle", snapshot / bundle_name, "--repo", args.repo,
+                               "--bundle", snapshot / bundle_name(args.tag), "--repo", args.repo,
                                "--cert-identity", identity, "--source-ref", "refs/tags/" + args.tag,
                                "--predicate-type", predicate]
                     if predicate == SBOM:
                         verified = json.loads(run(command + ["--format", "json"], capture=True))
-                        source = json.loads((snapshot / ("rio-" + args.tag + "-source.cdx.json")).read_text())
+                        source = json.loads((snapshot / source_sbom(args.tag)).read_text())
                         if not isinstance(verified, list) or not verified or any(
                                 item.get("verificationResult", {}).get("statement", {}).get("predicate") != source
                                 for item in verified):
@@ -182,46 +205,163 @@ def publish(args):
             command.append("--prerelease")
         command.extend(snapshot / name for name in sorted(assets))
         run(command)
-        created = releases_for_tag(args)
-        if (len(created) != 1 or created[0].get("draft") is not True
-                or type(created[0].get("id")) is not int):
-            raise ValueError("new draft is missing or ambiguous; refusing publication")
-        release_api = "repos/" + args.repo + "/releases/" + str(created[0]["id"])
-        print("DRAFT: assets uploaded; checking downloaded bytes before publication", flush=True)
-        downloaded = Path(temporary) / "downloaded"
-        downloaded.mkdir()
-        run(["gh", "release", "download", args.tag, "--repo", args.repo,
-             "--dir", downloaded])
-        check_files(downloaded, assets)
+        created = only_draft(args)
+        print("DRAFT: assets uploaded; checking downloaded bytes", flush=True)
+        check_draft(args, created["id"], assets, Path(temporary) / "downloaded")
         check_files(snapshot, expected)
-        current = json.loads(run(["gh", "api", release_api], capture=True))
-        if (current.get("draft") is not True or current.get("tag_name") != args.tag
-                or current.get("id") != created[0]["id"]):
-            raise ValueError("draft identity or state changed before publication")
-        run(["gh", "api", release_api, "--method", "PATCH", "-F", "draft=false"])
-        print("PUBLISHED: " + args.tag + " with the verified asset bytes", flush=True)
+    # Written last: the gated publish job flips only the draft this record names.
+    with args.record.open("x") as stream:
+        json.dump(dict(version=1, repo=args.repo, tag=args.tag, release=created["id"], assets=assets),
+                  stream, indent=2, sort_keys=True)
+        stream.write("\n")
+    print("DRAFTED: release " + str(created["id"]) + " holds the verified bytes; publication waits for the gate",
+          flush=True)
+
+
+def only_draft(args, release_id=None):
+    found = releases_for_tag(args)
+    if (len(found) != 1 or found[0].get("draft") is not True or type(found[0].get("id")) is not int
+            or (release_id is not None and found[0]["id"] != release_id)):
+        raise ValueError("the tag's draft is missing, ambiguous or already published; refusing publication")
+    return found[0]
+
+
+def draft_assets(args, release_id):
+    pages = json.loads(run(["gh", "api", "repos/" + args.repo + "/releases/" + str(release_id) + "/assets",
+                            "--paginate", "--slurp"], capture=True))
+    if not isinstance(pages, list) or any(not isinstance(page, list) for page in pages):
+        raise ValueError("invalid release asset response")
+    listed = {}
+    for page in pages:
+        for asset in page:
+            if (not isinstance(asset, dict) or asset.get("name") in listed
+                    or type(asset.get("id")) is not int):
+                raise ValueError("invalid or duplicate release asset entry")
+            listed[asset["name"]] = asset
+    return listed
+
+
+def check_listing(listed, assets):
+    if set(listed) != set(assets):
+        raise ValueError("draft assets differ: missing=" + repr(sorted(set(assets) - set(listed)))
+                         + ", extra=" + repr(sorted(set(listed) - set(assets))))
+    for name, sha in assets.items():
+        if listed[name].get("state") != "uploaded" or listed[name].get("digest") != "sha256:" + sha:
+            raise ValueError("draft asset digest differs from the staged inventory: " + name)
+
+
+def check_draft(args, release_id, assets, downloaded):
+    """Require the draft's assets, by GitHub's digest and by downloaded bytes, to equal assets."""
+    listed = draft_assets(args, release_id)
+    check_listing(listed, assets)
+    # Download each asset by its ID from this draft, never by tag name, which
+    # another draft for the same tag could also answer to.
+    downloaded.mkdir()
+    for name in sorted(assets):
+        command = ["gh", "api", "-H", "Accept: application/octet-stream",
+                   "repos/" + args.repo + "/releases/assets/" + str(listed[name]["id"])]
+        with (downloaded / name).open("xb") as stream:
+            try:
+                subprocess.run(command, check=True, stdout=stream)
+            except subprocess.CalledProcessError as error:
+                raise ValueError("command failed: gh api asset download") from error
+    check_files(downloaded, assets)
+
+
+def check_run_artifacts(args, assets):
+    """Require each asset to be exactly one unexpired artifact of this run, by name and digest.
+
+    The build job uploads every release file unzipped (archive: false), so an
+    artifact's digest is the file's own SHA-256. Clear to Ship's App reads these
+    while this job waits; what becomes public must equal them. Artifacts with
+    other names are not release files and are ignored.
+    """
+    pages = json.loads(run(["gh", "api", "repos/" + args.repo + "/actions/runs/" + args.run + "/artifacts",
+                            "--paginate", "--slurp"], capture=True))
+    if not isinstance(pages, list) or any(not isinstance(page, dict) for page in pages):
+        raise ValueError("invalid run artifact response")
+    found = {}
+    for page in pages:
+        for artifact in page.get("artifacts", []):
+            if not isinstance(artifact, dict):
+                raise ValueError("invalid run artifact entry")
+            if artifact.get("name") in assets:
+                found.setdefault(artifact["name"], []).append(artifact)
+    for name, sha in sorted(assets.items()):
+        matches = found.get(name, [])
+        if len(matches) != 1:
+            raise ValueError("run artifact missing or ambiguous for release file: " + name)
+        if matches[0].get("expired") is not False or matches[0].get("digest") != "sha256:" + sha:
+            raise ValueError("run artifact digest differs from the draft: " + name)
+
+
+def publish(args):
+    digest(args.inventory)
+    files = validate_inventory(json.loads(args.inventory.read_text()), args)
+    if not args.record.is_file():
+        raise ValueError("draft record is missing; run draft first")
+    record = json.loads(args.record.read_text())
+    expected = {name: sha for name, sha in files.items() if name != "CHANGELOG.md"}
+    if (not isinstance(record, dict) or record.get("version") != 1 or record.get("tag") != args.tag
+            or record.get("repo") != args.repo or type(record.get("release")) is not int
+            or not isinstance(record.get("assets"), dict)
+            or {k: v for k, v in record["assets"].items() if k != bundle_name(args.tag)} != expected
+            or not re.fullmatch(r"[0-9a-f]{64}", str(record["assets"].get(bundle_name(args.tag))))):
+        raise ValueError("draft record does not match the staged inventory")
+    release_id, assets = record["release"], record["assets"]
+    release_api = "repos/" + args.repo + "/releases/" + str(release_id)
+    print("VERIFY: run " + args.run + " artifacts are exactly the release files", flush=True)
+    check_run_artifacts(args, assets)
+    print("VERIFY: draft " + str(release_id) + " still holds exactly the staged bytes", flush=True)
+    only_draft(args, release_id)
+    with tempfile.TemporaryDirectory(prefix="rio-publish-") as temporary:
+        check_draft(args, release_id, assets, Path(temporary) / "downloaded")
+    current = json.loads(run(["gh", "api", release_api], capture=True))
+    if (current.get("draft") is not True or current.get("tag_name") != args.tag
+            or current.get("id") != release_id):
+        raise ValueError("draft identity or state changed before publication")
+    # A cleared prerelease flag would make an rc the latest release, which install.sh installs.
+    if current.get("prerelease") is not ("-" in args.tag):
+        raise ValueError("draft prerelease flag changed before publication")
+    only_draft(args, release_id)
+    run(["gh", "api", release_api, "--method", "PATCH", "-F", "draft=false"])
+    # Immutable releases freeze what is there now; catch a swap in the last seconds.
+    published = json.loads(run(["gh", "api", release_api], capture=True))
+    if published.get("draft") is not False:
+        raise ValueError("release did not become public")
+    try:
+        check_listing(draft_assets(args, release_id), assets)
+    except ValueError as error:
+        raise ValueError("published release differs from the verified draft: " + str(error)) from error
+    print("PUBLISHED: " + args.tag + " with the verified asset bytes", flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="operation", required=True)
-    for operation in ("stage", "publish"):
+    paths = {"vacant": (), "stage": ("stage", "inventory", "dist"),
+             "draft": ("stage", "inventory", "bundle", "record"), "publish": ("inventory", "record")}
+    for operation, names in paths.items():
         command = commands.add_parser(operation)
-        for name in ("stage", "inventory"):
+        for name in names:
             command.add_argument("--" + name, type=Path, required=True)
         command.add_argument("--tag", required=True)
         command.add_argument("--repo", required=True)
-        command.add_argument("--" + ("dist" if operation == "stage" else "bundle"),
-                             type=Path, required=True)
+        if operation == "publish":
+            command.add_argument("--run", required=True, help="the workflow run whose artifacts the gate saw")
     args = parser.parse_args()
     try:
         if not re.fullmatch(r"v[0-9][A-Za-z0-9._+-]*", args.tag):
             raise ValueError("invalid release tag")
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", args.repo):
             raise ValueError("invalid GitHub repository")
-        if args.inventory.resolve().parent == args.stage.resolve():
-            raise ValueError("keep inventory outside the staged asset directory")
-        (stage if args.operation == "stage" else publish)(args)
+        if getattr(args, "run", None) is not None and not re.fullmatch(r"[1-9][0-9]*", args.run):
+            raise ValueError("invalid workflow run ID")
+        for name in ("inventory", "record"):
+            if getattr(args, "stage", None) and getattr(args, name, None) \
+                    and getattr(args, name).resolve().parent == args.stage.resolve():
+                raise ValueError("keep " + name + " outside the staged asset directory")
+        {"vacant": vacant, "stage": stage, "draft": draft, "publish": publish}[args.operation](args)
     except (OSError, ValueError, TypeError) as error:
         print("BLOCKED: " + str(error), file=sys.stderr, flush=True)
         return 1

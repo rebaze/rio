@@ -534,10 +534,11 @@ Like the merge-policy tests, it runs offline and is included in CI's Python test
 ([issue #51](https://github.com/rebaze/rio/issues/51)). It requires Python 3.9+, `gh` and
 `cosign`; the workflow supplies GitHub credentials and pins its signing tools.
 
-The workflow builds with GoReleaser's `--skip=publish,announce,homebrew`. It then stages
-archives, their checksums and signature, the source CycloneDX SBOM, and the changelog.
-The staging command writes a SHA-256 inventory last and refuses existing output paths,
-so an interrupted run cannot silently reuse an earlier inventory.
+The workflow first runs `release-publish.py vacant`, which refuses a tag that already has a
+release or draft before anything is built or signed. It then builds with GoReleaser's
+`--skip=publish,announce,homebrew` and stages archives, their checksums and signature, the
+source CycloneDX SBOM, and the changelog. The staging command writes a SHA-256 inventory last and
+refuses existing output paths, so an interrupted run cannot silently reuse an earlier inventory.
 
 ```sh
 python3 tools/release-publish.py stage \
@@ -545,35 +546,77 @@ python3 tools/release-publish.py stage \
   --tag "$TAG" --repo "$GITHUB_REPOSITORY"
 ```
 
-The GitHub attestation actions consume these staged files. The workflow combines their
-bundles into `release-attestations.jsonl`, outside the frozen asset directory, then runs:
+The GitHub attestation actions consume these staged files. Build provenance covers every asset
+that can carry it: the archives, `checksums.txt` and the source SBOM. Only the checksum signature
+and the attestation bundle, made after it, have none. The workflow combines the bundles into
+`release-bundle/rio-<tag>.intoto.jsonl`, outside the frozen asset directory, uploads each release
+file as a run artifact (below), then uploads a draft:
 
 ```sh
-python3 tools/release-publish.py publish \
+python3 tools/release-publish.py draft \
   --stage release-assets --inventory release-inventory.json \
-  --bundle release-attestations.jsonl --tag "$TAG" --repo "$GITHUB_REPOSITORY"
+  --bundle "release-bundle/rio-$TAG.intoto.jsonl" --record release-draft.json \
+  --tag "$TAG" --repo "$GITHUB_REPOSITORY"
 ```
 
-Before creating a draft, the guard checks the asset inventory, archive checksums, both
-provenance and CycloneDX attestations for each archive, provenance for the checksum file,
-and the checksum signature. It constrains the signer to this repository's release workflow
-at the requested tag. The verified CycloneDX predicate must match the staged source SBOM.
+Before creating the draft, the guard checks the asset inventory, archive checksums, both
+provenance and CycloneDX attestations for each archive, provenance for the checksum file and the
+source SBOM, and the checksum signature. It constrains the signer to this repository's release
+workflow at the requested tag. The verified CycloneDX predicate must match the staged source SBOM.
 The source SBOM describes rio's source, as [`source-sbom.sh`](#rios-source-sbom-and-candidate-checks)
 makes it; attaching it to an archive does not establish a complete inventory of that archive's
 assembled binary.
 
-Verification and upload use the same private copy of the staged bytes. The guard downloads
-the draft's assets and compares their names and SHA-256 digests before publishing the
-identified draft. Homebrew runs only after successful publication and receives the staged
-checksums. Prereleases keep their prerelease designation and do not update the tap.
+Verification and upload use the same private copy of the staged bytes. After the upload the guard
+compares each draft asset's GitHub `digest` and its bytes, downloaded by asset ID from that
+draft, with the inventory, then writes `release-draft.json` naming the draft and its assets. The
+inventory and record go to the next job as job outputs. The draft is not public yet.
 
-An existing release **or draft** for the tag blocks creation. Lookup and verification errors
-also block it. Failure after draft creation leaves the draft unpublished; the tool never
-deletes tags, replaces assets, or recreates a release. Inspect the failure and use a new patch
-tag for a corrected release. Do not rerun this tool to overwrite an existing tag's release.
-The workflow serializes runs per tag. Its credentials, staging directory, inventory and
-other release writers remain a trust boundary: this is not protection against an administrator
-or another authorized process deliberately changing a draft during the final API calls.
+Before the draft exists, the build job uploads every release file as its own run artifact with `upload-artifact`
+`archive: false`, so each artifact's digest is that file's SHA-256. There are ten: the six archives,
+`checksums.txt`, its signature, the source SBOM and the attestation bundle. Clear to Ship's App
+reads these while `publish` waits ([cleartoship#79](https://github.com/rebaze/cleartoship/issues/79)).
+
+The `publish` job runs in the `release` environment, which the Clear to Ship App holds until the
+gate for the commit is clear. It uses no signing secret. It checks the draft once more and makes
+it public:
+
+```sh
+python3 tools/release-publish.py publish \
+  --inventory release-inventory.json --record release-draft.json \
+  --run "$GITHUB_RUN_ID" --tag "$TAG" --repo "$GITHUB_REPOSITORY"
+```
+
+It requires all of these before it publishes the identified draft:
+
+- every release file is exactly one unexpired artifact of the run, with the same digest;
+- the tag has exactly that one draft, with an unchanged prerelease flag;
+- every asset's GitHub `digest` and downloaded bytes equal the record and the inventory;
+- no asset is missing or extra.
+
+Right after publication it lists the assets again and fails if any differ, which keeps a
+swapped asset out of the tap. So what becomes public equals the run's release artifacts. The App
+comparing those artifacts with the build provenance before it approves is Clear to Ship's side of
+[decision 0024](https://github.com/rebaze/cleartoship/issues/79). Until the App does that,
+`publish`'s checks are the byte check. `publish-tap` reads `checksums.txt` from the published
+release, and only stable tags update the tap.
+
+`vacant` and `draft` refuse a tag that already has a release **or draft**, and lookup and
+verification errors also block them. The tool never deletes tags, replaces assets, or
+recreates a release. When a run stops, what to do depends on where:
+
+- **`publish` failed or the gate refused it:** fix the cause, then re-run only the failed
+  `publish` job. It reads the earlier `build` job's outputs and checks the same draft.
+- **`build` failed after the draft exists:** a maintainer deletes that draft, then re-runs all
+  jobs on the same tag. This is the case when no record was written, for example because the
+  download check refused it. Deleting an unpublished draft is not re-creating a release. Nothing
+  was published.
+- **A release was published with wrong bytes:** ship the fix under a new patch tag
+  ([recovery](../docs/recovery.md)).
+
+The workflow serializes runs per tag. Its credentials, staging directory, inventory and other
+release writers remain a trust boundary: this is not protection against an administrator or
+another authorized process deliberately changing a draft during the final API calls.
 
 ### Run the offline terminal demo
 
@@ -585,7 +628,7 @@ python3 tools/release-publish_test.py
 Use a new output directory for each run. The demo executes the production guard with synthetic
 files and explicit offline substitutes for GitHub and signature verification. It performs real
 hashing, inventory checks, byte comparisons and publication decisions, but does not authenticate
-signatures or create a GitHub release. Four cases show an unchanged candidate proceeding and
+signatures or create a GitHub release. Each case runs `draft` and then `publish`. Four cases show an unchanged candidate proceeding and
 replaced bytes, missing attestations and rejected verification stopping publication.
 
 The output directory retains each scenario's files, inventories, service-call log, exact shell

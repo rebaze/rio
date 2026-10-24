@@ -18,6 +18,7 @@ def create(root):
     self.stage = self.root / "stage"
     self.inventory = self.root / "inventory.json"
     self.bundle = self.root / "bundle.jsonl"
+    self.record = self.root / "draft.json"
     self.tag = "v1.2.3"
     self.repo = "rebaze/rio"
     self.archive = "rio_1.2.3_linux_amd64.tar.gz"
@@ -30,7 +31,7 @@ def create(root):
     (self.dist / self.sbom).write_text('{"bomFormat":"CycloneDX","specVersion":"1.6"}\n')
     subjects = {
         name: hashlib.sha256((self.dist / name).read_bytes()).hexdigest()
-        for name in (self.archive, "checksums.txt")
+        for name in (self.archive, "checksums.txt", self.sbom)
     }
     self.bundle.write_text(json.dumps({"fixtureOnly": True, "subjects": subjects,
                                       "predicate": json.loads((self.dist / self.sbom).read_text())}))
