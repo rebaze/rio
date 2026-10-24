@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Stage Rio release assets and verify their exact bytes before publication.
 
-stage freezes the built files, draft verifies and uploads them to a draft
-release, and publish (the gated job, cleartoship decision 0024) checks that
-draft again and only then makes it public.
+vacant refuses a tag that already has a release or draft, before anything is
+built or signed. stage freezes the built files, draft verifies and uploads them
+to a draft release, and publish (the gated job) checks that draft again and
+only then makes it public.
 
 Python 3.9+, gh and cosign. Network access belongs here, never in the Rio CLI.
 The inventory is a local consistency boundary, not a signature or an approval.
@@ -139,6 +140,13 @@ def releases_for_tag(args):
     return found
 
 
+def vacant(args):
+    if releases_for_tag(args):
+        raise ValueError("release or draft already exists for " + args.tag
+                         + "; delete an unpublished draft before re-running, never a release")
+    print("VACANT: no release or draft for " + args.tag, flush=True)
+
+
 def draft(args):
     digest(args.inventory)
     data = json.loads(args.inventory.read_text())
@@ -163,8 +171,8 @@ def draft(args):
         check_files(snapshot, expected)
         print("VERIFY: exact staged bytes, release workflow identity and tag", flush=True)
         for name in sorted(files):
-            # Every asset that can carry build provenance must: the gate compares
-            # the draft's digests with it before publication.
+            # Every asset that can carry build provenance must, so its digest is
+            # signed where it was built (cleartoship decision 0024).
             if archive(name) or name in ("checksums.txt", source_sbom(args.tag)):
                 predicates = [PROVENANCE, SBOM] if archive(name) else [PROVENANCE]
                 for predicate in predicates:
@@ -218,8 +226,7 @@ def only_draft(args, release_id=None):
     return found[0]
 
 
-def check_draft(args, release_id, assets, downloaded):
-    """Require the draft's assets, by GitHub's digest and by downloaded bytes, to equal assets."""
+def draft_assets(args, release_id):
     pages = json.loads(run(["gh", "api", "repos/" + args.repo + "/releases/" + str(release_id) + "/assets",
                             "--paginate", "--slurp"], capture=True))
     if not isinstance(pages, list) or any(not isinstance(page, list) for page in pages):
@@ -227,17 +234,37 @@ def check_draft(args, release_id, assets, downloaded):
     listed = {}
     for page in pages:
         for asset in page:
-            if not isinstance(asset, dict) or asset.get("name") in listed:
+            if (not isinstance(asset, dict) or asset.get("name") in listed
+                    or type(asset.get("id")) is not int):
                 raise ValueError("invalid or duplicate release asset entry")
-            listed[asset.get("name")] = asset
+            listed[asset["name"]] = asset
+    return listed
+
+
+def check_listing(listed, assets):
     if set(listed) != set(assets):
         raise ValueError("draft assets differ: missing=" + repr(sorted(set(assets) - set(listed)))
                          + ", extra=" + repr(sorted(set(listed) - set(assets))))
     for name, sha in assets.items():
         if listed[name].get("state") != "uploaded" or listed[name].get("digest") != "sha256:" + sha:
             raise ValueError("draft asset digest differs from the staged inventory: " + name)
+
+
+def check_draft(args, release_id, assets, downloaded):
+    """Require the draft's assets, by GitHub's digest and by downloaded bytes, to equal assets."""
+    listed = draft_assets(args, release_id)
+    check_listing(listed, assets)
+    # Download each asset by its ID from this draft, never by tag name, which
+    # another draft for the same tag could also answer to.
     downloaded.mkdir()
-    run(["gh", "release", "download", args.tag, "--repo", args.repo, "--dir", downloaded])
+    for name in sorted(assets):
+        command = ["gh", "api", "-H", "Accept: application/octet-stream",
+                   "repos/" + args.repo + "/releases/assets/" + str(listed[name]["id"])]
+        with (downloaded / name).open("xb") as stream:
+            try:
+                subprocess.run(command, check=True, stdout=stream)
+            except subprocess.CalledProcessError as error:
+                raise ValueError("command failed: gh api asset download") from error
     check_files(downloaded, assets)
 
 
@@ -264,16 +291,27 @@ def publish(args):
     if (current.get("draft") is not True or current.get("tag_name") != args.tag
             or current.get("id") != release_id):
         raise ValueError("draft identity or state changed before publication")
+    # A cleared prerelease flag would make an rc the latest release, which install.sh installs.
+    if current.get("prerelease") is not ("-" in args.tag):
+        raise ValueError("draft prerelease flag changed before publication")
     only_draft(args, release_id)
     run(["gh", "api", release_api, "--method", "PATCH", "-F", "draft=false"])
+    # Immutable releases freeze what is there now; catch a swap in the last seconds.
+    published = json.loads(run(["gh", "api", release_api], capture=True))
+    if published.get("draft") is not False:
+        raise ValueError("release did not become public")
+    try:
+        check_listing(draft_assets(args, release_id), assets)
+    except ValueError as error:
+        raise ValueError("published release differs from the verified draft: " + str(error)) from error
     print("PUBLISHED: " + args.tag + " with the verified asset bytes", flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="operation", required=True)
-    paths = {"stage": ("stage", "inventory", "dist"), "draft": ("stage", "inventory", "bundle", "record"),
-             "publish": ("inventory", "record")}
+    paths = {"vacant": (), "stage": ("stage", "inventory", "dist"),
+             "draft": ("stage", "inventory", "bundle", "record"), "publish": ("inventory", "record")}
     for operation, names in paths.items():
         command = commands.add_parser(operation)
         for name in names:
@@ -290,7 +328,7 @@ def main():
             if getattr(args, "stage", None) and getattr(args, name, None) \
                     and getattr(args, name).resolve().parent == args.stage.resolve():
                 raise ValueError("keep " + name + " outside the staged asset directory")
-        {"stage": stage, "draft": draft, "publish": publish}[args.operation](args)
+        {"vacant": vacant, "stage": stage, "draft": draft, "publish": publish}[args.operation](args)
     except (OSError, ValueError, TypeError) as error:
         print("BLOCKED: " + str(error), file=sys.stderr, flush=True)
         return 1

@@ -39,10 +39,23 @@ jobs:
       contents: write
       id-token: write
       attestations: write
+    # The inventory and draft record go to publish as outputs, not artifacts:
+    # they are small, and outputs outlast a long wait at the gate.
+    outputs:
+      inventory: ${{ steps.draft.outputs.inventory }}
+      record: ${{ steps.draft.outputs.record }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+
+      # A re-run must not sign new provenance for a tag that already has a
+      # draft or release: the newest provenance would no longer match the draft.
+      - name: Refuse a tag that already has a release or draft
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: python3 tools/release-publish.py vacant --tag "$TAG" --repo "$GITHUB_REPOSITORY"
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -110,9 +123,9 @@ jobs:
             --dist dist --stage release-assets --inventory release-inventory.json \
             --tag "$TAG" --repo "$GITHUB_REPOSITORY"
 
-      # Every asset that can carry provenance does: the gate compares the
-      # draft's digests with it (cleartoship decision 0024). The checksum
-      # signature and the attestation bundle are made after it.
+      # Every asset that can carry provenance does, so each digest is signed
+      # where it was built (cleartoship decision 0024). The checksum signature
+      # and the attestation bundle are made after it.
       - name: Attest build provenance for the release assets
         id: attest-provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -133,6 +146,7 @@ jobs:
           sbom-path: release-assets/rio-${{ github.ref_name }}-source.cdx.json
 
       - name: Verify staged assets and upload them as a draft
+        id: draft
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -154,26 +168,12 @@ jobs:
             --stage release-assets --inventory release-inventory.json \
             --bundle release-attestations.jsonl --record release-draft.json \
             --tag "$TAG" --repo "$GITHUB_REPOSITORY"
-
-      - name: Hand the inventory and draft record to the publish job
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: release-draft
-          path: |
-            release-inventory.json
-            release-draft.json
-          retention-days: 7
-
-      - name: Retain verified assets for downstream jobs
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: dist
-          path: release-assets/
-          retention-days: 7
+          printf 'inventory=%s\n' "$(base64 -w0 release-inventory.json)" >> "$GITHUB_OUTPUT"
+          printf 'record=%s\n' "$(base64 -w0 release-draft.json)" >> "$GITHUB_OUTPUT"
 
   # Makes the verified draft public. The Clear to Ship App holds this job in
-  # the release environment until the gate for the commit is clear. No signing
-  # secret reaches it; it only checks the draft again and publishes it.
+  # the release environment until the gate for the commit is clear. The job
+  # uses no signing secret; it checks the draft again and publishes it.
   publish:
     needs: build
     runs-on: ubuntu-latest
@@ -182,20 +182,22 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Download the inventory and draft record
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: release-draft
-          path: release-draft
+          persist-credentials: false
 
       - name: Check the draft again and publish it
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
+          INVENTORY: ${{ needs.build.outputs.inventory }}
+          RECORD: ${{ needs.build.outputs.record }}
         run: |
+          set -euo pipefail
+          printf '%s' "$INVENTORY" | base64 -d > "$RUNNER_TEMP/release-inventory.json"
+          printf '%s' "$RECORD" | base64 -d > "$RUNNER_TEMP/release-draft.json"
           python3 tools/release-publish.py publish \
-            --inventory release-draft/release-inventory.json --record release-draft/release-draft.json \
+            --inventory "$RUNNER_TEMP/release-inventory.json" --record "$RUNNER_TEMP/release-draft.json" \
             --tag "$TAG" --repo "$GITHUB_REPOSITORY"
 
   publish-tap:
@@ -217,11 +219,12 @@ jobs:
           owner: rebaze
           repositories: homebrew-tap
 
-      - name: Download dist/
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: dist
-          path: dist
+      # The published release's own checksums: what users download.
+      - name: Download the published checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern checksums.txt --dir dist
 
       - name: Bump rio cask in rebaze/homebrew-tap
         shell: bash

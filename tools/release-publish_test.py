@@ -32,6 +32,8 @@ class ReleaseTest(unittest.TestCase):
                 "--inventory", str(self.inventory), "--tag", self.tag, "--repo", self.repo]
         if operation == "stage":
             args += ["--stage", str(self.stage), "--dist", str(self.dist)]
+        elif operation == "vacant":
+            args = args[:3] + ["--tag", self.tag, "--repo", self.repo]
         elif operation == "draft":
             args += ["--stage", str(self.stage), "--bundle", str(self.bundle), "--record", str(self.record)]
         else:
@@ -111,6 +113,7 @@ class ReleaseTest(unittest.TestCase):
         self.prepare()
         self.assert_blocked(self.command("draft", FAKE_REMOTE_CHANGE="1"), "digest differs")
         self.assertTrue((self.root / "remote").exists())
+        self.assertFalse(self.record.exists(), "a refused draft must not leave a record to publish")
 
     def test_existing_release_is_never_recreated(self):
         self.prepare()
@@ -177,9 +180,9 @@ class ReleaseTest(unittest.TestCase):
 
     def test_publish_flips_only_the_recorded_draft(self):
         self.drafted()
-        self.assert_blocked(self.command("publish", FAKE_SECOND_DRAFT="1"), "draft")
-        self.assert_blocked(self.command("publish", FAKE_DRAFT_ID="456"), "draft")
-        self.assert_blocked(self.command("publish", FAKE_ALREADY_PUBLISHED="1"), "draft")
+        for env in ({"FAKE_SECOND_DRAFT": "1"}, {"FAKE_DRAFT_ID": "456"}, {"FAKE_ALREADY_PUBLISHED": "1"}):
+            with self.subTest(env=env):
+                self.assert_blocked(self.command("publish", **env), "ambiguous or already published")
 
     def test_publish_refuses_a_draft_whose_digest_changed(self):
         self.drafted()
@@ -200,14 +203,38 @@ class ReleaseTest(unittest.TestCase):
 
     def test_publish_refuses_a_record_that_disagrees_with_the_inventory(self):
         self.drafted()
-        record = json.loads(self.record.read_text())
+        original = self.record.read_text()
+        record = json.loads(original)
         record["assets"][self.archive] = "f" * 64
         self.record.write_text(json.dumps(record))
         self.assert_blocked(self.command("publish"), "record")
-        record = json.loads(self.record.read_text())
+        record = json.loads(original)
         record["tag"] = "v9.9.9"
         self.record.write_text(json.dumps(record))
         self.assert_blocked(self.command("publish"), "record")
+
+    def test_vacant_refuses_a_tag_with_a_release_or_draft(self):
+        self.assertEqual(self.command("vacant").returncode, 0)
+        (self.root / "remote").mkdir()
+        self.assert_blocked(self.command("vacant"), "already exists")
+        self.assert_blocked(self.command("vacant", FAKE_FAIL="lookup"), "failed")
+
+    def test_publish_refuses_a_changed_prerelease_flag(self):
+        self.drafted()
+        self.assert_blocked(self.command("publish", FAKE_PRERELEASE_FLIP="1"), "prerelease")
+
+    def test_publish_reports_a_release_that_changed_while_it_was_published(self):
+        self.drafted()
+        result = self.command("publish", FAKE_SWAP_AFTER_PUBLISH="1")
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("published release differs", result.stderr)
+
+    def test_assets_are_downloaded_by_id_not_by_tag(self):
+        self.drafted()
+        self.assertEqual(self.command("publish").returncode, 0)
+        events = (self.root / "events.jsonl").read_text()
+        self.assertNotIn('"download"', events)
+        self.assertIn("/releases/assets/1000", events)
 
     def test_publish_without_a_draft_record_does_nothing(self):
         self.prepare()

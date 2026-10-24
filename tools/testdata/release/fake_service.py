@@ -26,6 +26,11 @@ def draft():
     return not (root / "published").exists() and not os.environ.get("FAKE_ALREADY_PUBLISHED")
 
 
+def remote_files():
+    # Asset IDs follow the sorted names, as stable as GitHub's within one draft.
+    return {1000 + index: path for index, path in enumerate(sorted((root / "remote").iterdir()))}
+
+
 if tool == "goreleaser":
     if not any(arg.startswith("--skip=") and "publish" in arg.split("=", 1)[1].split(",")
                for arg in args):
@@ -61,6 +66,7 @@ elif tool == "gh" and args[:2] == ["release", "create"]:
         fail("release already exists")
     remote.mkdir()
     (root / "tag").write_text(args[2])
+    (root / "prerelease").write_text(json.dumps("--prerelease" in args))
     # The caller provides each asset as an absolute file argument.
     notes = value("--notes-file")
     for arg in args[3:]:
@@ -71,16 +77,20 @@ elif tool == "gh" and args[:2] == ["release", "create"]:
     # GitHub computes each asset's digest from the bytes it received.
     (root / "remote-digests.json").write_text(json.dumps(
         {path.name: "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest() for path in remote.iterdir()}))
-elif tool == "gh" and args[:2] == ["release", "download"]:
-    for path in (root / "remote").iterdir():
-        shutil.copyfile(path, Path(value("--dir")) / path.name)
+elif tool == "gh" and args[:2] == ["api", "-H"] and "/releases/assets/" in args[3]:
+    if args[2] != "Accept: application/octet-stream":
+        fail("asset download must request the raw bytes")
+    path = remote_files().get(int(args[3].rsplit("/", 1)[1]))
+    if path is None:
+        fail("no such asset")
+    sys.stdout.buffer.write(path.read_bytes())
 elif tool == "gh" and args[0] == "api" and args[1].endswith("/123/assets"):
     # GitHub reports each asset's own SHA-256 as "digest" (cleartoship 0024).
     recorded = json.loads((root / "remote-digests.json").read_text())
-    assets = [{"name": path.name, "state": "uploaded",
+    assets = [{"id": asset_id, "name": path.name, "state": "uploaded",
                "digest": os.environ.get("FAKE_ASSET_DIGEST") or recorded.get(path.name)
                or "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()}
-              for path in sorted((root / "remote").iterdir())]
+              for asset_id, path in remote_files().items()]
     print(json.dumps([assets]))
 elif tool == "gh" and args[0] == "api" and "--paginate" in args:
     if os.environ.get("FAKE_FAIL") == "lookup":
@@ -97,7 +107,16 @@ elif tool == "gh" and args[0] == "api" and "--method" in args:
     if value("--method") != "PATCH" or "draft=false" not in args or not args[1].endswith("/123"):
         fail("only ID-bound final publication is supported")
     (root / "published").write_text("published after verification\n")
+    if os.environ.get("FAKE_SWAP_AFTER_PUBLISH"):
+        recorded = json.loads((root / "remote-digests.json").read_text())
+        name = next(n for n in recorded if n.endswith(".tar.gz"))
+        recorded[name] = "sha256:" + "e" * 64
+        (root / "remote-digests.json").write_text(json.dumps(recorded))
 elif tool == "gh" and args[0] == "api" and args[1].endswith("/123"):
-    print(json.dumps({"id": 123, "draft": draft(), "tag_name": (root / "tag").read_text()}))
+    prerelease = json.loads((root / "prerelease").read_text())
+    if os.environ.get("FAKE_PRERELEASE_FLIP"):
+        prerelease = not prerelease
+    print(json.dumps({"id": 123, "draft": draft(), "tag_name": (root / "tag").read_text(),
+                      "prerelease": prerelease}))
 else:
     fail("unexpected command: " + repr([tool] + args))

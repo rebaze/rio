@@ -534,10 +534,11 @@ Like the merge-policy tests, it runs offline and is included in CI's Python test
 ([issue #51](https://github.com/rebaze/rio/issues/51)). It requires Python 3.9+, `gh` and
 `cosign`; the workflow supplies GitHub credentials and pins its signing tools.
 
-The workflow builds with GoReleaser's `--skip=publish,announce,homebrew`. It then stages
-archives, their checksums and signature, the source CycloneDX SBOM, and the changelog.
-The staging command writes a SHA-256 inventory last and refuses existing output paths,
-so an interrupted run cannot silently reuse an earlier inventory.
+The workflow first runs `release-publish.py vacant`, which refuses a tag that already has a
+release or draft before anything is built or signed. It then builds with GoReleaser's
+`--skip=publish,announce,homebrew` and stages archives, their checksums and signature, the
+source CycloneDX SBOM, and the changelog. The staging command writes a SHA-256 inventory last and
+refuses existing output paths, so an interrupted run cannot silently reuse an earlier inventory.
 
 ```sh
 python3 tools/release-publish.py stage \
@@ -566,13 +567,13 @@ makes it; attaching it to an archive does not establish a complete inventory of 
 assembled binary.
 
 Verification and upload use the same private copy of the staged bytes. After the upload the guard
-compares each draft asset's GitHub `digest` and its downloaded bytes with the inventory, then
-writes `release-draft.json` naming the draft and its assets. The draft is not public yet.
+compares each draft asset's GitHub `digest` and its bytes, downloaded by asset ID from that
+draft, with the inventory, then writes `release-draft.json` naming the draft and its assets. The
+inventory and record go to the next job as job outputs, not artifacts. The draft is not public yet.
 
 The `publish` job runs in the `release` environment, which the Clear to Ship App holds until the
-gate for the commit is clear. Under [Clear to Ship decision 0024](https://github.com/rebaze/cleartoship/issues/79)
-the App compares the draft's digests with the build provenance before it lets the job run. The job
-holds no signing secret. It checks the draft once more and makes it public:
+gate for the commit is clear. It uses no signing secret. It checks the draft once more and makes
+it public:
 
 ```sh
 python3 tools/release-publish.py publish \
@@ -580,20 +581,35 @@ python3 tools/release-publish.py publish \
   --tag "$TAG" --repo "$GITHUB_REPOSITORY"
 ```
 
-It requires the tag to have exactly that one draft, every asset's GitHub `digest` and downloaded
-bytes to equal the record and the inventory, and no missing or extra asset. Only then does it
-publish the identified draft. Homebrew runs only after successful publication and receives the
-staged checksums. Prereleases keep their prerelease designation and do not update the tap.
+It requires all of these before it publishes the identified draft:
 
-An existing release **or draft** for the tag blocks `draft`. Lookup and verification errors
-also block it. A failure after draft creation, or a refused `publish`, leaves the draft
-unpublished. Re-run the failed `publish` job once the cause is fixed. Re-running the whole
-workflow stops at `draft`, because the draft exists. The tool never deletes tags, replaces assets,
-or recreates a release. A draft whose bytes are wrong is deleted by a maintainer, and the fix ships
-under a new patch tag. The workflow serializes runs per tag. Its credentials, staging directory,
-inventory and other release writers remain a trust boundary: this is not protection against an
-administrator or another authorized process deliberately changing a draft during the final API
-calls.
+- the tag has exactly that one draft, with an unchanged prerelease flag;
+- every asset's GitHub `digest` and downloaded bytes equal the record and the inventory;
+- no asset is missing or extra.
+
+Right after publication it lists the assets again and fails if any differ, which keeps a
+swapped asset out of the tap. That re-check is today's byte check. The App comparing the staged
+digests with the build provenance itself is planned under
+[Clear to Ship decision 0024](https://github.com/rebaze/cleartoship/issues/79). Where the App reads
+the staged digests is still open there, because it cannot read drafts. `publish-tap` reads
+`checksums.txt` from the published release, and only stable tags update the tap.
+
+`vacant` and `draft` refuse a tag that already has a release **or draft**, and lookup and
+verification errors also block them. The tool never deletes tags, replaces assets, or
+recreates a release. When a run stops, what to do depends on where:
+
+- **`publish` failed or the gate refused it:** fix the cause, then re-run only the failed
+  `publish` job. It reads the earlier `build` job's outputs and checks the same draft.
+- **`build` failed after the draft exists:** a maintainer deletes that draft, then re-runs all
+  jobs on the same tag. This is the case when no record was written, for example because the
+  download check refused it. Deleting an unpublished draft is not re-creating a release. Nothing
+  was published.
+- **A release was published with wrong bytes:** ship the fix under a new patch tag
+  ([recovery](../docs/recovery.md)).
+
+The workflow serializes runs per tag. Its credentials, staging directory, inventory and other
+release writers remain a trust boundary: this is not protection against an administrator or
+another authorized process deliberately changing a draft during the final API calls.
 
 ### Run the offline terminal demo
 
