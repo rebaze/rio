@@ -47,6 +47,16 @@ type Artifact struct {
 	Build     *Build  `json:"build,omitempty"`
 	Generator *Tool   `json:"generator,omitempty"`
 	Lifecycle *string `json:"lifecycle,omitempty"`
+	// Distributions are producer-asserted digests of the shipped files. Rio
+	// records them; it never hashes the files.
+	Distributions []Distribution `json:"distributions,omitempty"`
+}
+
+// Distribution is the SHA-256 a producer asserts for one shipped file.
+type Distribution struct {
+	Name   string `json:"name"`
+	SHA256 string `json:"sha256"`
+	URL    string `json:"url,omitempty"`
 }
 
 // Source describes the source assertion associated with a product artifact.
@@ -288,6 +298,9 @@ func cloneArtifact(in Artifact) Artifact {
 		out.Generator = &Tool{Name: cloneString(in.Generator.Name), Version: cloneString(in.Generator.Version)}
 	}
 	out.Lifecycle = cloneString(in.Lifecycle)
+	if in.Distributions != nil {
+		out.Distributions = append([]Distribution(nil), in.Distributions...)
+	}
 	return out
 }
 
@@ -397,7 +410,7 @@ func parseArtifact(value any, field string) (Artifact, error) {
 	if !ok {
 		return Artifact{}, fmt.Errorf("%s must be an object", field)
 	}
-	if err := only(m, "id", "sbom", "source", "build", "generator", "lifecycle"); err != nil {
+	if err := only(m, "id", "sbom", "source", "build", "generator", "lifecycle", "distributions"); err != nil {
 		return Artifact{}, err
 	}
 	id, err := requiredString(m, "id", field)
@@ -454,7 +467,76 @@ func parseArtifact(value any, field string) (Artifact, error) {
 		}
 		a.Lifecycle = &lifecycle
 	}
+	if raw, present := m["distributions"]; present {
+		distributions, err := parseDistributions(raw, field+".distributions")
+		if err != nil {
+			return Artifact{}, err
+		}
+		a.Distributions = distributions
+	}
 	return a, nil
+}
+
+// maxDistributions bounds one entry's distribution list.
+const maxDistributions = 1000
+
+func parseDistributions(value any, field string) ([]Distribution, error) {
+	list, ok := value.([]any)
+	if !ok || len(list) == 0 {
+		return nil, fmt.Errorf("%s must be a nonempty array", field)
+	}
+	if len(list) > maxDistributions {
+		return nil, fmt.Errorf("%s must have at most %d entries", field, maxDistributions)
+	}
+	out := make([]Distribution, 0, len(list))
+	seen := map[string]bool{}
+	seenURL := map[string]bool{}
+	for i, raw := range list {
+		label := fmt.Sprintf("%s[%d]", field, i)
+		m, ok := raw.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("%s must be an object", label)
+		}
+		if err := only(m, "name", "sha256", "url"); err != nil {
+			return nil, err
+		}
+		name, err := requiredString(m, "name", label)
+		if err != nil {
+			return nil, err
+		}
+		if strings.ContainsAny(name, `/\`) {
+			return nil, fmt.Errorf("%s.name must not contain / or \\", label)
+		}
+		if name == "." || name == ".." {
+			return nil, fmt.Errorf("%s.name must not be . or ..", label)
+		}
+		if seen[name] {
+			return nil, fmt.Errorf("%s.name duplicates an earlier distribution", label)
+		}
+		seen[name] = true
+		sum, err := requiredString(m, "sha256", label)
+		if err != nil {
+			return nil, err
+		}
+		if !lowerHex(sum, 64) {
+			return nil, fmt.Errorf("%s.sha256 must be 64 lowercase hexadecimal characters", label)
+		}
+		d := Distribution{Name: name, SHA256: sum}
+		if u, err := optionalString(m, "url", label); err != nil {
+			return nil, err
+		} else if u != nil {
+			if !validURL(*u) {
+				return nil, fmt.Errorf("%s.url must be an absolute http(s) URL without credentials, query or fragment", label)
+			}
+			if seenURL[*u] {
+				return nil, fmt.Errorf("%s.url duplicates an earlier distribution", label)
+			}
+			seenURL[*u] = true
+			d.URL = *u
+		}
+		out = append(out, d)
+	}
+	return out, nil
 }
 
 // ParseEffective validates a previously recorded effective artifact without

@@ -17,10 +17,10 @@ inputs and remain separate from its runtime.
 | [`demo-dtrack-tls/`](demo-dtrack-tls/) | demonstrates verified TLS and explicit certificate bypass with recorded policy | with Rio 0.7.0+ and Python 3.9+ |
 | [`demo-oci/`](demo-oci/) | demonstrates native standalone and attached OCI delivery | with Rio 0.7.0+ and Python 3.9+ |
 | [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | with Rio 0.7.0+ and Python 3.9+ |
-| [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, refusals and owned-claim replacement | with Rio 0.7.0+ and Python 3.9+ |
+| [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, shipped-file digests, refusals and owned-claim replacement | with Rio 0.9.0+ and Python 3.9+ |
 | [`demo-artifact-sets/`](#artifact-sets-demo) | discovers module SBOMs, refuses missing/overlapping inputs and retains offline scope/check evidence | with Rio 0.7.0+ and Python 3.9+ |
 | [`demo-recovery/`](demo-recovery/) | demonstrates partial delivery, explicit retry, reconciliation and offline crash recovery | with Rio 0.7.0+ and Python 3.9+ |
-| [`demo-handoff-checks/`](#handoff-checks-demo) | demonstrates the opt-in security-contact check and actionable gate failures | with Rio 0.9.0+ and Python 3.9+ |
+| [`demo-handoff-checks/`](#handoff-checks-demo) | demonstrates the opt-in security-contact and digest checks and actionable gate failures | with Rio 0.9.0+ and Python 3.9+ |
 | [`demo-normalization-evidence/`](demo-normalization-evidence/) | explains repair sources, exact changes and offline retention | with an installed release containing normalization evidence |
 | [`demo-repair/`](#first-repair-sample) | shows optional p2 repair with an unchanged input and an audit record | when evaluating Eclipse/OSGi coordinate repair |
 | [`demo-agent-integration/`](#agent-integration-examples) | tests project onboarding configurations and a one-command CI receipt step | with Rio 0.7.0+ and Python 3.9+ |
@@ -635,9 +635,10 @@ SBOMs, indexes and unsigned statements in a fresh temporary directory printed at
 ## CI build context demo
 
 The [standalone context demo](demo-context/README.md) contains two synthetic CycloneDX SBOMs
-from different repositories, a shared context JSON file, three refusal cases, a prior-claim
-replacement case and a POSIX shell runner. Use an installed Rio release containing #62 and the
-matching tagged source archive; Python 3.9+ reads structured results; no Go toolchain, source build, jq or network is needed:
+from different repositories, a shared context JSON file that also declares two shipped files of
+one product, three refusal cases, a prior-claim replacement case and a POSIX shell runner. Use an
+installed Rio 0.9.0+ release and the matching tagged source archive; Python 3.9+ reads structured
+results; no Go toolchain, source build, jq or network is needed:
 
 ```sh
 ./tools/demo-context/run.sh
@@ -645,7 +646,8 @@ RIO_BIN=/absolute/path/to/rio ./tools/demo-context/run.sh
 ```
 
 The runner first plans while the context file is absent, then normalizes both artifacts, reruns
-to compare output bytes, checks stale-digest/missing-required-field/prior-revision refusals, and
+to compare output bytes, prints the console subject's `distribution` references and the receipt's
+`distributions` list, checks stale-digest/missing-required-field/prior-revision refusals, and
 applies explicit replacement for revision plus omitted workspace and build ID. It retains every
 input, plan, output and diagnostic in a unique temporary directory printed at exit.
 
@@ -684,6 +686,25 @@ merge entries. Available flags cover all v1 leaves: `--source-repository`,
 writing any JSON; Rio remains the final validator of the context and manifest binding. See
 the [native context contract](../docs/context.md) for field meaning and
 authority limits.
+
+Two further options declare the shipped files as `distributions`. `--checksums FILE` reads a
+`sha256sum` or GoReleaser `checksums.txt` (`<64 lowercase hex>`, two spaces or a space and `*`,
+then the file name; one per line, order kept). Malformed lines, uppercase or short digests,
+duplicate names, names with `/` or `\`, an empty file and more than 1000 files are refused.
+`--distribution-url PREFIX` requires `--checksums`, must be an absolute HTTP(S) URL ending in `/`,
+and sets each `url` to the prefix plus the name percent-encoded as one path segment (the `name` stays as listed). The digests are the producer's assertion: the
+helper and Rio do not hash the files.
+
+```sh
+python3 tools/rio-context.py --artifact-id console --sbom target/console.cdx.json \
+  --checksums dist/checksums.txt \
+  --distribution-url https://github.com/example/console/releases/download/v1.0.0/ \
+  > build-context.tmp.json
+```
+
+Use the same temporary-file-then-move handling as the first example. Rio then writes each file as a
+`distribution` reference on the SBOM subject and lists it in the receipt; see
+[shipped files](../docs/context.md#shipped-files-distributions).
 
 ## Artifact sets demo
 
@@ -774,7 +795,8 @@ It covers a partial batch with a lost response and an excluded pair, refusal to 
 
 ## Handoff checks demo
 
-[`demo-handoff-checks/`](demo-handoff-checks/README.md) shows the opt-in `gate.subject.require: [securityContact]`:
+[`demo-handoff-checks/`](demo-handoff-checks/README.md) shows the opt-in `gate.subject.require`
+values `securityContact` and `digest`:
 
 ```sh
 python3 tools/demo-handoff-checks/run.py /path/to/rio
@@ -782,7 +804,9 @@ python3 tools/demo-handoff-checks/run.py /path/to/rio
 
 The same synthetic SBOM passes when no contact is required, fails with a next step when it is
 required but missing or unsupported, and passes once a reviewed contact is supplied through
-enrichment. Failures deliver nothing and list `subject.securityContact` under the receipt's
+enrichment. With `digest` required it fails until a build context file declares the shipped
+files under `distributions`; then the SBOM subject and the receipt list them. Failures deliver
+nothing and list `subject.securityContact` or `subject.digest` under the receipt's
 `checks.failed`. Requires Rio 0.9.0+ and Python 3.9+.
 
 ## Native OCI delivery

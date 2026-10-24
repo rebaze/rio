@@ -33,6 +33,9 @@ th { background: #eef2ef; } .muted, footer { color: #50636b; } .notice { border-
 {{if .PreExisting}}<p class="notice">{{if .Input}}Consumed already-normalized bytes.{{else}}No SBOM bytes were consumed by this invocation.{{end}} Earlier normalization is pre-existing work, not work performed by this invocation.</p>{{end}}
 <dl>{{with .Input}}<dt>Consumed</dt><dd><code>{{.Path}}</code></dd><dt>Input SHA-256</dt><dd><code>{{.SHA256}}</code> · {{.Size}} bytes</dd>{{end}}
 {{with .Output}}<dt>Output SHA-256</dt><dd><code>{{.SHA256}}</code> · {{.Size}} bytes</dd>{{end}}</dl>
+{{if .Distributions}}<table><thead><tr><th>Distribution</th><th>SHA-256</th><th>Assertion</th></tr></thead><tbody>
+{{range .Distributions}}<tr><td><code>{{.Name}}</code></td><td><code>{{.SHA256}}</code></td><td>{{.Assertion}}</td></tr>{{end}}
+</tbody></table>{{end}}
 {{with .Changes}}{{with .SpecVersion}}<p>Specification {{.From}} → {{.To}}</p>{{end}}
 {{if .Metadata}}<table><thead><tr><th>Metadata</th><th>Before</th><th>After</th><th>Assertion / source</th></tr></thead><tbody>
 {{range .Metadata}}<tr><td><code>{{.Field}}</code><br>{{.Operation}}</td><td><code>{{value .Before}}</code></td><td><code>{{value .After}}</code></td><td>{{.Assertion}} / {{.Source}}</td></tr>{{end}}

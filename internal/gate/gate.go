@@ -36,11 +36,19 @@ const (
 	// metadata.component with a supported value. It is a subject requirement,
 	// opted into with gate.subject.require; components are never asked for it.
 	RequireSecurityContact Requirement = "securityContact"
+	// RequireDigest demands a distribution external reference on
+	// metadata.component with a SHA-256 hash, whoever supplied it. It is a
+	// subject requirement, opted into with gate.subject.require.
+	RequireDigest Requirement = "digest"
 )
 
 // SecurityContactReference is the CycloneDX external reference type that
 // carries a product security contact.
 const SecurityContactReference = "security-contact"
+
+// DistributionReference is the CycloneDX external reference type that carries
+// the digest of a shipped file.
+const DistributionReference = "distribution"
 
 // Requirements is everything one gate run is asked to check.
 type Requirements struct {
@@ -71,7 +79,7 @@ type Finding struct {
 	Component string `json:"component,omitempty"`
 	// Missing lists the failed requirements in the fixed order name, version,
 	// purl, never the order gate.require gave them in (§7). A subject finding
-	// uses name, version, securityContact.
+	// uses name, version, securityContact, digest.
 	Missing []string `json:"missing"`
 	// Details explains a failed requirement where "missing" alone would
 	// mislead, such as a security contact that is present but unsupported.
@@ -169,13 +177,13 @@ func CheckRequirements(doc *sbom.Document, reqs Requirements) Result {
 func evaluatedResult(result Result, findings []Finding, reqs Requirements) Result {
 	result.Findings = findings
 	for _, scope := range []string{"subject", "components"} {
-		for _, req := range append(All(), RequireSecurityContact) {
+		for _, req := range append(All(), RequireSecurityContact, RequireDigest) {
 			selected := false
 			switch scope {
 			case "subject":
-				selected = req == RequireName || req == RequireVersion || (req == RequireSecurityContact && wants(reqs.Subject, req))
+				selected = req == RequireName || req == RequireVersion || ((req == RequireSecurityContact || req == RequireDigest) && wants(reqs.Subject, req))
 			case "components":
-				selected = req != RequireSecurityContact && wants(reqs.Components, req)
+				selected = req != RequireSecurityContact && req != RequireDigest && wants(reqs.Components, req)
 			}
 			if !selected {
 				continue
@@ -216,7 +224,8 @@ func wants(list []Requirement, req Requirement) bool {
 }
 
 // checkSubject verifies metadata.component carries both a name and a version,
-// and a supported security contact when that is required.
+// and a supported security contact and a distribution digest when those are
+// required.
 func checkSubject(doc *sbom.Document, require []Requirement) (Finding, bool) {
 	name, version := doc.Subject()
 	f := Finding{Subject: true}
@@ -234,7 +243,36 @@ func checkSubject(doc *sbom.Document, require []Requirement) (Finding, bool) {
 			}
 		}
 	}
+	if wants(require, RequireDigest) && !checkDigest(doc) {
+		f.Missing = append(f.Missing, string(RequireDigest))
+	}
 	return f, len(f.Missing) > 0
+}
+
+// checkDigest passes when any distribution reference carries a SHA-256 hash of
+// 64 hex characters. Who supplied the reference does not matter, and rio does
+// not verify the digest against any file.
+func checkDigest(doc *sbom.Document) bool {
+	for _, ref := range doc.SubjectReferencesWithHashes(DistributionReference) {
+		for _, h := range ref.SHA256 {
+			if validSHA256(h) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func validSHA256(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 // checkSecurityContact passes when any security-contact reference carries a

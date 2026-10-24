@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -73,6 +74,45 @@ func TestContextDemoFixtures(t *testing.T) {
 		}
 		if tc.id == "console" && !strings.Contains(string(mustJSON(t, outMeta["lifecycles"])), "build") {
 			t.Fatal("supplied lifecycle not applied")
+		}
+		var distributions []any
+		for _, ref := range refs {
+			if ref.(map[string]any)["type"] == "distribution" {
+				distributions = append(distributions, ref)
+			}
+		}
+		// Expectations come from the declared fixture, not from rio's own record.
+		var declared []any
+		for _, a := range decode(t, contextBytes)["artifacts"].([]any) {
+			if a.(map[string]any)["id"] == tc.id {
+				declared, _ = a.(map[string]any)["distributions"].([]any)
+			}
+		}
+		var wantRefs, wantReceipt []any
+		wantOwned := []any{}
+		for _, value := range declared {
+			d := value.(map[string]any)
+			url, ok := d["url"].(string)
+			if !ok {
+				url = strings.ReplaceAll(neturl.QueryEscape(d["name"].(string)), "+", "%20")
+			}
+			wantRefs = append(wantRefs, map[string]any{"type": "distribution", "url": url, "hashes": []any{map[string]any{"alg": "SHA-256", "content": d["sha256"]}}})
+			wantOwned = append(wantOwned, "distribution:"+d["name"].(string))
+			wantReceipt = append(wantReceipt, map[string]any{"name": d["name"], "sha256": d["sha256"], "assertion": "producer"})
+		}
+		if want := map[string]int{"console": 2, "agent": 0}[tc.id]; len(declared) != want {
+			t.Fatalf("%s declares %d distributions, want %d", tc.id, len(declared), want)
+		}
+		if !bytes.Equal(mustJSON(t, distributions), mustJSON(t, wantRefs)) {
+			t.Fatalf("%s distribution references %v, want %v", tc.id, distributions, wantRefs)
+		}
+		owned := claim["ownedReferences"].([]any)
+		if !bytes.Equal(mustJSON(t, owned[len(owned)-len(wantOwned):]), mustJSON(t, wantOwned)) {
+			t.Fatalf("%s owned references %v, want suffix %v", tc.id, owned, wantOwned)
+		}
+		receiptArtifact := decode(t, readFile(t, latestOutput(t, dir, "normalized"), "record.json"))["artifacts"].([]any)[i].(map[string]any)
+		if !bytes.Equal(mustJSON(t, receiptArtifact["distributions"]), mustJSON(t, wantReceipt)) {
+			t.Fatalf("%s receipt distributions %v, want %v", tc.id, receiptArtifact["distributions"], wantReceipt)
 		}
 	}
 	requireExit(t, rio(t, dir, "normalize", "--manifest", "rio.yaml", "--out", "normalized", "--gate", "fail", "--attest"), ExitOK)

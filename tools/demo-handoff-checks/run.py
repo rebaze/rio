@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Installed-binary demo of the opt-in security-contact check. Python 3.9+, synthetic loopback receiver only."""
+"""Installed-binary demo of the opt-in subject checks. Python 3.9+, synthetic loopback receiver only."""
 import argparse
+import hashlib
 import http.server
 import json
 import os
@@ -13,12 +14,21 @@ import threading
 HERE = Path(__file__).resolve().parent
 TOKEN = "f90934f5-cb88-47ce-81cb-db06fc67d4b4"
 REQUIRE = "gate:\n  subject:\n    require: [securityContact]\n"
+REQUIRE_DIGEST = "gate:\n  subject:\n    require: [digest]\n"
+# Synthetic shipped files of Cart API 1.4.0. The digests are illustrative: Rio never hashes these files.
+DISTRIBUTIONS = [
+    {"name": "cart-api-1.4.0-linux-amd64.tar.gz", "sha256": "d1" * 32,
+     "url": "https://downloads.example.com/cart-api/1.4.0/cart-api-1.4.0-linux-amd64.tar.gz"},
+    {"name": "cart-api-1.4.0.jar", "sha256": "d2" * 32},
+]
 SCENARIOS = [
-    # name, extra manifest, security-contact already in the SBOM, expected exit
-    ("not-required", "", None, 0),
-    ("required-missing", REQUIRE, None, 1),
-    ("required-supplied", REQUIRE + "enrichment:\n  subject:\n    securityContact: mailto:security@example.com\n", None, 0),
-    ("required-unsupported", REQUIRE, "security@example.com", 1),
+    # name, extra manifest, security-contact already in the SBOM, distributions in a build context file, expected exit
+    ("not-required", "", None, None, 0),
+    ("required-missing", REQUIRE, None, None, 1),
+    ("required-supplied", REQUIRE + "enrichment:\n  subject:\n    securityContact: mailto:security@example.com\n", None, None, 0),
+    ("required-unsupported", REQUIRE, "security@example.com", None, 1),
+    ("digest-missing", REQUIRE_DIGEST, None, None, 1),
+    ("digest-supplied", REQUIRE_DIGEST, None, DISTRIBUTIONS, 0),
 ]
 
 
@@ -54,22 +64,31 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     env = dict(os.environ, RIO_DEMO_KEY="synthetic-demo-key")
     try:
-        for name, extra, contact, expected in SCENARIOS:
+        for name, extra, contact, distributions, expected in SCENARIOS:
             work = retained / name
             work.mkdir()
             sbom = json.loads((HERE / "fixtures/cart-api.cdx.json").read_text())
             if contact:
                 sbom["metadata"]["component"]["externalReferences"] = [{"type": "security-contact", "url": contact}]
             (work / "cart-api.cdx.json").write_text(json.dumps(sbom, indent=2))
+            binding = ""
+            if distributions:
+                # The context entry binds the SBOM bytes as written, whatever line endings the platform used.
+                digest = hashlib.sha256((work / "cart-api.cdx.json").read_bytes()).hexdigest()
+                context = {"contextVersion": 1, "artifacts": [
+                    {"id": "cart-api", "sbom": {"sha256": digest}, "distributions": distributions}]}
+                (work / "build-context.json").write_text(json.dumps(context, indent=2))
+                binding = "    context:\n      file: build-context.json\n"
             (work / "rio.yaml").write_text(
-                "version: 1\nartifacts:\n  - id: cart-api\n    sbom: cart-api.cdx.json\n"
+                "version: 1\nartifacts:\n  - id: cart-api\n    sbom: cart-api.cdx.json\n" + binding +
                 "delivery:\n  targets:\n    security:\n      type: dependency-track\n"
                 "      url: http://127.0.0.1:%d\n      allowHTTP: true\n      apiKeyEnv: RIO_DEMO_KEY\n" % server.server_port + extra)
             before = len(uploads)
             result = subprocess.run([binary, "--receipt", str(work / "record.json")], cwd=work, env=env,
                                     capture_output=True, text=True)
             assert result.returncode == expected, (name, result.returncode, result.stdout, result.stderr)
-            checks = json.loads((work / "record.json").read_text())["artifacts"][0]["checks"]
+            artifact = json.loads((work / "record.json").read_text())["artifacts"][0]
+            checks = artifact["checks"]
             delivered = len(uploads) - before
 
             # ASCII only: Windows consoles and redirected Python 3.9 output may use CP1252.
@@ -77,18 +96,21 @@ def main():
             print("   checks.subjectRequirements:", checks["subjectRequirements"])
             if "failed" in checks:
                 print("   checks.failed:", checks["failed"])
+            for item in artifact.get("distributions", []):
+                print("   receipt distribution: %s sha256=%s assertion=%s" % (item["name"], item["sha256"], item["assertion"]))
             for line in result.stderr.splitlines():
                 print("   " + line)
 
-            required = "securityContact" in checks["subjectRequirements"]
-            assert required == bool(extra), name
+            requirement = "digest" if extra == REQUIRE_DIGEST else "securityContact"
+            assert checks["subjectRequirements"] == ["name", "version"] + ([requirement] if extra else []), name
             if expected == 0:
                 assert delivered == 1 and checks["gate"] == "pass" and "failed" not in checks, name
                 assert "failed the gate" not in result.stderr, name
             else:
                 assert delivered == 0 and checks["gate"] == "fail", name
-                assert checks["failed"] == [{"requirement": "subject.securityContact", "count": 1}], name
+                assert checks["failed"] == [{"requirement": "subject." + requirement, "count": 1}], name
                 assert "gate mode fail, so nothing was delivered." in result.stderr, name
+            if expected and requirement == "securityContact":
                 assert "enrichment.subject.securityContact" in result.stderr, name
             if name == "required-supplied":
                 output = json.loads(next((work / "target/rio/runs").glob("*/cart-api.cdx.json")).read_text())
@@ -98,8 +120,23 @@ def main():
                 assert '"security@example.com" is not an absolute http(s) URL or a mailto address' in result.stderr
             if name == "required-missing":
                 assert "Rio does not look it up." in result.stderr
+            if name == "digest-missing":
+                assert ("subject.digest: the SBOM subject has no distribution digest. Add the shipped files under "
+                        "distributions in the build context file. Rio does not hash them.") in result.stderr, result.stderr
+                assert "distributions" not in artifact, name
+            if name == "digest-supplied":
+                output = json.loads(next((work / "target/rio/runs").glob("*/cart-api.cdx.json")).read_text())
+                refs = [r for r in output["metadata"]["component"]["externalReferences"] if r["type"] == "distribution"]
+                assert refs == [{"type": "distribution", "url": d.get("url", d["name"]),
+                                 "hashes": [{"alg": "SHA-256", "content": d["sha256"]}]} for d in DISTRIBUTIONS], refs
+                for ref in refs:
+                    print("   SBOM distribution reference: %s SHA-256 %s" % (ref["url"], ref["hashes"][0]["content"]))
+                assert artifact["distributions"] == [
+                    {"name": d["name"], "sha256": d["sha256"], "assertion": "producer"} for d in DISTRIBUTIONS], artifact
         print("PASS: a contact is checked only when required; a missing or unsupported one blocks delivery with the next step;")
         print("PASS: a reviewed contact supplied through enrichment passes. A pass shows the value is present and well formed, nothing more.")
+        print("PASS: a required digest blocks delivery until the build context file declares the shipped files;")
+        print("PASS: the declared digests reach the SBOM subject and the receipt as producer assertions. Rio hashes no shipped file.")
         print("Retained runs:", retained)
     finally:
         server.shutdown()

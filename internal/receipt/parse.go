@@ -136,6 +136,23 @@ func Validate(d Document) error {
 				}
 			}
 		}
+		if len(a.Distributions) > MaxItems {
+			return invalid("distribution limit")
+		}
+		names := map[string]bool{}
+		for _, dist := range a.Distributions {
+			switch {
+			case strings.TrimSpace(dist.Name) == "" || len(dist.Name) > MaxValueBytes:
+				return invalid("distribution name")
+			case names[dist.Name]:
+				return invalid("duplicate distribution name")
+			case !delivery.ValidDigest(dist.SHA256):
+				return invalid("distribution sha256")
+			case dist.Assertion != "producer":
+				return invalid("distribution assertion")
+			}
+			names[dist.Name] = true
+		}
 		if a.State == "completed" && (a.Input == nil || a.Output == nil) {
 			return invalid("completed artifact bytes")
 		}

@@ -115,9 +115,14 @@ func TestPipelineSecurityContactRequirement(t *testing.T) {
 				if tc.sbomContact == "" {
 					continue
 				}
-				raw, _ := os.ReadFile(id + ".cdx.json")
+				raw, err := os.ReadFile(id + ".cdx.json")
+				if err != nil {
+					t.Fatal(err)
+				}
 				raw = bytes.Replace(raw, []byte(`"version":"1.0.0"}`), []byte(`"version":"1.0.0","externalReferences":[{"type":"security-contact","url":"`+tc.sbomContact+`"}]}`), 1)
-				os.WriteFile(id+".cdx.json", raw, 0600)
+				if err := os.WriteFile(id+".cdx.json", raw, 0600); err != nil {
+					t.Fatal(err)
+				}
 			}
 			appendManifest(t, tc.manifest)
 
@@ -301,5 +306,90 @@ func TestIndexRefusesContradictorySubjectRequirements(t *testing.T) {
 				t.Fatal("contradictory subject requirements accepted")
 			}
 		})
+	}
+}
+
+func TestPipelineDigestRequirement(t *testing.T) {
+	const requireDigest = "gate:\n  subject:\n    require: [digest]\n"
+	sum := strings.Repeat("ab", 32)
+	ref := func(hashes string) string {
+		return `"externalReferences":[{"type":"distribution","url":"https://example.com/app.tgz","hashes":[` + hashes + `]}]`
+	}
+	cases := []struct {
+		name       string
+		refs       string
+		wantCode   int
+		wantFailed []receipt.FailedRequirement
+	}{
+		{name: "generator supplied", refs: ref(`{"alg":"SHA-256","content":"` + sum + `"}`)},
+		{name: "missing", wantCode: ExitGate, wantFailed: []receipt.FailedRequirement{{Requirement: "subject.digest", Count: 1}}},
+		{name: "reference without SHA-256", refs: ref(`{"alg":"SHA-512","content":"` + sum + `"}`), wantCode: ExitGate, wantFailed: []receipt.FailedRequirement{{Requirement: "subject.digest", Count: 1}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				io.WriteString(w, `{"token":"11111111-1111-4111-8111-111111111111"}`)
+			}))
+			defer srv.Close()
+			dir := pipelineFixture(t, srv.URL)
+			t.Chdir(dir)
+			t.Setenv("DTRACK_API_KEY", "synthetic")
+			if tc.refs != "" {
+				for _, id := range []string{"api", "worker"} {
+					raw, err := os.ReadFile(id + ".cdx.json")
+					if err != nil {
+						t.Fatal(err)
+					}
+					raw = bytes.Replace(raw, []byte(`"version":"1.0.0"}`), []byte(`"version":"1.0.0",`+tc.refs+`}`), 1)
+					if err := os.WriteFile(id+".cdx.json", raw, 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			appendManifest(t, requireDigest)
+			code, d, _, stderr := runRoot(t)
+			if code != tc.wantCode {
+				t.Fatalf("exit %d, want %d\n%s", code, tc.wantCode, stderr)
+			}
+			for _, a := range d.Artifacts {
+				if diff := cmp.Diff([]string{"name", "version", "digest"}, a.Checks.SubjectRequirements); diff != "" {
+					t.Errorf("%s subjectRequirements (-want +got):\n%s", a.ID, diff)
+				}
+				if diff := cmp.Diff(tc.wantFailed, a.Checks.Failed); diff != "" {
+					t.Errorf("%s failed (-want +got):\n%s", a.ID, diff)
+				}
+			}
+			if tc.wantCode != 0 && !strings.Contains(stderr, "subject.digest: the SBOM subject has no distribution digest. Add the shipped files under distributions in the build context file. Rio does not hash them.") {
+				t.Errorf("stderr lacks the advice:\n%s", stderr)
+			}
+		})
+	}
+}
+
+func TestPipelineContactAndDigestBothMissing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"token":"11111111-1111-4111-8111-111111111111"}`)
+	}))
+	defer srv.Close()
+	dir := pipelineFixture(t, srv.URL)
+	t.Chdir(dir)
+	t.Setenv("DTRACK_API_KEY", "synthetic")
+	appendManifest(t, "gate:\n  subject:\n    require: [securityContact, digest]\n")
+	code, d, _, stderr := runRoot(t)
+	if code != ExitGate {
+		t.Fatalf("exit %d, want %d\n%s", code, ExitGate, stderr)
+	}
+	want := []receipt.FailedRequirement{{Requirement: "subject.securityContact", Count: 1}, {Requirement: "subject.digest", Count: 1}}
+	for _, a := range d.Artifacts {
+		if diff := cmp.Diff(want, a.Checks.Failed); diff != "" {
+			t.Errorf("%s failed (-want +got):\n%s", a.ID, diff)
+		}
+	}
+	for _, advice := range []string{"subject.securityContact: the SBOM subject has no security-contact reference", "subject.digest: the SBOM subject has no distribution digest"} {
+		if !strings.Contains(stderr, advice) {
+			t.Errorf("stderr lacks %q:\n%s", advice, stderr)
+		}
 	}
 }

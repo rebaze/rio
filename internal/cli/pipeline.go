@@ -13,6 +13,7 @@ import (
 	"github.com/rebaze/rio/internal/index"
 	"github.com/rebaze/rio/internal/manifest"
 	"github.com/rebaze/rio/internal/receipt"
+	"github.com/rebaze/rio/internal/sbom"
 	"github.com/spf13/cobra"
 )
 
@@ -303,6 +304,7 @@ func compactArtifact(a *artifact) receipt.Artifact {
 		}
 		out.Checks.Failed = orderFailed(out.Checks.Failed)
 	}
+	out.Distributions = receiptDistributions(a.context)
 	changes := &receipt.Changes{}
 	if a.inputSpec != a.outputSpec {
 		changes.SpecVersion = &receipt.SpecChange{From: a.inputSpec, To: a.outputSpec}
@@ -372,4 +374,17 @@ func pipelineOperation(o pipelineOptions) string {
 		return o.operation
 	}
 	return "pipeline"
+}
+
+// receiptDistributions projects the context record's producer-asserted
+// distributions. Generator-supplied distribution references are not lifted.
+func receiptDistributions(rec *sbom.ContextRecord) []receipt.Distribution {
+	if rec == nil || len(rec.Effective.Distributions) == 0 {
+		return nil
+	}
+	out := make([]receipt.Distribution, 0, len(rec.Effective.Distributions))
+	for _, d := range rec.Effective.Distributions {
+		out = append(out, receipt.Distribution{Name: d.Name, SHA256: d.SHA256, Assertion: "producer"})
+	}
+	return out
 }

@@ -44,7 +44,7 @@ gate:
   mode: fail                     # root default; explicit --gate overrides it
   require: [name, version, purl]  # subset of these three; defaults to all three
   subject:
-    require: [securityContact]    # optional; defaults to []
+    require: [securityContact, digest]  # optional, either or both; defaults to []
 ```
 
 Each explicit artifact must resolve to exactly one regular SBOM file. Zero or multiple matches
@@ -62,21 +62,31 @@ checks every dependency component, including nested components. Required names a
 be nonblank; a required purl must be parseable as a package URL. Independently of this list, the
 SBOM subject (`metadata.component`) must always have a nonblank name and version.
 
-`gate.subject.require` opts into subject requirements beyond that. Its only value is
-`securityContact`: the subject must have a `security-contact` external reference whose URL is an
-absolute http(s) URL without credentials, or `mailto:` with one address. That is the same rule
-[enrichment](enrichment.md) applies, and the gate runs after enrichment, so a reviewed
-`enrichment.subject.securityContact` in `rio.yaml` satisfies it. A pass establishes only that a
-contact in a supported form is present. It does not identify who answers it, verify the mailbox or
-approve the release, and Rio never looks a contact up or invents one. The
-[handoff-checks demo](../tools/demo-handoff-checks/) shows each outcome.
+`gate.subject.require` opts into subject requirements beyond that. It accepts two values, each
+at most once:
+
+- `securityContact`: the subject must have a `security-contact` external reference whose URL is
+  an absolute http(s) URL without credentials, or `mailto:` with one address. That is the same
+  rule [enrichment](enrichment.md) applies, and the gate runs after enrichment, so a reviewed
+  `enrichment.subject.securityContact` in `rio.yaml` satisfies it. A pass establishes only that a
+  contact in a supported form is present. It does not identify who answers it, verify the
+  mailbox or approve the release, and Rio never looks a contact up or invents one.
+- `digest`: the subject must have a `distribution` external reference with a `SHA-256` hash of
+  64 hex characters. The gate runs after context is applied, so `distributions` in the
+  [build context file](context.md#shipped-files-distributions) satisfy it; a reference the SBOM
+  generator wrote counts too. A pass establishes only that a digest is recorded. Rio does not
+  hash the shipped files, and nothing proves they were built from the SBOM's components.
+
+The [handoff-checks demo](../tools/demo-handoff-checks/) shows each outcome.
 
 A failed requirement is printed with what its producer can do about it, and the receipt lists the
-failed requirements under `checks.failed`. For example:
+failed requirements under `checks.failed`. For example, with both values required and neither
+present:
 
 ```text
 rio: artifact "cart-api" failed the gate; gate mode fail, so nothing was delivered.
   subject.securityContact: the SBOM subject has no security-contact reference. Set the reviewed contact as enrichment.subject.securityContact in rio.yaml, or have the SBOM generator emit one. Rio does not look it up.
+  subject.digest: the SBOM subject has no distribution digest. Add the shipped files under distributions in the build context file. Rio does not hash them.
 ```
 
 `gate.mode` accepts `fail` or `warn`. Explicit `--gate` wins over the manifest. Root defaults to `fail`; standalone `normalize` retains its historical `warn` default only when no manifest mode is supplied. Failed checks remain failed in either mode. Enforced failure blocks every selected root upload and returns exit 1; warn can continue while recording the effective exception. Standalone `deliver` still requires its separate `--allow-failed-gate` override. See [exit codes](cli.md#exit-codes).

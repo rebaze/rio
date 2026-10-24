@@ -248,3 +248,27 @@ func TestFailedRequirementsAreScopedOrderedAndCounted(t *testing.T) {
 		})
 	}
 }
+
+func TestSubjectDigestFailureOrdersAfterSecurityContact(t *testing.T) {
+	build := func(failed ...FailedRequirement) Document {
+		d := gateRelationFixture()
+		failReceiptGate(&d, "warn")
+		d.Artifacts[0].Checks.SubjectRequirements = []string{"name", "version", "securityContact", "digest"}
+		d.Artifacts[0].Checks.Failed = failed
+		d.Artifacts[0].Checks.Findings = 1
+		return d
+	}
+	ok := build(FailedRequirement{Requirement: "subject.securityContact", Count: 1}, FailedRequirement{Requirement: "subject.digest", Count: 1})
+	if _, err := Marshal(ok); err != nil {
+		t.Fatalf("valid order refused: %v", err)
+	}
+	bad := build(FailedRequirement{Requirement: "subject.digest", Count: 1}, FailedRequirement{Requirement: "subject.securityContact", Count: 1})
+	if _, err := Marshal(bad); err == nil {
+		t.Fatal("digest before securityContact must be refused")
+	}
+	notRequired := build(FailedRequirement{Requirement: "subject.digest", Count: 1})
+	notRequired.Artifacts[0].Checks.SubjectRequirements = []string{"name", "version"}
+	if _, err := Marshal(notRequired); err == nil {
+		t.Fatal("a digest failure without the requirement must be refused")
+	}
+}

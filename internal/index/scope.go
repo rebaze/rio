@@ -209,7 +209,7 @@ func (c *EffectiveChecks) Validate(a Artifact) error {
 			return bad()
 		}
 		for _, r := range c.SubjectRequirements[2:] {
-			if r != string(gate.RequireSecurityContact) || subject[r] {
+			if (r != string(gate.RequireSecurityContact) && r != string(gate.RequireDigest)) || subject[r] {
 				return bad()
 			}
 			subject[r] = true
