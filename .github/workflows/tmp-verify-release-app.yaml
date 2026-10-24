@@ -1,7 +1,8 @@
 name: Verify release app token (temporary, #183)
 
-# Mints the release bot token exactly as publish-tap does and reads the tap.
-# Removed again before merge.
+# Mints the release bot token as publish-tap does, with client-id and with the
+# deprecated app-id for comparison, and reports what each token may do on the
+# tap. Removed again before merge.
 on:
   push:
     branches: [ci/183-deprecated-actions]
@@ -14,8 +15,8 @@ jobs:
   token:
     runs-on: ubuntu-latest
     steps:
-      - name: Mint App token
-        id: app-token
+      - name: Mint App token with client-id
+        id: client
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: Iv23liT1QG6HgP86rzYg
@@ -23,7 +24,27 @@ jobs:
           owner: rebaze
           repositories: homebrew-tap
 
-      - name: Read the tap with the token
+      - name: Mint App token with app-id
+        id: appid
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: rebaze
+          repositories: homebrew-tap
+
+      - name: Compare what each token may do
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: gh api repos/rebaze/homebrew-tap --jq '"\(.full_name) push=\(.permissions.push)"'
+          CLIENT_TOKEN: ${{ steps.client.outputs.token }}
+          APPID_TOKEN: ${{ steps.appid.outputs.token }}
+        run: |
+          set -euo pipefail
+          for kind in CLIENT APPID; do
+            var="${kind}_TOKEN"
+            token="${!var}"
+            echo "== $kind"
+            GH_TOKEN="$token" gh api repos/rebaze/homebrew-tap --jq '"repo \(.full_name) push=\(.permissions.push)"'
+            GH_TOKEN="$token" gh api installation/repositories --jq '"installation repos: \([.repositories[].full_name] | join(","))"'
+            curl -sS -o /dev/null -D - -H "Authorization: token $token" https://api.github.com/repos/rebaze/homebrew-tap \
+              | grep -i '^x-accepted-github-permissions\|^x-oauth-scopes' || true
+          done
