@@ -10,7 +10,7 @@ One execution produces one indented JSON document with `kind: "rio-run-receipt"`
 |---|---|
 | `rioVersion` | Binary version that recorded the invocation |
 | `run` | Fresh ID, operation, actual known start/end, overall outcome, phase states, explicit overrides and optional prior link |
-| `artifacts` | IDs, consumed input and generated output SHA-256/byte sizes, meaningful changes, effective checks and processing state |
+| `artifacts` | IDs, consumed input and generated output SHA-256/byte sizes, meaningful changes, effective checks, processing state and any declared distributions |
 | `targets` | Shared target type and configured receiver URL, stored once per label |
 | `deliveries` | Selected pairs, resolved projects/repositories, attempt IDs/prior references, intended/submitted byte identities, transport and response observations |
 | `exclusions` | Artifact/target filtering and declared artifact-set exclusion rules |
@@ -36,7 +36,28 @@ This is a value digest and encoded length, **not the full value**. The digest co
 
 Bulk changes retain operation/rule, traversal scope, evaluated/applied/unmapped/skipped counts, and unresolved reasons/counts. Applied and unmapped may overlap: a qualifier can be repaired while coordinates remain unresolved. Never add overlapping counters into a supposed component total. Unchanged dependency inventory, Rio bookkeeping and per-component rewrite ledgers are not copied into the receipt.
 
-Checks retain effective component/subject requirements, traversal scope, policy mode, evaluated component count, schema status and concise finding counts. When the gate fails, `failed` lists each failed requirement once with its count, using stable IDs in a fixed order: `subject.name`, `subject.version`, `subject.securityContact`, `components.name`, `components.version`, `components.purl`. Component-by-component detail stays in the run's `index.json` (`gateFindings`). Empty component requirements/inventory are explicitly `not-evaluated`; unsupported schema versions are `not-available`. Absent checks are not passes. A warn policy does not change a recorded failed check into success. Standalone delivery labels checks as pre-existing rather than claiming to have performed earlier normalization checks.
+Checks retain effective component/subject requirements, traversal scope, policy mode, evaluated component count, schema status and concise finding counts. `subjectRequirements` always holds `name` and `version`, followed by any `gate.subject.require` values (`securityContact`, `digest`) in manifest order. When the gate fails, `failed` lists each failed requirement once with its count, using stable IDs in a fixed order: `subject.name`, `subject.version`, `subject.securityContact`, `subject.digest`, `components.name`, `components.version`, `components.purl`. Component-by-component detail stays in the run's `index.json` (`gateFindings`). Empty component requirements/inventory are explicitly `not-evaluated`; unsupported schema versions are `not-available`. Absent checks are not passes. A warn policy does not change a recorded failed check into success. Standalone delivery labels checks as pre-existing rather than claiming to have performed earlier normalization checks.
+
+### Distributions
+
+When the artifact's [build context](context.md#shipped-files-distributions) declares shipped files, the artifact carries them in context order. The field is omitted otherwise:
+
+```json
+"distributions": [
+  {"name": "console-1.0.0-linux-amd64.tar.gz", "sha256": "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1", "assertion": "producer"},
+  {"name": "console-1.0.0-windows-amd64.zip", "sha256": "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2", "assertion": "producer"}
+]
+```
+
+`assertion` is always `producer`: Rio copies the digests from the context file and never hashes the files. Distribution references the SBOM generator wrote are not listed. Standalone delivery takes the list from the index's context record. The text report of `rio record inspect` prints them under the artifact, and the HTML report shows them in the artifact card:
+
+```text
+  2 distributions (producer assertion)
+    console-1.0.0-linux-amd64.tar.gz sha256=c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1
+    console-1.0.0-windows-amd64.zip sha256=c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2
+```
+
+The values come from the synthetic [context demo](../tools/README.md#ci-build-context-demo).
 
 ### Delivery observations
 

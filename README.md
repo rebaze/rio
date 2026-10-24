@@ -394,7 +394,8 @@ the dependency inventory is preserved. The original file stays unchanged.
 
 To carry pipeline lineage alongside those records, bind a producer-supplied [context file](docs/context.md)
 by artifact ID and original SBOM digest. The [context example](tools/README.md#ci-build-context-demo)
-shows source/build metadata appearing in the SBOM and index; Rio does not infer it from this sample.
+shows source/build metadata and shipped-file digests appearing in the SBOM and index; Rio does not
+infer them from this sample.
 
 If `rio` is not found, use its installed path or [add its directory to PATH](docs/cli.md#install).
 The [offline onboarding examples](tools/README.md#agent-integration-examples) run from a checkout.

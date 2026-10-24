@@ -27,7 +27,8 @@ wildcard. The allowed leaves are `source.repository`, `source.revision`,
 `source.subdirectory`, `source.ref`, `source.workspace`, `build.url`, `build.id`,
 `build.timestamp`, `build.system.name`, `build.system.version`, `generator.name`,
 `generator.version`, and `lifecycle`. `lifecycle` may be required but cannot be replaced.
-IDs and digests cannot be replaced. Duplicate/unknown selectors and wrong YAML types fail.
+IDs and digests cannot be replaced, so `distributions` can be named in neither list.
+Duplicate/unknown selectors and wrong YAML types fail.
 
 The file is one strict `contextVersion: 1` JSON document. A single file can serve multiple
 artifacts; all entries must be structurally valid, but unselected entries are not matched by
@@ -55,7 +56,18 @@ filename or digest. Here is a complete two-entry example (use each real input SB
         "system": {"name": "Gradle", "version": "8.14"}
       },
       "generator": {"name": "CycloneDX Gradle Plugin", "version": "3.0.0"},
-      "lifecycle": "build"
+      "lifecycle": "build",
+      "distributions": [
+        {
+          "name": "console-1.0.0-linux-amd64.tar.gz",
+          "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "url": "https://downloads.example.org/console/1.0.0/console-1.0.0-linux-amd64.tar.gz"
+        },
+        {
+          "name": "console-1.0.0-windows-amd64.zip",
+          "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      ]
     },
     {
       "id": "agent",
@@ -77,8 +89,12 @@ When a source object exists but omits workspace, Rio records effective `unknown`
 `source.workspace` under `defaulted`; this does **not** satisfy `require` for that leaf. Build
 timestamps must be RFC3339. A supplied build system or generator must have a name; version is
 optional. Lifecycle phases are `design`, `pre-build`, `build`, `post-build`, `operations`,
-`discovery`, `decommission`. Unknown JSON keys, duplicate keys at any depth, null/wrong types,
-trailing documents, empty artifact lists and duplicate IDs fail before outputs are written.
+`discovery`, `decommission`. A supplied `distributions` array is nonempty and holds at most
+1000 objects with exactly `name`, `sha256` and an optional `url`. Each `name` follows the
+supplied-string rule, contains neither `/` nor `\` and is unique within the entry; `sha256` is
+lowercase 64-character hex; `url` follows the repository URL rule. Unknown JSON keys, duplicate
+keys at any depth, null/wrong types, trailing documents, empty artifact lists and duplicate IDs
+fail before outputs are written.
 
 `source.repository` maps to the subject's `vcs` external reference and `build.url` to its
 `build-system` external reference. Matching rich references and unrelated references remain;
@@ -95,9 +111,11 @@ build ID values are never silently inherited from a prior snapshot. The index ar
 statement artifact carry identical context records.
 
 The record's `ownedReferences` array lists `source.repository` and/or `build.url` only when
-Rio added the corresponding bare native reference. Ownership survives unchanged snapshots.
-An authorized omission removes that exact reference and records the native before/after
-arrays as well as the logical removal. Pre-existing references, unrelated references and
+Rio added the corresponding bare native reference, and `distribution:<name>` for each
+distribution reference Rio added (see [shipped files](#shipped-files-distributions)). Ownership
+survives unchanged snapshots. An authorized omission of `source.repository` or `build.url`
+removes that exact reference and records the native before/after arrays as well as the logical
+removal. Pre-existing references, unrelated references and
 references subsequently augmented with comments or hashes remain. Earlier v1 context records
 without `ownedReferences` are accepted: Rio derives ownership only from an explicit native
 addition in their change audit; otherwise it preserves the reference because ownership is
@@ -111,10 +129,66 @@ them; the full native array stays. A custom-only array also stays, with the supp
 as a separate context assertion. No phase is inferred from timestamps, and a prior owned
 lifecycle assertion cannot be changed or removed.
 
+## Shipped files (`distributions`)
+
+`distributions` lists the files the producer ships for the artifact and the SHA-256 of each.
+Checksum files such as `sha256sum` output or a GoReleaser `checksums.txt` already hold these
+values; [`rio-context.py --checksums`](../tools/README.md#rio-contextpy) turns one into entries.
+Rio adds one `distribution` external reference per entry to `metadata.component`, in context
+order, after any existing references. `url` is the entry's `url`, or its `name` when no URL is
+given. For the example above the console subject gains:
+
+```json
+[
+  {
+    "type": "distribution",
+    "url": "https://downloads.example.org/console/1.0.0/console-1.0.0-linux-amd64.tar.gz",
+    "hashes": [{"alg": "SHA-256", "content": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}]
+  },
+  {
+    "type": "distribution",
+    "url": "console-1.0.0-windows-amd64.zip",
+    "hashes": [{"alg": "SHA-256", "content": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"}]
+  }
+]
+```
+
+An existing `distribution` reference with the same URL and the same SHA-256 (compared without
+regard to case) is kept as it is, not duplicated and not owned. The same URL with a different or
+missing SHA-256 hash fails the run. Distribution references with other URLs stay untouched.
+`ownedReferences` records `distribution:<name>` for each reference Rio added. The context record's
+`effective` value carries the list, and the audit holds at most two changes, both with field
+`distributions` and selector `/artifacts/N/distributions`: target `context:/distributions` with
+`before: null` and the full list as `after`, and target `/metadata/component/externalReferences`
+with the full before and after arrays when references were added.
+
+Distributions are digests, so they cannot be replaced or removed. When an SBOM already carries a
+Rio context record with distributions, the new entry must declare the same set (keyed by name,
+with equal digests and URLs). A changed, added or removed file fails, as does omitting
+`distributions`, and `replace` cannot authorize it. A prior record without distributions may
+gain them.
+
+The [run receipt](output.md) lists each declared file under the artifact's `distributions`
+with its `name`, `sha256` and `assertion: "producer"`; the field is omitted when the entry
+declares none. Distribution references the SBOM generator wrote are not copied into the
+receipt. `gate.subject.require: [digest]` passes when the subject has a `distribution`
+reference with a SHA-256 hash, whoever supplied it ([gate](manifest.md#output-version-and-gate)).
+An OCI target that attaches the SBOM to a `subject` descriptor refuses the artifact with
+`subject_digest_mismatch` unless the descriptor digest is one of the declared digests
+([OCI delivery](delivery.md#oci-registries)).
+
+Rio does not hash the shipped files and never opens them. A distribution digest is what the
+producer says it shipped; nothing proves those files were built from the components the SBOM
+describes. The [context demo](../tools/README.md#ci-build-context-demo) declares two synthetic
+files and shows the references and the receipt list.
+
+## Authority and contracts
+
 This is a **producer assertion**, not authentication of the source, build or generated artifact
 bytes. The context digest binds the local context file and the entry binds original SBOM bytes;
-neither binds a compiled artifact. Keep the original SBOM, raw context JSON, manifest and outputs
-for audit and reproduction. Rio does not package them. Context support adds optional v1 records
-under the existing plan/index/predicate v1 contracts; manifests without `context` retain their
-previous output shape. The [offline context demo](../tools/README.md#ci-build-context-demo) and
+neither binds a compiled artifact, and declared distribution digests are not checked against
+any file. Keep the original SBOM, raw context JSON, manifest and outputs for audit and
+reproduction. Rio does not package them. Context support adds optional v1 records under the
+existing plan/index/predicate v1 contracts, and distributions add an optional artifact field to
+the `schemaVersion: 1` receipt; manifests without `context` retain their previous output shape. The [offline context demo](../tools/README.md#ci-build-context-demo) and
 [explicit producer helper](../tools/README.md#rio-contextpy) are documented with the other tools.
