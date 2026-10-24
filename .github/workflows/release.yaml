@@ -145,11 +145,9 @@ jobs:
             release-assets/*.zip
           sbom-path: release-assets/rio-${{ github.ref_name }}-source.cdx.json
 
-      - name: Verify staged assets and upload them as a draft
-        id: draft
+      - name: Assemble the attestation bundle
         shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
           PROVENANCE_BUNDLE: ${{ steps.attest-provenance.outputs.bundle-path }}
           SBOM_BUNDLE: ${{ steps.attest-sbom.outputs.bundle-path }}
@@ -163,24 +161,14 @@ jobs:
           done
           # Keep the assembled bundle outside the frozen staging directory.
           # awk terminates each record even when an input lacks a final newline.
-          awk 1 "$PROVENANCE_BUNDLE" "$SBOM_BUNDLE" > release-attestations.jsonl
-          python3 tools/release-publish.py draft \
-            --stage release-assets --inventory release-inventory.json \
-            --bundle release-attestations.jsonl --record release-draft.json \
-            --tag "$TAG" --repo "$GITHUB_REPOSITORY"
-          printf 'inventory=%s\n' "$(base64 -w0 release-inventory.json)" >> "$GITHUB_OUTPUT"
-          printf 'record=%s\n' "$(base64 -w0 release-draft.json)" >> "$GITHUB_OUTPUT"
+          mkdir release-bundle
+          awk 1 "$PROVENANCE_BUNDLE" "$SBOM_BUNDLE" > "release-bundle/rio-${TAG}.intoto.jsonl"
 
       # Every release file also becomes its own unzipped run artifact, whose
       # digest is the file's SHA-256. Clear to Ship's App reads them while
       # publish waits (rebaze/cleartoship#79), and publish requires the draft
       # to equal them. One file per upload: archive: false takes a single file.
-      - name: Name the attestation bundle as it is released
-        env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          mkdir release-bundle
-          cp release-attestations.jsonl "release-bundle/rio-${TAG}.intoto.jsonl"
+      # Uploaded before the draft exists, so a failed upload is a plain re-run.
 
       - name: Upload the darwin amd64 archive as a release artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -271,6 +259,21 @@ jobs:
           if-no-files-found: error
           overwrite: true
           retention-days: 30
+
+      - name: Verify staged assets and upload them as a draft
+        id: draft
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          python3 tools/release-publish.py draft \
+            --stage release-assets --inventory release-inventory.json \
+            --bundle "release-bundle/rio-${TAG}.intoto.jsonl" --record release-draft.json \
+            --tag "$TAG" --repo "$GITHUB_REPOSITORY"
+          printf 'inventory=%s\n' "$(base64 -w0 release-inventory.json)" >> "$GITHUB_OUTPUT"
+          printf 'record=%s\n' "$(base64 -w0 release-draft.json)" >> "$GITHUB_OUTPUT"
 
   # Makes the verified draft public. The Clear to Ship App holds this job in
   # the release environment until the gate for the commit is clear. The job

@@ -549,12 +549,13 @@ python3 tools/release-publish.py stage \
 The GitHub attestation actions consume these staged files. Build provenance covers every asset
 that can carry it: the archives, `checksums.txt` and the source SBOM. Only the checksum signature
 and the attestation bundle, made after it, have none. The workflow combines the bundles into
-`release-attestations.jsonl`, outside the frozen asset directory, then uploads a draft:
+`release-bundle/rio-<tag>.intoto.jsonl`, outside the frozen asset directory, uploads each release
+file as a run artifact (below), then uploads a draft:
 
 ```sh
 python3 tools/release-publish.py draft \
   --stage release-assets --inventory release-inventory.json \
-  --bundle release-attestations.jsonl --record release-draft.json \
+  --bundle "release-bundle/rio-$TAG.intoto.jsonl" --record release-draft.json \
   --tag "$TAG" --repo "$GITHUB_REPOSITORY"
 ```
 
@@ -571,7 +572,7 @@ compares each draft asset's GitHub `digest` and its bytes, downloaded by asset I
 draft, with the inventory, then writes `release-draft.json` naming the draft and its assets. The
 inventory and record go to the next job as job outputs. The draft is not public yet.
 
-The build job also uploads every release file as its own run artifact with `upload-artifact`
+Before the draft exists, the build job uploads every release file as its own run artifact with `upload-artifact`
 `archive: false`, so each artifact's digest is that file's SHA-256. There are ten: the six archives,
 `checksums.txt`, its signature, the source SBOM and the attestation bundle. Clear to Ship's App
 reads these while `publish` waits ([cleartoship#79](https://github.com/rebaze/cleartoship/issues/79)).
