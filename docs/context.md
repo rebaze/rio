@@ -91,10 +91,10 @@ timestamps must be RFC3339. A supplied build system or generator must have a nam
 optional. Lifecycle phases are `design`, `pre-build`, `build`, `post-build`, `operations`,
 `discovery`, `decommission`. A supplied `distributions` array is nonempty and holds at most
 1000 objects with exactly `name`, `sha256` and an optional `url`. Each `name` follows the
-supplied-string rule, contains neither `/` nor `\` and is unique within the entry; `sha256` is
-lowercase 64-character hex; `url` follows the repository URL rule. Unknown JSON keys, duplicate
-keys at any depth, null/wrong types, trailing documents, empty artifact lists and duplicate IDs
-fail before outputs are written.
+supplied-string rule, contains neither `/` nor `\`, is not `.` or `..` and is unique within the
+entry; `sha256` is lowercase 64-character hex; `url` follows the repository URL rule and is
+unique within the entry. Unknown JSON keys, duplicate keys at any depth, null/wrong types,
+trailing documents, empty artifact lists and duplicate IDs fail before outputs are written.
 
 `source.repository` maps to the subject's `vcs` external reference and `build.url` to its
 `build-system` external reference. Matching rich references and unrelated references remain;
@@ -173,8 +173,9 @@ with its `name`, `sha256` and `assertion: "producer"`; the field is omitted when
 declares none. Distribution references the SBOM generator wrote are not copied into the
 receipt. `gate.subject.require: [digest]` passes when the subject has a `distribution`
 reference with a SHA-256 hash, whoever supplied it ([gate](manifest.md#output-version-and-gate)).
-An OCI target that attaches the SBOM to a `subject` descriptor refuses the artifact with
-`subject_digest_mismatch` unless the descriptor digest is one of the declared digests
+An OCI target that attaches the SBOM to a `subject` descriptor stops the planner with
+`subject_digest_mismatch` naming the artifact, before any request, unless the descriptor digest
+is one of the declared digests; nothing in that plan is delivered
 ([OCI delivery](delivery.md#oci-registries)).
 
 Rio does not hash the shipped files and never opens them. A distribution digest is what the
@@ -190,5 +191,6 @@ neither binds a compiled artifact, and declared distribution digests are not che
 any file. Keep the original SBOM, raw context JSON, manifest and outputs for audit and
 reproduction. Rio does not package them. Context support adds optional v1 records under the
 existing plan/index/predicate v1 contracts, and distributions add an optional artifact field to
-the `schemaVersion: 1` receipt; manifests without `context` retain their previous output shape. The [offline context demo](../tools/README.md#ci-build-context-demo) and
+the `schemaVersion: 1` receipt; manifests without `context` retain their previous output shape. The
+[offline context demo](../tools/README.md#ci-build-context-demo) and
 [explicit producer helper](../tools/README.md#rio-contextpy) are documented with the other tools.

@@ -356,3 +356,30 @@ func TestPipelineDigestRequirement(t *testing.T) {
 		})
 	}
 }
+
+func TestPipelineContactAndDigestBothMissing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"token":"11111111-1111-4111-8111-111111111111"}`)
+	}))
+	defer srv.Close()
+	dir := pipelineFixture(t, srv.URL)
+	t.Chdir(dir)
+	t.Setenv("DTRACK_API_KEY", "synthetic")
+	appendManifest(t, "gate:\n  subject:\n    require: [securityContact, digest]\n")
+	code, d, _, stderr := runRoot(t)
+	if code != ExitGate {
+		t.Fatalf("exit %d, want %d\n%s", code, ExitGate, stderr)
+	}
+	want := []receipt.FailedRequirement{{Requirement: "subject.securityContact", Count: 1}, {Requirement: "subject.digest", Count: 1}}
+	for _, a := range d.Artifacts {
+		if diff := cmp.Diff(want, a.Checks.Failed); diff != "" {
+			t.Errorf("%s failed (-want +got):\n%s", a.ID, diff)
+		}
+	}
+	for _, advice := range []string{"subject.securityContact: the SBOM subject has no security-contact reference", "subject.digest: the SBOM subject has no distribution digest"} {
+		if !strings.Contains(stderr, advice) {
+			t.Errorf("stderr lacks %q:\n%s", advice, stderr)
+		}
+	}
+}

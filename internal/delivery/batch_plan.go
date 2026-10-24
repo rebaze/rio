@@ -357,7 +357,10 @@ func checkSubjectDeclared(a index.Artifact, d Description) error {
 			Digest string `json:"digest"`
 		} `json:"subject"`
 	}
-	if json.Unmarshal(d.Identity, &id) != nil || id.Subject == nil {
+	if json.Unmarshal(d.Identity, &id) != nil {
+		return Fail("subject_digest_mismatch", fmt.Sprintf("artifact %s: OCI identity unreadable", a.ID))
+	}
+	if id.Subject == nil {
 		return nil
 	}
 	digest := strings.ToLower(strings.TrimPrefix(id.Subject.Digest, "sha256:"))

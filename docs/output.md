@@ -57,6 +57,8 @@ When the artifact's [build context](context.md#shipped-files-distributions) decl
     console-1.0.0-windows-amd64.zip sha256=c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2
 ```
 
+The context change also appears under `changes.metadata`, as for other context fields.
+
 The values come from the synthetic [context demo](../tools/README.md#ci-build-context-demo).
 
 ### Delivery observations

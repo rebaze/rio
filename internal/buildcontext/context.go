@@ -490,6 +490,7 @@ func parseDistributions(value any, field string) ([]Distribution, error) {
 	}
 	out := make([]Distribution, 0, len(list))
 	seen := map[string]bool{}
+	seenURL := map[string]bool{}
 	for i, raw := range list {
 		label := fmt.Sprintf("%s[%d]", field, i)
 		m, ok := raw.(map[string]any)
@@ -505,6 +506,9 @@ func parseDistributions(value any, field string) ([]Distribution, error) {
 		}
 		if strings.ContainsAny(name, `/\`) {
 			return nil, fmt.Errorf("%s.name must not contain / or \\", label)
+		}
+		if name == "." || name == ".." {
+			return nil, fmt.Errorf("%s.name must not be . or ..", label)
 		}
 		if seen[name] {
 			return nil, fmt.Errorf("%s.name duplicates an earlier distribution", label)
@@ -524,6 +528,10 @@ func parseDistributions(value any, field string) ([]Distribution, error) {
 			if !validURL(*u) {
 				return nil, fmt.Errorf("%s.url must be an absolute http(s) URL without credentials, query or fragment", label)
 			}
+			if seenURL[*u] {
+				return nil, fmt.Errorf("%s.url duplicates an earlier distribution", label)
+			}
+			seenURL[*u] = true
 			d.URL = *u
 		}
 		out = append(out, d)

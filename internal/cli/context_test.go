@@ -4,9 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/rebaze/rio/internal/buildcontext"
-	"github.com/rebaze/rio/internal/delivery"
-	"github.com/rebaze/rio/internal/sbom"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,8 +13,11 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/rebaze/rio/internal/buildcontext"
+	"github.com/rebaze/rio/internal/delivery"
 	"github.com/rebaze/rio/internal/index"
 	"github.com/rebaze/rio/internal/receipt"
+	"github.com/rebaze/rio/internal/sbom"
 )
 
 func contextProject(t *testing.T) (string, []byte, []byte) {
