@@ -521,3 +521,290 @@ func loadContextOutput(t *testing.T, d *sbom.Document) *sbom.Document {
 	}
 	return load(t, b)
 }
+
+func withDistributions(cfg *buildcontext.Resolved, dists ...buildcontext.Distribution) *buildcontext.Resolved {
+	cfg.Artifact.Distributions = dists
+	return cfg
+}
+
+func distributionRef(url, sum string) map[string]any {
+	return map[string]any{"type": "distribution", "url": url, "hashes": []any{map[string]any{"alg": "SHA-256", "content": sum}}}
+}
+
+func subjectReferences(t *testing.T, d *sbom.Document) any {
+	t.Helper()
+	root := tree(t, mustContextBytes(t, d)).(map[string]any)
+	return root["metadata"].(map[string]any)["component"].(map[string]any)["externalReferences"]
+}
+
+func storedContext(t *testing.T, d *sbom.Document) sbom.ContextRecord {
+	t.Helper()
+	root := tree(t, mustContextBytes(t, d)).(map[string]any)
+	for _, raw := range root["metadata"].(map[string]any)["properties"].([]any) {
+		prop := raw.(map[string]any)
+		if prop["name"] == "rebaze:normalize:context" {
+			var rec sbom.ContextRecord
+			if err := json.Unmarshal([]byte(prop["value"].(string)), &rec); err != nil {
+				t.Fatal(err)
+			}
+			return rec
+		}
+	}
+	t.Fatal("no context property")
+	return sbom.ContextRecord{}
+}
+
+var (
+	distA = buildcontext.Distribution{Name: "app-linux.tar.gz", SHA256: strings.Repeat("c", 64), URL: "https://dl.example.org/app-linux.tar.gz"}
+	distB = buildcontext.Distribution{Name: "app-darwin.zip", SHA256: strings.Repeat("d", 64)}
+)
+
+func TestContextAddsDistributionReferencesInContextOrder(t *testing.T) {
+	for _, spec := range []string{"1.5", "1.6"} {
+		t.Run(spec, func(t *testing.T) {
+			generator := distributionRef("https://mirror.example.org/app.tar.gz", strings.Repeat("e", 64))
+			website := map[string]any{"type": "website", "url": "https://example.org"}
+			src, _ := json.Marshal(map[string]any{"bomFormat": "CycloneDX", "specVersion": spec, "version": 1, "metadata": map[string]any{"component": map[string]any{"type": "application", "name": "app", "externalReferences": []any{website, generator}}}})
+			d := load(t, src)
+			rec, err := d.ApplyContext(withDistributions(contextResolved(), distA, distB))
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []any{website, generator, distributionRef(distA.URL, distA.SHA256), distributionRef(distB.Name, distB.SHA256)}
+			if got := subjectReferences(t, d); !reflect.DeepEqual(got, want) {
+				t.Fatalf("references = %v, want %v", got, want)
+			}
+			wantOwned := []string{"distribution:" + distA.Name, "distribution:" + distB.Name}
+			if !reflect.DeepEqual(rec.OwnedReferences, wantOwned) {
+				t.Fatalf("owned = %v, want %v", rec.OwnedReferences, wantOwned)
+			}
+			if !reflect.DeepEqual(rec.Effective.Distributions, []buildcontext.Distribution{distA, distB}) {
+				t.Fatalf("effective distributions = %+v", rec.Effective.Distributions)
+			}
+			stored := storedContext(t, d)
+			if !reflect.DeepEqual(stored.Effective.Distributions, rec.Effective.Distributions) || !reflect.DeepEqual(stored.OwnedReferences, wantOwned) {
+				t.Fatalf("stored record: %+v", stored)
+			}
+			logical, native := false, false
+			for _, c := range rec.Changes {
+				if c.Field != "distributions" {
+					continue
+				}
+				if c.Selector != "/artifacts/0/distributions" || c.Override {
+					t.Fatalf("distribution change: %+v", c)
+				}
+				switch c.Target {
+				case "context:/distributions":
+					logical = c.Before == nil && reflect.DeepEqual(c.After, []buildcontext.Distribution{distA, distB})
+				case "/metadata/component/externalReferences":
+					got, _ := json.Marshal([]any{c.Before, c.After})
+					wantNative, _ := json.Marshal([]any{want[:2], want})
+					native = string(got) == string(wantNative)
+				}
+			}
+			if !logical || !native {
+				t.Fatalf("distribution changes not audited: %+v", rec.Changes)
+			}
+			if err := sbom.Validate(mustContextBytes(t, d), spec); err != nil {
+				t.Fatalf("output is not valid %s: %v", spec, err)
+			}
+		})
+	}
+}
+
+func TestContextDistributionsReapplyIsNoOpAndKeepsOwnership(t *testing.T) {
+	d := load(t, []byte(`{"bomFormat":"CycloneDX","specVersion":"1.6","metadata":{"component":{"type":"application","name":"app"}}}`))
+	cfg := withDistributions(contextResolved(contextField("build.id", "42")), distA, distB)
+	if _, err := d.ApplyContext(cfg); err != nil {
+		t.Fatal(err)
+	}
+	d = loadContextOutput(t, d)
+	refs := subjectReferences(t, d)
+	for i := 0; i < 2; i++ {
+		rec, err := d.ApplyContext(withDistributions(contextResolved(contextField("build.id", "42")), distB, distA))
+		if err != nil {
+			t.Fatalf("reapply %d: %v", i, err)
+		}
+		if len(rec.Changes) != 0 {
+			t.Fatalf("reapply %d changes: %+v", i, rec.Changes)
+		}
+		if !reflect.DeepEqual(rec.OwnedReferences, []string{"distribution:" + distB.Name, "distribution:" + distA.Name}) {
+			t.Fatalf("reapply %d lost ownership: %v", i, rec.OwnedReferences)
+		}
+		if got := subjectReferences(t, d); !reflect.DeepEqual(got, refs) {
+			t.Fatalf("reapply %d references = %v, want %v", i, got, refs)
+		}
+		d = loadContextOutput(t, d)
+	}
+}
+
+func TestContextPriorDistributionsCannotBeReplacedOrRemoved(t *testing.T) {
+	changed := distA
+	changed.SHA256 = strings.Repeat("f", 64)
+	moved := distA
+	moved.URL = "https://dl.example.org/other/app-linux.tar.gz"
+	extra := buildcontext.Distribution{Name: "app.msi", SHA256: strings.Repeat("1", 64)}
+	for _, tc := range []struct {
+		name  string
+		dists []buildcontext.Distribution
+	}{
+		{"changed digest", []buildcontext.Distribution{changed, distB}},
+		{"changed url", []buildcontext.Distribution{moved, distB}},
+		{"added", []buildcontext.Distribution{distA, distB, extra}},
+		{"removed", []buildcontext.Distribution{distA}},
+		{"omitted", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := load(t, []byte(`{"bomFormat":"CycloneDX","specVersion":"1.6","metadata":{"component":{"type":"application","name":"app"}}}`))
+			if _, err := d.ApplyContext(withDistributions(contextResolved(contextField("build.id", "42")), distA, distB)); err != nil {
+				t.Fatal(err)
+			}
+			d = loadContextOutput(t, d)
+			before := mustContextBytes(t, d)
+			cfg := withDistributions(contextResolved(contextField("build.id", "42")), tc.dists...)
+			cfg.Replace = []string{"build.id"}
+			_, err := d.ApplyContext(cfg)
+			if err == nil || !strings.Contains(err.Error(), "distributions cannot be replaced") {
+				t.Fatalf("want distributions refusal: %v", err)
+			}
+			if !bytes.Equal(before, mustContextBytes(t, d)) {
+				t.Fatal("refusal mutated document")
+			}
+		})
+	}
+}
+
+func TestContextDistributionsMayBeAddedToPriorRecordWithoutThem(t *testing.T) {
+	d := load(t, []byte(`{"bomFormat":"CycloneDX","specVersion":"1.6","metadata":{"component":{"type":"application","name":"app"}}}`))
+	if _, err := d.ApplyContext(contextResolved(contextField("build.id", "42"))); err != nil {
+		t.Fatal(err)
+	}
+	d = loadContextOutput(t, d)
+	rec, err := d.ApplyContext(withDistributions(contextResolved(contextField("build.id", "42")), distA))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.Changes) != 2 || rec.Changes[0].Target != "context:/distributions" || rec.Changes[1].Target != "/metadata/component/externalReferences" {
+		t.Fatalf("addition changes: %+v", rec.Changes)
+	}
+	d = loadContextOutput(t, d)
+	if _, err := d.ApplyContext(withDistributions(contextResolved(contextField("build.id", "42")), distA)); err != nil {
+		t.Fatalf("writer-produced distribution record rejected: %v", err)
+	}
+}
+
+func TestContextKeepsMatchingDistributionReferenceUnowned(t *testing.T) {
+	existing := distributionRef(distA.URL, strings.ToUpper(distA.SHA256))
+	existing["comment"] = "generator evidence"
+	src, _ := json.Marshal(map[string]any{"bomFormat": "CycloneDX", "specVersion": "1.6", "metadata": map[string]any{"component": map[string]any{"type": "application", "name": "app", "externalReferences": []any{existing}}}})
+	d := load(t, src)
+	rec, err := d.ApplyContext(withDistributions(contextResolved(), distA, distB))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []any{existing, distributionRef(distB.Name, distB.SHA256)}
+	if got := subjectReferences(t, d); !reflect.DeepEqual(got, want) {
+		t.Fatalf("references = %v, want %v", got, want)
+	}
+	if !reflect.DeepEqual(rec.OwnedReferences, []string{"distribution:" + distB.Name}) {
+		t.Fatalf("owned = %v", rec.OwnedReferences)
+	}
+	d = loadContextOutput(t, d)
+	rec, err = d.ApplyContext(withDistributions(contextResolved(), distA, distB))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(rec.OwnedReferences, []string{"distribution:" + distB.Name}) || len(rec.Changes) != 0 {
+		t.Fatalf("reapply: %+v", rec)
+	}
+}
+
+func TestContextDistributionConflictsWithExistingHashNamesURL(t *testing.T) {
+	for name, existing := range map[string]map[string]any{
+		"different hash":  distributionRef(distA.URL, strings.Repeat("0", 64)),
+		"missing hash":    {"type": "distribution", "url": distA.URL},
+		"other algorithm": {"type": "distribution", "url": distA.URL, "hashes": []any{map[string]any{"alg": "SHA-512", "content": strings.Repeat("0", 128)}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			src, _ := json.Marshal(map[string]any{"bomFormat": "CycloneDX", "specVersion": "1.6", "metadata": map[string]any{"component": map[string]any{"type": "application", "name": "app", "externalReferences": []any{existing}}}})
+			d := load(t, src)
+			before := mustContextBytes(t, d)
+			_, err := d.ApplyContext(withDistributions(contextResolved(), distB, distA))
+			if err == nil || !strings.Contains(err.Error(), distA.URL) {
+				t.Fatalf("want conflict naming %s: %v", distA.URL, err)
+			}
+			if !bytes.Equal(before, mustContextBytes(t, d)) {
+				t.Fatal("conflict mutated document")
+			}
+		})
+	}
+}
+
+func TestContextDistributionsWorkAfterUplift(t *testing.T) {
+	legacy := `{"bomFormat":"CycloneDX","specVersion":"1.3","version":1,"metadata":{"component":{"type":"application","name":"app","version":"1.0"}}}`
+	for _, tc := range []struct {
+		name  string
+		src   []byte
+		floor string
+	}{{"1.4 to 1.5", fixture(t, "uplift-1.4.cdx.json"), "1.5"}, {"1.3 to 1.6", []byte(legacy), "1.6"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := load(t, tc.src)
+			if _, _, err := d.Uplift(tc.floor); err != nil {
+				t.Fatal(err)
+			}
+			cfg := withDistributions(contextResolved(), distA, distB)
+			if _, err := d.ApplyContext(cfg); err != nil {
+				t.Fatal(err)
+			}
+			if err := sbom.Validate(mustContextBytes(t, d), tc.floor); err != nil {
+				t.Fatalf("output is not valid %s: %v", tc.floor, err)
+			}
+		})
+	}
+}
+
+func TestContextRejectsMalformedPriorDistributionRecord(t *testing.T) {
+	d := load(t, []byte(`{"bomFormat":"CycloneDX","specVersion":"1.6","metadata":{"component":{"type":"application","name":"app"}}}`))
+	if _, err := d.ApplyContext(withDistributions(contextResolved(), distA)); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name   string
+		mutate func(map[string]any)
+	}{
+		{"unknown owned distribution", func(r map[string]any) { r["ownedReferences"] = []any{"distribution:other"} }},
+		{"duplicate owned distribution", func(r map[string]any) {
+			r["ownedReferences"] = []any{"distribution:" + distA.Name, "distribution:" + distA.Name}
+		}},
+		{"logical change not a list", func(r map[string]any) { r["changes"].([]any)[0].(map[string]any)["after"] = "x" }},
+		{"logical change bad digest", func(r map[string]any) {
+			r["changes"].([]any)[0].(map[string]any)["after"].([]any)[0].(map[string]any)["sha256"] = "bad"
+		}},
+		{"logical change unknown key", func(r map[string]any) {
+			r["changes"].([]any)[0].(map[string]any)["after"].([]any)[0].(map[string]any)["size"] = "1"
+		}},
+		{"logical change prior value", func(r map[string]any) {
+			c := r["changes"].([]any)[0].(map[string]any)
+			c["before"] = c["after"]
+		}},
+		{"native change entry selector", func(r map[string]any) { r["changes"].([]any)[1].(map[string]any)["selector"] = "/artifacts/0" }},
+		{"native change invalid after", func(r map[string]any) { r["changes"].([]any)[1].(map[string]any)["after"] = []any{42} }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := tree(t, mustContextBytes(t, d)).(map[string]any)
+			prop := root["metadata"].(map[string]any)["properties"].([]any)[0].(map[string]any)
+			var record map[string]any
+			if err := json.Unmarshal([]byte(prop["value"].(string)), &record); err != nil {
+				t.Fatal(err)
+			}
+			tc.mutate(record)
+			encoded, _ := json.Marshal(record)
+			prop["value"] = string(encoded)
+			data, _ := json.Marshal(root)
+			bad := load(t, data)
+			if _, err := bad.ApplyContext(withDistributions(contextResolved(), distA)); err == nil || !strings.Contains(err.Error(), "malformed prior") {
+				t.Fatalf("malformed prior record accepted: %v", err)
+			}
+		})
+	}
+}
