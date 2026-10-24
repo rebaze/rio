@@ -9,7 +9,7 @@ import sys
 import unicodedata
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 
 FIELDS = (
@@ -53,7 +53,7 @@ def parse_checksums(path, prefix):
         seen.add(name)
         item = {"name": name, "sha256": digest}
         if prefix is not None:
-            item["url"] = prefix + name
+            item["url"] = prefix + quote(name, safe="")
             check_url("checksums line %d url" % number, item["url"])
         distributions.append(item)
         if len(distributions) > MAX_DISTRIBUTIONS:

@@ -671,6 +671,24 @@ func distributionReference(url, sum string) map[string]any {
 	return map[string]any{"type": "distribution", "url": url, "hashes": []any{map[string]any{"alg": "SHA-256", "content": sum}}}
 }
 
+// distributionNameURL encodes name as one relative path segment: every byte
+// outside RFC 3986 unreserved becomes %XX, like Python's quote(name, safe="").
+func distributionNameURL(name string) string {
+	const hex = "0123456789ABCDEF"
+	var b strings.Builder
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '.' || c == '_' || c == '~' {
+			b.WriteByte(c)
+		} else {
+			b.WriteByte('%')
+			b.WriteByte(hex[c>>4])
+			b.WriteByte(hex[c&15])
+		}
+	}
+	return b.String()
+}
+
 // mergeDistributions appends one distribution reference per distribution, in
 // context order. A reference with the same URL must carry the same SHA-256;
 // it is kept and owned only if the prior record owned this exact bare form.
@@ -683,7 +701,7 @@ func mergeDistributions(parent map[string]any, dists []buildcontext.Distribution
 	for _, d := range dists {
 		url := d.URL
 		if url == "" {
-			url = d.Name
+			url = distributionNameURL(d.Name)
 		}
 		bare := distributionReference(url, d.SHA256)
 		present := false

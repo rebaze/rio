@@ -141,6 +141,22 @@ class ContextProducerTest(unittest.TestCase):
              "url": "https://dl.example.org/widget/v1.0/widget_1.0_darwin.tar.gz"},
         ])
 
+    def test_distribution_url_percent_encodes_names(self):
+        digest = "e" * 64
+        names = {
+            "app%20linux.tar.gz": "app%2520linux.tar.gz",
+            "app#debug.zip": "app%23debug.zip",
+            "app?x.zip": "app%3Fx.zip",
+            "app linux.zip": "app%20linux.zip",
+            "app:latest": "app%3Alatest",
+        }
+        prefix = "https://dl.example.org/widget/"
+        path = self.write_checksums("".join("%s  %s\n" % (digest, name) for name in names))
+        result = self.run_helper("--checksums", path, "--distribution-url", prefix)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["artifacts"][0]["distributions"],
+                         [{"name": n, "sha256": digest, "url": prefix + q} for n, q in names.items()])
+
     def test_checksums_without_url_omit_url(self):
         path = self.write_checksums("%s  a.tgz\n" % ("c" * 64))
         result = self.run_helper("--checksums", path)

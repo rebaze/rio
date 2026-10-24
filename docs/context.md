@@ -135,8 +135,8 @@ lifecycle assertion cannot be changed or removed.
 Checksum files such as `sha256sum` output or a GoReleaser `checksums.txt` already hold these
 values; [`rio-context.py --checksums`](../tools/README.md#rio-contextpy) turns one into entries.
 Rio adds one `distribution` external reference per entry to `metadata.component`, in context
-order, after any existing references. `url` is the entry's `url`, or its `name` when no URL is
-given. For the example above the console subject gains:
+order, after any existing references. `url` is the entry's `url`, or its `name` percent-encoded as one relative path segment
+(`app#debug.zip` becomes `app%23debug.zip`) when no URL is given. For the example above the console subject gains:
 
 ```json
 [

@@ -808,3 +808,43 @@ func TestContextRejectsMalformedPriorDistributionRecord(t *testing.T) {
 		})
 	}
 }
+
+func TestContextPercentEncodesDistributionNameFallbackURL(t *testing.T) {
+	cases := map[string]string{
+		"rio_0.8.2_linux_amd64.tar.gz": "rio_0.8.2_linux_amd64.tar.gz",
+		"app#debug.zip":                "app%23debug.zip",
+		"app?x.zip":                    "app%3Fx.zip",
+		"app%20linux.zip":              "app%2520linux.zip",
+		"app:latest":                   "app%3Alatest",
+		"app linux.zip":                "app%20linux.zip",
+		"appé.zip":                     "app%C3%A9.zip",
+	}
+	for name, want := range cases {
+		t.Run(name, func(t *testing.T) {
+			dist := buildcontext.Distribution{Name: name, SHA256: strings.Repeat("a", 64)}
+			src, _ := json.Marshal(map[string]any{"bomFormat": "CycloneDX", "specVersion": "1.6", "version": 1, "metadata": map[string]any{"component": map[string]any{"type": "application", "name": "app"}}})
+			d := load(t, src)
+			rec, err := d.ApplyContext(withDistributions(contextResolved(), dist))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := subjectReferences(t, d); !reflect.DeepEqual(got, []any{distributionRef(want, dist.SHA256)}) {
+				t.Fatalf("references = %v, want url %q", got, want)
+			}
+			if !reflect.DeepEqual(rec.OwnedReferences, []string{"distribution:" + name}) || rec.Effective.Distributions[0].Name != name {
+				t.Fatalf("name not preserved: %+v", rec)
+			}
+			if err := sbom.Validate(mustContextBytes(t, d), "1.6"); err != nil {
+				t.Fatal(err)
+			}
+			d = loadContextOutput(t, d)
+			rec, err = d.ApplyContext(withDistributions(contextResolved(), dist))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rec.Changes) != 0 || !reflect.DeepEqual(rec.OwnedReferences, []string{"distribution:" + name}) {
+				t.Fatalf("reapply: %+v", rec)
+			}
+		})
+	}
+}

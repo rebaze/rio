@@ -692,7 +692,7 @@ Two further options declare the shipped files as `distributions`. `--checksums F
 then the file name; one per line, order kept). Malformed lines, uppercase or short digests,
 duplicate names, names with `/` or `\`, an empty file and more than 1000 files are refused.
 `--distribution-url PREFIX` requires `--checksums`, must be an absolute HTTP(S) URL ending in `/`,
-and sets each `url` to the prefix plus the name. The digests are the producer's assertion: the
+and sets each `url` to the prefix plus the name percent-encoded as one path segment (the `name` stays as listed). The digests are the producer's assertion: the
 helper and Rio do not hash the files.
 
 ```sh
