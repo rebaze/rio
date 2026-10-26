@@ -745,6 +745,23 @@ python3 tools/rio-context.py --artifact-id console --sbom target/console.cdx.jso
   > build-context.tmp.json
 ```
 
+Three options carry the BSI TR-03183-2 data. `--sha512-checksums FILE` reads a second checksums
+file (same format, 128 lowercase hex digests) and requires `--checksums`; it must list exactly the
+same names, and each distribution gains `sha512`. `--file-properties PATTERN=FLAGS` is repeatable:
+`PATTERN` is an `fnmatch` glob on the name, `FLAGS` a comma list of `executable`, `archive` and
+`structured`, or `none`; the first match wins and every name must match. It is required with
+`--sha512-checksums` (and refused without it), because Rio takes `sha512`, `executable`,
+`archive` and `structured` together or not at all; each distribution then carries them after
+`sha256`, in that order. `--level {logical,identified,assembled}` sets the entry's `level`.
+Any mismatch, unmatched name or unknown flag exits 2 and names the file or pattern.
+
+```sh
+python3 tools/rio-context.py --artifact-id console --sbom target/console.cdx.json \
+  --checksums dist/checksums.txt --sha512-checksums dist/checksums-sha512.txt \
+  --file-properties '*.tar.gz=archive' --file-properties '*.json=structured' \
+  --file-properties '*=none' --level assembled > build-context.tmp.json
+```
+
 Use the same temporary-file-then-move handling as the first example. Rio then writes each file as a
 `distribution` reference on the SBOM subject and lists it in the receipt; see
 [shipped files](../docs/context.md#shipped-files-distributions).
