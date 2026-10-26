@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 
@@ -25,16 +26,17 @@ PROFILE = "gate:\n  profile: bsi-tr-03183-2@2.1.0\n"
 PROFILE_REPAIR = (PROFILE + "enrichment:\n  producer:\n    name: Example Components GmbH\n    contact:\n      - email: sbom@example.org\n"
                   "  subject:\n    manufacturer:\n      name: Example Components GmbH\n      url: [https://example.org]\n")
 SCENARIOS = [
-    # name, extra manifest, security-contact already in the SBOM, distributions in a build context file, expected exit
-    ("not-required", "", None, None, 0),
-    ("required-missing", REQUIRE, None, None, 1),
-    ("required-supplied", REQUIRE + "enrichment:\n  subject:\n    securityContact: mailto:security@example.com\n", None, None, 0),
-    ("required-unsupported", REQUIRE, "security@example.com", None, 1),
-    ("digest-missing", REQUIRE_DIGEST, None, None, 1),
-    ("digest-supplied", REQUIRE_DIGEST, None, DISTRIBUTIONS, 0),
+    # name, extra manifest, security-contact already in the SBOM, distributions in a build context file, expected exit,
+    # profile (True: the TR-03183-2 fixture and checks)
+    ("not-required", "", None, None, 0, False),
+    ("required-missing", REQUIRE, None, None, 1, False),
+    ("required-supplied", REQUIRE + "enrichment:\n  subject:\n    securityContact: mailto:security@example.com\n", None, None, 0, False),
+    ("required-unsupported", REQUIRE, "security@example.com", None, 1, False),
+    ("digest-missing", REQUIRE_DIGEST, None, None, 1, False),
+    ("digest-supplied", REQUIRE_DIGEST, None, DISTRIBUTIONS, 0, False),
     # The TR-03183-2 profile: a generator's SBOM lacks the creators and the shipped files; the repair supplies them.
-    ("bsi-profile-missing", PROFILE, None, None, 1),
-    ("bsi-profile-repaired", PROFILE_REPAIR, None, "tr", 0),
+    ("bsi-profile-missing", PROFILE, None, None, 1, True),
+    ("bsi-profile-repaired", PROFILE_REPAIR, None, "tr", 0, True),
 ]
 
 
@@ -50,6 +52,8 @@ def tr_distributions():
 
 
 def main():
+    # Rio prints UTF-8 (for example the section sign); a CP1252 console must not make the demo fail.
+    sys.stdout.reconfigure(errors="replace")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary")
     args = parser.parse_args()
@@ -81,10 +85,9 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     env = dict(os.environ, RIO_DEMO_KEY="synthetic-demo-key")
     try:
-        for name, extra, contact, distributions, expected in SCENARIOS:
+        for name, extra, contact, distributions, expected, profile in SCENARIOS:
             work = retained / name
             work.mkdir()
-            profile = name.startswith("bsi-")
             sbom = json.loads((HERE / ("fixtures/cart-api-tr.cdx.json" if profile else "fixtures/cart-api.cdx.json")).read_text())
             if contact:
                 sbom["metadata"]["component"]["externalReferences"] = [{"type": "security-contact", "url": contact}]
@@ -108,7 +111,7 @@ def main():
                 "      url: http://127.0.0.1:%d\n      allowHTTP: true\n      apiKeyEnv: RIO_DEMO_KEY\n" % server.server_port + extra)
             before = len(uploads)
             result = subprocess.run([binary, "--receipt", str(work / "record.json")], cwd=work, env=env,
-                                    capture_output=True, text=True)
+                                    capture_output=True, text=True, encoding="utf-8", errors="replace")
             assert result.returncode == expected, (name, result.returncode, result.stdout, result.stderr)
             artifact = json.loads((work / "record.json").read_text())["artifacts"][0]
             checks = artifact["checks"]
@@ -122,7 +125,7 @@ def main():
                     print("   checks.profile:", json.dumps(checks["profile"], sort_keys=True))
                     print("   checks.profileLevels:", json.dumps(checks["profileLevels"], sort_keys=True))
                 for line in result.stderr.splitlines():
-                    print("   " + line.replace("\u00a7", "sec."))  # ASCII only, as below
+                    print("   " + line)
                 if expected:
                     assert delivered == 0 and checks["gate"] == "fail", name
                     failed = [f["requirement"] for f in checks["failed"]]
@@ -138,7 +141,6 @@ def main():
                     assert [c["name"] for c in nested] == [d["name"] for d in distributions], nested
                 continue
 
-            # ASCII only: Windows consoles and redirected Python 3.9 output may use CP1252.
             print("==", name, "-> exit", result.returncode, "-", "delivered" if delivered else "not delivered")
             print("   checks.subjectRequirements:", checks["subjectRequirements"])
             if "failed" in checks:

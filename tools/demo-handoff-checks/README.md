@@ -7,7 +7,7 @@ python3 tools/demo-handoff-checks/run.py /absolute/path/to/rio
 ```
 
 One synthetic Cart API SBOM without a product security contact or a distribution digest goes
-through six root invocations, then a second one (labelled synthetic too) through two more,, each delivering to a loopback receiver:
+through six root invocations, then a second one (labelled synthetic too) through two more, each delivering to a loopback receiver:
 
 | Scenario | `rio.yaml` | Result |
 |---|---|---|
@@ -51,7 +51,7 @@ The profile reads [Requirement profiles](../../docs/manifest.md#requirement-prof
 files are described in [TR file components](../../docs/context.md#tr-file-components). The SBOM has
 no creator and does not say what the subject is, so the first run fails. The repair supplies the
 creators in `rio.yaml`, declares the subject `logical` and its two files in the build context file.
-Output of a real run (the demo prints `sec.` for the section sign to stay ASCII):
+Output of a real run:
 
 ```text
 == bsi-profile-missing -> exit 1 - not delivered
@@ -60,13 +60,13 @@ Output of a real run (the demo prints `sec.` for the section sign to stay ASCII)
    checks.profile: {"guideline": "BSI TR-03183-2", "guidelineVersion": "2.1.0", "name": "bsi-tr-03183-2@2.1.0"}
    checks.profileLevels: {"assembled": 2, "full": 1, "identified": 0, "logical": 0, "referenced": 0}
    rio: artifact "cart-api" failed the gate; gate mode fail, so nothing was delivered.
-     sbom.creator (BSI TR-03183-2 2.1.0 sec.5.2.1): the SBOM has no creator (metadata.manufacturer with a contact email or URL). Set enrichment.producer in rio.yaml, or have the SBOM generator emit one.
-     subject.creator (BSI TR-03183-2 2.1.0 sec.5.2.2): the SBOM subject has no creator (manufacturer). Set enrichment.subject.manufacturer in rio.yaml, or have the SBOM generator emit one.
-     subject.filename (BSI TR-03183-2 2.1.0 sec.5.2.2): the SBOM subject has no filename (bsi:component:filename). Have the SBOM generator emit it, or, if the subject is a product rather than one shipped file, declare it logical with level in the build context file or rio:tr-03183-2:level from the generator.
-     subject.deployableHash (BSI TR-03183-2 2.1.0 sec.5.2.2): the SBOM subject has no SHA-512 hash on a distribution reference. Have the SBOM generator emit it, or, if the subject is a product rather than one shipped file, declare it logical with level in the build context file or rio:tr-03183-2:level from the generator; list the shipped files with sha512 under distributions in the build context file. Rio does not hash files.
-     subject.executable (BSI TR-03183-2 2.1.0 sec.5.2.2): the SBOM subject has no bsi:component:executable property (executable or non-executable). Have the SBOM generator emit it, or, if the subject is a product rather than one shipped file, declare it logical with level in the build context file or rio:tr-03183-2:level from the generator.
-     subject.archive (BSI TR-03183-2 2.1.0 sec.5.2.2): the SBOM subject has no bsi:component:archive property (archive or no archive). Have the SBOM generator emit it, or, if the subject is a product rather than one shipped file, declare it logical with level in the build context file or rio:tr-03183-2:level from the generator.
-     subject.structured (BSI TR-03183-2 2.1.0 sec.5.2.2): the SBOM subject has no bsi:component:structured property (structured or unstructured). Have the SBOM generator emit it, or, if the subject is a product rather than one shipped file, declare it logical with level in the build context file or rio:tr-03183-2:level from the generator.
+     sbom.creator (BSI TR-03183-2 2.1.0 §5.2.1): the SBOM has no creator (metadata.manufacturer with a contact email or URL). Set enrichment.producer in rio.yaml, or have the SBOM generator emit one.
+     subject.creator (BSI TR-03183-2 2.1.0 §5.2.2): the SBOM subject has no creator (manufacturer). Set enrichment.subject.manufacturer in rio.yaml, or have the SBOM generator emit one.
+     subject.filename (BSI TR-03183-2 2.1.0 §5.2.2): the SBOM subject has no filename (bsi:component:filename). Have the SBOM generator emit it, or, if the subject is a product rather than one shipped file, declare it logical with level in the build context file or rio:tr-03183-2:level from the generator.
+     subject.deployableHash (BSI TR-03183-2 2.1.0 §5.2.2): the SBOM subject has no SHA-512 hash on a distribution reference. Have the SBOM generator emit it, or, if the subject is a product rather than one shipped file, declare it logical with level in the build context file or rio:tr-03183-2:level from the generator; list the shipped files with sha512 under distributions in the build context file. Rio does not hash files.
+     subject.executable (BSI TR-03183-2 2.1.0 §5.2.2): the SBOM subject has no bsi:component:executable property (executable or non-executable). Have the SBOM generator emit it, or, if the subject is a product rather than one shipped file, declare it logical with level in the build context file or rio:tr-03183-2:level from the generator.
+     subject.archive (BSI TR-03183-2 2.1.0 §5.2.2): the SBOM subject has no bsi:component:archive property (archive or no archive). Have the SBOM generator emit it, or, if the subject is a product rather than one shipped file, declare it logical with level in the build context file or rio:tr-03183-2:level from the generator.
+     subject.structured (BSI TR-03183-2 2.1.0 §5.2.2): the SBOM subject has no bsi:component:structured property (structured or unstructured). Have the SBOM generator emit it, or, if the subject is a product rather than one shipped file, declare it logical with level in the build context file or rio:tr-03183-2:level from the generator.
 == bsi-profile-repaired -> exit 0 - delivered
    checks.gate: pass
    checks.profile: {"guideline": "BSI TR-03183-2", "guidelineVersion": "2.1.0", "name": "bsi-tr-03183-2@2.1.0"}
