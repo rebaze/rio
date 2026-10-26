@@ -24,7 +24,7 @@ inputs and remain separate from its runtime.
 | [`demo-normalization-evidence/`](demo-normalization-evidence/) | explains repair sources, exact changes and offline retention | with an installed release containing normalization evidence |
 | [`demo-repair/`](#first-repair-sample) | shows optional p2 repair with an unchanged input and an audit record | when evaluating Eclipse/OSGi coordinate repair |
 | [`demo-agent-integration/`](#agent-integration-examples) | tests project onboarding configurations and a one-command CI receipt step | with Rio 0.7.0+ and Python 3.9+ |
-| [`source-sbom.sh`](#rios-source-sbom-and-candidate-checks) | makes the CycloneDX SBOM of rio's own source and checks it with rio's strict gate | in CI, release preflight and the release |
+| [`source-sbom.sh`](#rios-source-sbom-and-candidate-checks) | makes rio's own CycloneDX SBOM, with its dependency graph and a complete inventory, and checks it against BSI TR-03183-2 with rio's strict gate | in CI, release preflight and the release |
 | [`rio-context.py`](#rio-contextpy) | emits one explicit build-context entry bound to original SBOM bytes | in a producing CI job |
 
 ---
@@ -524,6 +524,11 @@ golang.org/x/vuln/cmd/govulncheck@<version>` and `go -C tools/security mod tidy`
 the module changes through a PR. Scanner code does not change merely because a new version
 is published.
 
+The same module pins cyclonedx-gomod, the generator
+[`source-sbom.sh`](#rios-source-sbom-and-candidate-checks) runs, and CI scans it the same way.
+Its version changes the same way, with
+`github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@<version>`.
+
 `python3 tools/ci-changes_test.py` checks that edits to every workflow and either module
 trigger the Go checks. It also verifies the narrower triggers for the other CI checks.
 Like the merge-policy tests, it runs offline and is included in CI's Python tests.
@@ -563,9 +568,9 @@ Before creating the draft, the guard checks the asset inventory, archive checksu
 provenance and CycloneDX attestations for each archive, provenance for the checksum file and the
 source SBOM, and the checksum signature. It constrains the signer to this repository's release
 workflow at the requested tag. The verified CycloneDX predicate must match the staged source SBOM.
-The source SBOM describes rio's source, as [`source-sbom.sh`](#rios-source-sbom-and-candidate-checks)
-makes it; attaching it to an archive does not establish a complete inventory of that archive's
-assembled binary.
+The source SBOM lists the Go modules linked into the release binaries, as
+[`source-sbom.sh`](#rios-source-sbom-and-candidate-checks) makes it. It does not list the other
+files in an archive, or the archives themselves.
 
 Verification and upload use the same private copy of the staged bytes. After the upload the guard
 compares each draft asset's GitHub `digest` and its bytes, downloaded by asset ID from that
@@ -1025,17 +1030,36 @@ synthetic approvals to improve Scorecard.
 
 ## rio's source SBOM and candidate checks
 
-`source-sbom.sh` makes the CycloneDX SBOM of rio's own source: the subject is `rio` at the given
-version, and the components are rio's Go modules, each with a version and a package URL. Demo
-fixtures (`tools/`), test data and workflows are not part of rio, and syft's file entries name
-manifests rather than dependencies, so the script leaves them out. Given a rio binary and a receipt
-path, it then checks the SBOM with rio's strict gate and writes the run receipt; a failing gate fails
-the script. CI runs it on every Go change, so a new directory of fixtures shows up as a failing gate
-there rather than in a release.
+`source-sbom.sh` makes rio's own CycloneDX SBOM. Its subject is `rio` at the given version.
+
+- **Components:** every Go module linked into any of the six release binaries, the standard
+  library included, each with a package URL and its place in the dependency graph. cyclonedx-gomod,
+  pinned in `tools/security`, reads them per target from a throwaway clone of the committed tree.
+  Test-only modules and modules a target does not link are not components.
+- **Completeness:** one root composition declares the inventory, and every listed component's
+  dependencies, `complete`. The claim covers the linked Go modules only. The Go toolchain builds
+  the binaries but does not ship in them (the build provenance names it), and the other files in
+  the archives exist only after the build. Neither is listed.
+- **Creators and licences:** [`source-sbom-modules.json`](source-sbom-modules.json) holds each
+  module's creator (its project page) and its concluded SPDX licence, read from the module's
+  licence files. Where cyclonedx-gomod's licence detection reports something else, the row
+  records it with the reason; for example `go-digest`'s detected `CC-BY-SA-4.0` is the licence of
+  its documentation. A module without a row, or a detection the row does not account for, fails
+  the script, so a dependency update that adds a module also adds its row.
+- **Levels:** the subject is a `logical` component and every module an `assembled` one, in BSI
+  TR-03183-2's terms ([component levels](../docs/manifest.md#component-levels)).
+
+rio then normalizes the SBOM, adds rebaze as the creator of the SBOM and of rio, and checks it
+against `bsi-tr-03183-2@2.1.0` with name, version and purl still required. The script writes
+rio's normalized SBOM and its run receipt; a failing gate fails the script, and the receipt of the
+failure is still written. CI runs it on every Go change.
 
 ```sh
-tools/source-sbom.sh 0.8.2 rio-source.cdx.json ./rio receipt.json
+tools/source-sbom.sh 0.9.0 rio-source.cdx.json ./rio receipt.json
 ```
+
+Releases up to and including v0.9.0-rc1 shipped syft's directory scan instead: the modules
+`go.mod` requires, with no dependency graph and no completeness claim. Their SBOMs are unchanged.
 
 Before a tag, run release preflight by hand with the version to release:
 `gh workflow run release-preflight.yaml --ref main -f version=v0.8.2`. Besides full CI and CodeQL,
