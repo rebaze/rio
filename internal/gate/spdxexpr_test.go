@@ -1,6 +1,9 @@
 package gate
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestSPDXExpression(t *testing.T) {
 	accepted := []string{
@@ -59,5 +62,23 @@ func TestSPDXExpression(t *testing.T) {
 		if validSPDXExpression(s) {
 			t.Errorf("validSPDXExpression(%q) = true, want false", s)
 		}
+	}
+}
+
+func TestSPDXExpressionBounds(t *testing.T) {
+	nest := func(n int) string {
+		return strings.Repeat("(", n) + "MIT" + strings.Repeat(")", n)
+	}
+	if !validSPDXExpression(nest(64)) {
+		t.Error("depth 64 rejected")
+	}
+	if validSPDXExpression(nest(65)) {
+		t.Error("depth 65 accepted")
+	}
+	if validSPDXExpression(strings.Repeat("MIT OR ", 700) + "MIT") {
+		t.Error("expression over 4096 bytes accepted")
+	}
+	if validSPDXExpression(nest(10_000_000)) {
+		t.Error("10 million nested parentheses accepted")
 	}
 }

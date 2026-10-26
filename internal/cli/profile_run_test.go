@@ -162,3 +162,16 @@ func TestRootProfileFixtureDefaultGatePasses(t *testing.T) {
 		t.Errorf("profile recorded without gate.profile")
 	}
 }
+
+func TestGateExplainSpecVersion(t *testing.T) {
+	r := gate.Result{
+		Profile: &gate.Profile{Name: profileName, Guideline: "BSI TR-03183-2", GuidelineVersion: "2.1.0"},
+		Findings: []gate.Finding{
+			{SBOM: true, Missing: []string{"specVersion"}, Details: map[string]string{"specVersion": "1.x"}},
+		},
+	}
+	want := []string{`sbom.specVersion (BSI TR-03183-2 2.1.0 §4): the SBOM declares specVersion "1.x", which is not CycloneDX 1.6 or later. Fix the SBOM generator.`}
+	if diff := cmp.Diff(want, gateExplanations(r)); diff != "" {
+		t.Errorf("explanations (-want +got):\n%s", diff)
+	}
+}

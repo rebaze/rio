@@ -6,6 +6,12 @@ import (
 	"github.com/rebaze/rio/internal/sbom"
 )
 
+// Bounds on untrusted input: the parser recurses once per "(".
+const (
+	maxSPDXExpressionLen   = 4096
+	maxSPDXExpressionDepth = 64
+)
+
 // validSPDXExpression reports whether s is an SPDX licence expression whose
 // identifiers rio can vouch for: ids from the embedded SPDX list (optionally
 // with a trailing "+"), LicenseRef-… and DocumentRef-…:LicenseRef-…, joined
@@ -19,6 +25,9 @@ import (
 //	and  := with ("AND" with)*
 //	with := id ["WITH" exception] | "(" expr ")"
 func validSPDXExpression(s string) bool {
+	if len(s) > maxSPDXExpressionLen {
+		return false
+	}
 	tokens := spdxTokens(s)
 	if len(tokens) == 0 {
 		return false
@@ -56,6 +65,7 @@ func spdxTokens(s string) []string {
 type spdxParser struct {
 	tokens []string
 	pos    int
+	depth  int
 }
 
 func (p *spdxParser) peek() string {
@@ -104,9 +114,14 @@ func (p *spdxParser) with() bool {
 	t := p.peek()
 	if t == "(" {
 		p.pos++
+		p.depth++
+		if p.depth > maxSPDXExpressionDepth {
+			return false
+		}
 		if !p.expr() || p.peek() != ")" {
 			return false
 		}
+		p.depth--
 		p.pos++
 		return true
 	}

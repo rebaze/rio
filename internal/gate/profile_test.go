@@ -723,3 +723,29 @@ func TestDefaultGateIgnoresSubjectNestedComponents(t *testing.T) {
 		}
 	}
 }
+
+func TestProfileSpecVersionForms(t *testing.T) {
+	for _, tc := range []struct {
+		version string
+		pass    bool
+	}{
+		{"1.6", true}, {"1.7", true}, {"2.0", true},
+		{"1.5", false}, {"1.x", false}, {"banana", false}, {"1..6", false},
+	} {
+		doc := conforming()
+		doc["specVersion"] = tc.version
+		res := profileCheck(t, doc, gate.Requirements{})
+		failed := false
+		for _, f := range res.Findings {
+			if f.SBOM && len(f.Missing) > 0 && f.Missing[0] == "specVersion" {
+				failed = true
+				if f.Details["specVersion"] != tc.version {
+					t.Errorf("%q: Details[specVersion] = %q", tc.version, f.Details["specVersion"])
+				}
+			}
+		}
+		if failed == tc.pass {
+			t.Errorf("specVersion %q: failed = %v, want pass = %v", tc.version, failed, tc.pass)
+		}
+	}
+}

@@ -117,7 +117,7 @@ func profileExplanations(r gate.Result) []string {
 		}
 		switch scope {
 		case "sbom":
-			lines = append(lines, label+": "+sbomAdvice(field))
+			lines = append(lines, label+": "+sbomAdvice(field, t.detail))
 		case "subject":
 			lines = append(lines, label+": "+profileSubjectAdvice(field, t.detail))
 		default:
@@ -127,10 +127,10 @@ func profileExplanations(r gate.Result) []string {
 	return lines
 }
 
-func sbomAdvice(field string) string {
+func sbomAdvice(field, detail string) string {
 	switch field {
 	case string(gate.RequireSpecVersion):
-		return "the SBOM is below CycloneDX 1.6. Set output.specVersionFloor to 1.6."
+		return fmt.Sprintf("the SBOM declares specVersion %q, which is not CycloneDX 1.6 or later. Fix the SBOM generator.", detail)
 	case string(gate.RequireCreator):
 		return "the SBOM has no creator (metadata.manufacturer with a contact email or URL). Set enrichment.producer in rio.yaml, or have the SBOM generator emit one."
 	case string(gate.RequireTimestamp):

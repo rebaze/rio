@@ -188,11 +188,28 @@ func runProfile(doc *sbom.Document) *profileRun {
 	return run
 }
 
+// validSpecVersion reports a dotted decimal version of CycloneDX 1.6 or later.
+// A segment that is not a plain decimal number fails, whatever compareSpecVersions
+// would make of it.
+func validSpecVersion(v string) bool {
+	for _, seg := range strings.Split(v, ".") {
+		if seg == "" {
+			return false
+		}
+		for _, c := range seg {
+			if c < '0' || c > '9' {
+				return false
+			}
+		}
+	}
+	return sbom.AtLeast(v, "1.6")
+}
+
 // sbomMissing returns the failed sbom-scope requirements in reporting order.
 func (run *profileRun) sbomMissing() []string {
 	meta := run.doc.MetadataObject()
 	failed := map[Requirement]bool{
-		RequireSpecVersion:     !sbom.AtLeast(run.doc.SpecVersion(), "1.6"),
+		RequireSpecVersion:     !validSpecVersion(run.doc.SpecVersion()),
 		RequireCreator:         !validCreator(meta["manufacturer"]),
 		RequireTimestamp:       !validTimestamp(meta["timestamp"]),
 		RequireVulnerabilities: run.doc.HasVulnerabilities(),
@@ -280,7 +297,11 @@ func checkProfile(doc *sbom.Document, reqs Requirements, p Profile) Result {
 	result := Result{Findings: []Finding{}, ComponentCount: len(run.children), Profile: &p, ProfileLevels: run.levels}
 
 	if missing := run.sbomMissing(); len(missing) > 0 {
-		result.Findings = append(result.Findings, Finding{SBOM: true, Missing: missing})
+		f := Finding{SBOM: true, Missing: missing}
+		if !validSpecVersion(doc.SpecVersion()) {
+			f.Details = map[string]string{string(RequireSpecVersion): doc.SpecVersion()}
+		}
+		result.Findings = append(result.Findings, f)
 	}
 
 	// The subject: name and version as always, the profile fields when
