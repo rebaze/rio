@@ -36,10 +36,36 @@ type EnrichmentSource struct {
 }
 
 var (
-	enrichmentLicenseOnce sync.Once
-	enrichmentLicenses    map[string]bool
-	enrichmentLicenseErr  error
+	spdxOnce sync.Once
+	spdxIDs  map[string]bool
+	spdxErr  error
 )
+
+// spdxIdentifiers loads the embedded SPDX enum (licences and exceptions).
+func spdxIdentifiers() (map[string]bool, error) {
+	spdxOnce.Do(func() {
+		var schema struct {
+			Enum []string `json:"enum"`
+		}
+		data, err := schemaFS.ReadFile("schemas/spdx.schema.json")
+		if err == nil {
+			err = json.Unmarshal(data, &schema)
+		}
+		spdxErr = err
+		spdxIDs = map[string]bool{}
+		for _, v := range schema.Enum {
+			spdxIDs[v] = true
+		}
+	})
+	return spdxIDs, spdxErr
+}
+
+// KnownSPDXIdentifier reports whether id is in the embedded SPDX list, which
+// holds licence and exception identifiers. A load failure reads as unknown.
+func KnownSPDXIdentifier(id string) bool {
+	known, err := spdxIdentifiers()
+	return err == nil && known[id]
+}
 
 // ValidateEnrichmentConfig uses Rio's embedded SPDX vocabulary. The manifest
 // loader also calls it so plan and normalize reject the same invalid ID.
@@ -55,24 +81,11 @@ func ValidateEnrichmentConfig(cfg *enrichment.Resolved) error {
 		if err := json.Unmarshal(f.Value, &id); err != nil {
 			return fmt.Errorf("%s: dataLicense must be an SPDX identifier", f.Source)
 		}
-		enrichmentLicenseOnce.Do(func() {
-			var schema struct {
-				Enum []string `json:"enum"`
-			}
-			data, err := schemaFS.ReadFile("schemas/spdx.schema.json")
-			if err == nil {
-				err = json.Unmarshal(data, &schema)
-			}
-			enrichmentLicenseErr = err
-			enrichmentLicenses = map[string]bool{}
-			for _, v := range schema.Enum {
-				enrichmentLicenses[v] = true
-			}
-		})
-		if enrichmentLicenseErr != nil {
-			return fmt.Errorf("reading embedded SPDX identifiers: %w", enrichmentLicenseErr)
+		known, err := spdxIdentifiers()
+		if err != nil {
+			return fmt.Errorf("reading embedded SPDX identifiers: %w", err)
 		}
-		if !enrichmentLicenses[id] {
+		if !known[id] {
 			return fmt.Errorf("%s: dataLicense %q is not an SPDX identifier in Rio's embedded list", f.Source, id)
 		}
 	}

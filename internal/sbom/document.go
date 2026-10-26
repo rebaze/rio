@@ -565,31 +565,37 @@ type ComponentRef struct {
 // EveryComponent walks the whole component tree in document order.
 func (d *Document) EveryComponent() []ComponentRef {
 	var out []ComponentRef
-	walkComponents(d.raw["components"], "components", &out)
+	visitComponents(d.raw["components"], "components", func(path string, obj map[string]any) {
+		if obj == nil {
+			// A non-object entry is schema-invalid; validation reports it.
+			// Record it so a check can still name where it sits.
+			out = append(out, ComponentRef{Path: path})
+			return
+		}
+		out = append(out, ComponentRef{
+			Path:    path,
+			Group:   stringField(obj, "group"),
+			Name:    stringField(obj, "name"),
+			Version: stringField(obj, "version"),
+			PURL:    stringField(obj, "purl"),
+		})
+	})
 	return out
 }
 
-func walkComponents(node any, path string, out *[]ComponentRef) {
+// visitComponents calls fn for every component in document order, nested ones
+// included; obj is nil for a non-object entry.
+func visitComponents(node any, path string, fn func(path string, obj map[string]any)) {
 	list, ok := node.([]any)
 	if !ok {
 		return
 	}
 	for i, entry := range list {
 		here := fmt.Sprintf("%s[%d]", path, i)
-		obj, ok := entry.(map[string]any)
-		if !ok {
-			// A non-object entry is schema-invalid; validation reports it.
-			// Record it so a check can still name where it sits.
-			*out = append(*out, ComponentRef{Path: here})
-			continue
+		obj, _ := entry.(map[string]any)
+		fn(here, obj)
+		if obj != nil {
+			visitComponents(obj["components"], here+".components", fn)
 		}
-		*out = append(*out, ComponentRef{
-			Path:    here,
-			Group:   stringField(obj, "group"),
-			Name:    stringField(obj, "name"),
-			Version: stringField(obj, "version"),
-			PURL:    stringField(obj, "purl"),
-		})
-		walkComponents(obj["components"], here+".components", out)
 	}
 }
