@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sort"
 
 	"github.com/rebaze/rio/internal/gate"
 )
@@ -260,8 +261,26 @@ func (c *EffectiveChecks) Validate(a Artifact) error {
 	}
 	// A finding can only name a requirement that was selected; otherwise the
 	// checks would claim less was evaluated than the findings show.
+	evaluated := map[string]bool{}
+	for _, e := range c.Evaluations {
+		evaluated[e.Scope+"/"+e.Requirement] = true
+	}
 	for _, f := range a.GateFindings {
 		if profile {
+			if f.SBOM && f.Subject {
+				return bad()
+			}
+			scope := "components"
+			if f.SBOM {
+				scope = "sbom"
+			} else if f.Subject {
+				scope = "subject"
+			}
+			for _, m := range f.Missing {
+				if !profileIDs[scope+"."+m] || !evaluated[scope+"/"+m] {
+					return bad()
+				}
+			}
 			continue
 		}
 		if f.SBOM {
@@ -361,4 +380,14 @@ func init() {
 	} {
 		profileIDs[id] = true
 	}
+}
+
+// ProfileRequirementIDs lists the requirement IDs a profile run can report.
+func ProfileRequirementIDs() []string {
+	out := make([]string, 0, len(profileIDs))
+	for id := range profileIDs {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
 }

@@ -2,7 +2,10 @@ package receipt
 
 import (
 	"encoding/json"
+	"github.com/rebaze/rio/internal/gate"
+	"github.com/rebaze/rio/internal/index"
 	"reflect"
+	"sort"
 	"testing"
 )
 
@@ -364,5 +367,20 @@ func TestProfileEvidenceValidation(t *testing.T) {
 	d.Artifacts[0].Checks.ProfileLevels["full"]++ // the subject
 	if _, err := Marshal(d); err != nil {
 		t.Fatalf("valid profile evidence refused: %v", err)
+	}
+}
+
+func TestProfileDriftGuards(t *testing.T) {
+	ids := index.ProfileRequirementIDs()
+	want := append([]string(nil), FailedRequirementIDs()...)
+	sort.Strings(want)
+	// components.purl and the subject's securityContact/digest are selected
+	// by the manifest, not the profile, but index allows them too.
+	if !reflect.DeepEqual(ids, want) {
+		t.Fatalf("index profile ids drifted from receipt ids:\n%v\n%v", ids, want)
+	}
+	p, ok := gate.LookupProfile("bsi-tr-03183-2@2.1.0")
+	if !ok || !knownProfile(&ProfileRef{Name: p.Name, Guideline: p.Guideline, GuidelineVersion: p.GuidelineVersion}) {
+		t.Fatalf("receipt known profile drifted from gate: %+v", p)
 	}
 }

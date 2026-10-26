@@ -75,3 +75,42 @@ func TestEffectiveChecksProfileInvalid(t *testing.T) {
 		})
 	}
 }
+
+func TestEffectiveChecksProfileFindings(t *testing.T) {
+	cases := map[string]GateFinding{
+		"unknown missing entry":   {Missing: []string{"bogus"}},
+		"unevaluated missing":     {Subject: true, Missing: []string{"digest"}},
+		"sbom and subject both":   {SBOM: true, Subject: true, Missing: []string{"creator"}},
+		"wrong scope requirement": {SBOM: true, Missing: []string{"level"}},
+	}
+	for name, f := range cases {
+		t.Run(name, func(t *testing.T) {
+			c, a := profileChecks()
+			a.Gate, a.GateFindings = GateFail, []GateFinding{f}
+			if err := c.Validate(a); err == nil {
+				t.Fatal("invalid profile finding accepted")
+			}
+		})
+	}
+}
+
+func TestEffectiveChecksSBOMFindingNeedsProfile(t *testing.T) {
+	c := EffectiveChecks{
+		Version: 1, Mode: "warn", ComponentScope: "all components including nested", ComponentCount: 1,
+		ComponentRequirements: []string{"name"}, ComponentEvaluation: "evaluated",
+		Evaluations: []gate.Evaluation{
+			{Scope: "subject", Requirement: "name", Evaluated: 1, Outcome: "pass"},
+			{Scope: "subject", Requirement: "version", Evaluated: 1, Outcome: "pass"},
+			{Scope: "components", Requirement: "name", Evaluated: 1, Outcome: "pass"},
+		},
+		SchemaValidation: "not-available", GraphCheck: "dangling-dependency-references",
+	}
+	a := Artifact{ID: "app", Components: 1, Gate: GateOK}
+	if err := c.Validate(a); err != nil {
+		t.Fatalf("baseline refused: %v", err)
+	}
+	a.Gate, a.GateFindings = GateFail, []GateFinding{{SBOM: true, Missing: []string{"creator"}}}
+	if err := c.Validate(a); err == nil {
+		t.Fatal("sbom finding accepted without a profile")
+	}
+}
