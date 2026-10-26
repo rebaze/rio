@@ -57,6 +57,11 @@ type Requirements struct {
 	// Subject is gate.subject.require: what metadata.component must carry in
 	// addition to the name and version it always needs.
 	Subject []Requirement
+	// Profile names a requirement profile, such as "bsi-tr-03183-2@2.1.0",
+	// whose checks run in addition to Components and Subject. Empty, or a name
+	// LookupProfile does not know, means none; the manifest loader is what
+	// rejects unknown names.
+	Profile string
 }
 
 // All returns every requirement, which is what gate.require defaults to (§2).
@@ -69,6 +74,9 @@ func All() []Requirement {
 // the on-disk shape and the caller converts, so the wire contract in §4.2 has
 // exactly one owner; the tags here keep the two readable side by side.
 type Finding struct {
+	// SBOM marks the finding as being about the document as a whole. Only a
+	// requirement profile reports these.
+	SBOM bool `json:"sbom,omitempty"`
 	// Subject marks the finding as being about metadata.component rather than
 	// a member of the components array.
 	Subject bool `json:"subject,omitempty"`
@@ -79,7 +87,11 @@ type Finding struct {
 	Component string `json:"component,omitempty"`
 	// Missing lists the failed requirements in the fixed order name, version,
 	// purl, never the order gate.require gave them in (§7). A subject finding
-	// uses name, version, securityContact, digest.
+	// uses name, version, securityContact, digest. Under a profile the
+	// profile's fields (level, creator, filename, dependencies,
+	// distributionLicences, deployableHash, executable, archive, structured)
+	// follow purl, or follow version on the subject; an SBOM finding uses
+	// specVersion, creator, timestamp, vulnerabilities.
 	Missing []string `json:"missing"`
 	// Details explains a failed requirement where "missing" alone would
 	// mislead, such as a security contact that is present but unsupported.
@@ -89,12 +101,19 @@ type Finding struct {
 
 // Result is the outcome of a gate run.
 type Result struct {
-	// Findings is the subject finding first, if any, then the failing
-	// components in document order. Never nil, so index.json carries an empty
+	// Findings is the SBOM finding first, if any (only a profile reports
+	// one), then the subject finding, then the failing components in
+	// document order. Never nil, so index.json carries an empty
 	// array rather than null.
 	Findings       []Finding
 	Evaluations    []Evaluation
 	ComponentCount int
+	// Profile is the requirement profile that ran, or nil.
+	Profile *Profile
+	// ProfileLevels counts the components, and the subject when
+	// metadata.component is an object, checked at each level. It holds all
+	// five keys whenever a profile ran, and is nil otherwise.
+	ProfileLevels map[string]int
 }
 
 // Evaluation counts actual requirement evaluations, independently of findings.
@@ -128,6 +147,10 @@ func CheckRequirements(doc *sbom.Document, reqs Requirements) Result {
 	findings := []Finding{}
 	if doc == nil {
 		return Result{Findings: findings, Evaluations: []Evaluation{}}
+	}
+
+	if p, ok := LookupProfile(reqs.Profile); ok {
+		return checkProfile(doc, reqs, p)
 	}
 
 	result := Result{Findings: findings, Evaluations: []Evaluation{}, ComponentCount: len(doc.EveryComponent())}
@@ -192,26 +215,41 @@ func evaluatedResult(result Result, findings []Finding, reqs Requirements) Resul
 			if scope == "components" {
 				count = result.ComponentCount
 			}
-			e := Evaluation{Scope: scope, Requirement: string(req), Evaluated: count, Outcome: "pass"}
-			for _, f := range findings {
-				if f.Subject != (scope == "subject") {
-					continue
-				}
-				for _, missing := range f.Missing {
-					if missing == string(req) {
-						e.Failed++
-					}
-				}
-			}
-			if count == 0 {
-				e.Outcome = "not-evaluated"
-			} else if e.Failed > 0 {
-				e.Outcome = "fail"
-			}
-			result.Evaluations = append(result.Evaluations, e)
+			result.Evaluations = append(result.Evaluations, evaluate(scope, req, count, findings))
 		}
 	}
 	return result
+}
+
+// evaluate counts how many findings in scope name req.
+func evaluate(scope string, req Requirement, count int, findings []Finding) Evaluation {
+	e := Evaluation{Scope: scope, Requirement: string(req), Evaluated: count, Outcome: "pass"}
+	for _, f := range findings {
+		if findingScope(f) != scope {
+			continue
+		}
+		for _, missing := range f.Missing {
+			if missing == string(req) {
+				e.Failed++
+			}
+		}
+	}
+	if count == 0 {
+		e.Outcome = "not-evaluated"
+	} else if e.Failed > 0 {
+		e.Outcome = "fail"
+	}
+	return e
+}
+
+func findingScope(f Finding) string {
+	switch {
+	case f.SBOM:
+		return "sbom"
+	case f.Subject:
+		return "subject"
+	}
+	return "components"
 }
 
 func wants(list []Requirement, req Requirement) bool {
@@ -263,17 +301,7 @@ func checkDigest(doc *sbom.Document) bool {
 	return false
 }
 
-func validSHA256(s string) bool {
-	if len(s) != 64 {
-		return false
-	}
-	for _, c := range s {
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
-			return false
-		}
-	}
-	return true
-}
+func validSHA256(s string) bool { return validHex(s, 64) }
 
 // checkSecurityContact passes when any security-contact reference carries a
 // supported value. Presence alone is not enough: an unusable value is reported
