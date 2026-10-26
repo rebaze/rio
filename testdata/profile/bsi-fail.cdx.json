@@ -1,0 +1,44 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "properties": [
+      {
+        "name": "example:fixture",
+        "value": "synthetic data for rio tests; not a real product"
+      }
+    ],
+    "component": {
+      "type": "application",
+      "bom-ref": "subject",
+      "name": "cart-api",
+      "version": "1.4.0"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "zlib",
+      "name": "zlib",
+      "version": "1.3.1",
+      "purl": "pkg:generic/zlib@1.3.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "openssl",
+      "name": "openssl",
+      "version": "3.0.13",
+      "purl": "pkg:generic/openssl@3.0.13"
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "subject",
+      "dependsOn": [
+        "zlib",
+        "openssl"
+      ]
+    }
+  ]
+}

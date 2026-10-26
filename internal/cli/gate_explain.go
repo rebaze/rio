@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/rebaze/rio/internal/gate"
+	"github.com/rebaze/rio/internal/receipt"
 )
 
 // explainGate prints, for one artifact that failed the gate, each failed
@@ -23,6 +24,9 @@ func explainGate(w io.Writer, id, consequence string, r gate.Result) {
 }
 
 func gateExplanations(r gate.Result) []string {
+	if r.Profile != nil {
+		return profileExplanations(r)
+	}
 	var lines []string
 	components := map[string]int{}
 	example := map[string]string{}
@@ -76,4 +80,148 @@ func hasHave(n int) string {
 		return "has"
 	}
 	return "have"
+}
+
+// profileExplanations is gateExplanations under a requirement profile: one
+// line per failed ID in the receipt's fixed order (sbom, subject, components),
+// each naming the TR section it comes from where there is one.
+func profileExplanations(r gate.Result) []string {
+	type tally struct {
+		n       int
+		example string
+		detail  string
+	}
+	found := map[string]*tally{}
+	for _, f := range r.Findings {
+		scope := findingScope(f.SBOM, f.Subject)
+		for _, m := range f.Missing {
+			id := scope + "." + m
+			t := found[id]
+			if t == nil {
+				t = &tally{example: f.Component, detail: f.Details[m]}
+				found[id] = t
+			}
+			t.n++
+		}
+	}
+	var lines []string
+	for _, id := range receipt.FailedRequirementIDs() {
+		t := found[id]
+		if t == nil {
+			continue
+		}
+		scope, field, _ := strings.Cut(id, ".")
+		label := id
+		if section := gate.ProfileSection(id); section != "" {
+			label = fmt.Sprintf("%s (%s %s %s)", id, r.Profile.Guideline, r.Profile.GuidelineVersion, section)
+		}
+		switch scope {
+		case "sbom":
+			lines = append(lines, label+": "+sbomAdvice(field))
+		case "subject":
+			lines = append(lines, label+": "+profileSubjectAdvice(field, t.detail))
+		default:
+			lines = append(lines, label+": "+profileComponentAdvice(field, t.n, t.example, t.detail))
+		}
+	}
+	return lines
+}
+
+func sbomAdvice(field string) string {
+	switch field {
+	case string(gate.RequireSpecVersion):
+		return "the SBOM is below CycloneDX 1.6. Set output.specVersionFloor to 1.6."
+	case string(gate.RequireCreator):
+		return "the SBOM has no creator (metadata.manufacturer with a contact email or URL). Set enrichment.producer in rio.yaml, or have the SBOM generator emit one."
+	case string(gate.RequireTimestamp):
+		return "the SBOM has no timestamp (metadata.timestamp in RFC 3339 form). Have the SBOM generator emit it."
+	default:
+		return "the SBOM contains vulnerability information. Deliver vulnerability information separately, for example as VEX; the TR forbids it in the SBOM."
+	}
+}
+
+// profileNoun says what a profile field is, for "has no <noun>".
+func profileNoun(field string) string {
+	switch field {
+	case string(gate.RequireCreator):
+		return "creator (manufacturer)"
+	case string(gate.RequireFilename):
+		return "filename (bsi:component:filename)"
+	case string(gate.RequireDependencies):
+		return "dependencies entry covered by a compositions entry"
+	case string(gate.RequireDistributionLicences):
+		return "concluded licence in SPDX form"
+	case string(gate.RequireDeployableHash):
+		return "SHA-512 hash on a distribution reference"
+	case string(gate.RequireExecutable):
+		return "bsi:component:executable property (executable or non-executable)"
+	case string(gate.RequireArchive):
+		return "bsi:component:archive property (archive or no archive)"
+	case string(gate.RequireStructured):
+		return "bsi:component:structured property (structured or unstructured)"
+	}
+	return field
+}
+
+const emitAdvice = "Have the SBOM generator emit it."
+
+// profileFix is who can fix a profile field, for the fields that have more to
+// say than "have the generator emit it".
+func profileFix(scope, field string) string {
+	switch field {
+	case string(gate.RequireCreator):
+		if scope == "subject" {
+			return "Set enrichment.subject.manufacturer in rio.yaml, or have the SBOM generator emit one."
+		}
+	case string(gate.RequireDeployableHash):
+		return "Have the SBOM generator emit it, add the shipped files with sha512 under distributions in the build context file, or mark components whose file does not exist on its own with rio:tr-03183-2:level. Rio does not hash files."
+	}
+	return emitAdvice
+}
+
+const levelFix = "Set it once to logical, identified or assembled, or remove the property."
+
+func levelSentence(detail string) string {
+	if detail == "" {
+		return "the rio:tr-03183-2:level property is not valid"
+	}
+	return detail
+}
+
+func profileSubjectAdvice(field, detail string) string {
+	switch field {
+	case string(gate.RequireSecurityContact), string(gate.RequireDigest):
+		return subjectAdvice(field, detail)
+	case string(gate.RequireName), string(gate.RequireVersion):
+		return subjectAdvice(field, detail)
+	case string(gate.RequireLevel):
+		s := levelSentence(detail)
+		return strings.ToUpper(s[:1]) + s[1:] + ". " + levelFix
+	}
+	return "the SBOM subject has no " + profileNoun(field) + ". " + profileFix("subject", field)
+}
+
+func profileComponentAdvice(field string, n int, example, detail string) string {
+	// %q: the example comes from the SBOM and may hold control characters.
+	switch field {
+	case string(gate.RequirePURL):
+		return fmt.Sprintf("%s %s no valid package URL, for example %q. Fix the SBOM generator, or remove purl from gate.require if this handoff does not need it.", plural(n, "component"), hasHave(n), example)
+	case string(gate.RequireName), string(gate.RequireVersion):
+		return fmt.Sprintf("%s %s no %s, for example %q. The TR requires it. %s", plural(n, "component"), hasHave(n), field, example, emitAdvice)
+	case string(gate.RequireLevel):
+		s := levelSentence(detail)
+		return fmt.Sprintf("%s %s an invalid level, for example %q: %s. %s", plural(n, "component"), hasHave(n), example, s, levelFix)
+	}
+	return fmt.Sprintf("%s %s no %s, for example %q. %s", plural(n, "component"), hasHave(n), profileNoun(field), example, profileFix("components", field))
+}
+
+// findingScope is the scope part of a failed requirement ID.
+func findingScope(sbom, subject bool) string {
+	switch {
+	case sbom:
+		return "sbom"
+	case subject:
+		return "subject"
+	}
+	return "components"
 }

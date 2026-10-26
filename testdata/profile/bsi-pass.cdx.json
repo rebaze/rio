@@ -1,0 +1,210 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "bom-ref": "subject",
+      "licenses": [
+        {
+          "acknowledgement": "concluded",
+          "expression": "Apache-2.0"
+        }
+      ],
+      "manufacturer": {
+        "name": "Example GmbH",
+        "url": [
+          "https://example.org"
+        ]
+      },
+      "name": "cart-api",
+      "properties": [
+        {
+          "name": "rio:tr-03183-2:level",
+          "value": "logical"
+        }
+      ],
+      "type": "application",
+      "version": "1.4.0"
+    },
+    "manufacturer": {
+      "contact": [
+        {
+          "email": "sbom@example.org"
+        }
+      ],
+      "name": "Example GmbH"
+    },
+    "timestamp": "2026-10-26T10:00:00Z",
+    "properties": [
+      {
+        "name": "example:fixture",
+        "value": "synthetic data for rio tests; not a real product"
+      }
+    ]
+  },
+  "components": [
+    {
+      "bom-ref": "file",
+      "externalReferences": [
+        {
+          "hashes": [
+            {
+              "alg": "SHA-512",
+              "content": "abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab"
+            }
+          ],
+          "type": "distribution",
+          "url": "https://downloads.example.org/cart-api-1.4.0.tar.gz"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "acknowledgement": "concluded",
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "manufacturer": {
+        "contact": [
+          {
+            "email": "sbom@example.org"
+          }
+        ],
+        "name": "Example GmbH"
+      },
+      "name": "cart-api-1.4.0.tar.gz",
+      "properties": [
+        {
+          "name": "bsi:component:filename",
+          "value": "cart-api-1.4.0.tar.gz"
+        },
+        {
+          "name": "bsi:component:executable",
+          "value": "non-executable"
+        },
+        {
+          "name": "bsi:component:archive",
+          "value": "archive"
+        },
+        {
+          "name": "bsi:component:structured",
+          "value": "structured"
+        }
+      ],
+      "type": "file",
+      "version": "1.4.0"
+    },
+    {
+      "bom-ref": "lib",
+      "licenses": [
+        {
+          "acknowledgement": "concluded",
+          "expression": "Zlib"
+        }
+      ],
+      "manufacturer": {
+        "contact": [
+          {
+            "email": "sbom@example.org"
+          }
+        ],
+        "name": "Example GmbH"
+      },
+      "name": "zlib",
+      "properties": [
+        {
+          "name": "rio:tr-03183-2:level",
+          "value": "assembled"
+        },
+        {
+          "name": "bsi:component:executable",
+          "value": "non-executable"
+        },
+        {
+          "name": "bsi:component:archive",
+          "value": "no archive"
+        },
+        {
+          "name": "bsi:component:structured",
+          "value": "unstructured"
+        }
+      ],
+      "type": "library",
+      "version": "1.3.1"
+    },
+    {
+      "bom-ref": "ident",
+      "manufacturer": {
+        "contact": [
+          {
+            "email": "sbom@example.org"
+          }
+        ],
+        "name": "Example GmbH"
+      },
+      "name": "openssl",
+      "properties": [
+        {
+          "name": "rio:tr-03183-2:level",
+          "value": "identified"
+        }
+      ],
+      "type": "library",
+      "version": "3.0.13"
+    },
+    {
+      "bom-ref": "ref",
+      "externalReferences": [
+        {
+          "type": "bom",
+          "url": "https://example.org/base.cdx.json"
+        }
+      ],
+      "manufacturer": {
+        "contact": [
+          {
+            "email": "sbom@example.org"
+          }
+        ],
+        "name": "Example GmbH"
+      },
+      "name": "base-image",
+      "type": "container",
+      "version": "1.0"
+    }
+  ],
+  "dependencies": [
+    {
+      "dependsOn": [
+        "file",
+        "lib",
+        "ident",
+        "ref"
+      ],
+      "ref": "subject"
+    },
+    {
+      "ref": "file"
+    },
+    {
+      "ref": "lib"
+    }
+  ],
+  "compositions": [
+    {
+      "aggregate": "complete",
+      "dependencies": [
+        "subject",
+        "file"
+      ]
+    },
+    {
+      "aggregate": "incomplete",
+      "assemblies": [
+        "lib"
+      ]
+    }
+  ]
+}
