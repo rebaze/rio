@@ -10,12 +10,17 @@ type ComponentObject struct {
 }
 
 // ProfileComponents returns the subject first (when metadata.component is an
-// object), then every component in EveryComponent order (same walk). Callers must not
-// modify the returned maps.
+// object), then the components nested under the subject, recursively, such as
+// the TR file components rio writes from the build context (paths
+// "metadata.component.components[0]", Subject false), then every component in
+// EveryComponent order (same walk). Callers must not modify the returned maps.
 func (d *Document) ProfileComponents() []ComponentObject {
 	var out []ComponentObject
 	if subj := d.metadataComponent(false); subj != nil {
 		out = append(out, ComponentObject{Path: "metadata.component", Subject: true, Object: subj})
+		visitComponents(subj["components"], "metadata.component.components", func(path string, obj map[string]any) {
+			out = append(out, ComponentObject{Path: path, Object: obj})
+		})
 	}
 	visitComponents(d.raw["components"], "components", func(path string, obj map[string]any) {
 		out = append(out, ComponentObject{Path: path, Object: obj})

@@ -10,7 +10,7 @@ import (
 
 func TestProfileViews(t *testing.T) {
 	doc := load(t, []byte(`{"bomFormat":"CycloneDX","specVersion":"1.6",
-"metadata":{"component":{"name":"app"}},
+"metadata":{"component":{"name":"app","components":[{"name":"f","components":[{"name":"g"}]}]}},
 "components":[{"name":"x","components":[{"name":"y"}]},"junk"],
 "dependencies":[{"ref":"a"},{"ref":"b"},{"ref":7}],
 "compositions":[{"aggregate":"complete","dependencies":["a"]},{"aggregate":"not_specified","assemblies":["b"]},{"aggregate":"unknown","assemblies":["c"]}],
@@ -27,6 +27,8 @@ func TestProfileViews(t *testing.T) {
 	}
 	want := []pc{
 		{"metadata.component", true, false},
+		{"metadata.component.components[0]", false, false},
+		{"metadata.component.components[0].components[0]", false, false},
 		{"components[0]", false, false},
 		{"components[0].components[0]", false, false},
 		{"components[1]", false, true},

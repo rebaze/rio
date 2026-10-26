@@ -665,3 +665,61 @@ func TestProfileLicenceForms(t *testing.T) {
 		})
 	}
 }
+
+// subjectNested is conforming with its full file component nested under the
+// subject (metadata.component.components), where rio writes the TR file
+// components from the build context.
+func subjectNested() map[string]any {
+	doc := conforming()
+	list := doc["components"].([]any)
+	subjectOf(doc)["components"] = []any{list[0]}
+	doc["components"] = list[1:]
+	return doc
+}
+
+func TestProfileChecksSubjectNestedComponents(t *testing.T) {
+	got := profileCheck(t, subjectNested(), gate.Requirements{})
+	if !got.OK() {
+		t.Fatalf("OK() = false; findings: %+v", got.Findings)
+	}
+	if diff := cmp.Diff(allLevels(1, 1, 1, 1, 1), got.ProfileLevels); diff != "" {
+		t.Errorf("ProfileLevels (-want +got):\n%s", diff)
+	}
+	if got.ComponentCount != 4 {
+		t.Errorf("ComponentCount = %d, want 4 (3 in components, 1 under the subject)", got.ComponentCount)
+	}
+
+	doc := subjectNested()
+	file := at(doc, "metadata", "component", "components", 0)
+	var kept []any
+	for _, p := range file["properties"].([]any) {
+		if p.(map[string]any)["name"] != "bsi:component:filename" {
+			kept = append(kept, p)
+		}
+	}
+	file["properties"] = kept
+	got = profileCheck(t, doc, gate.Requirements{})
+	want := []brief{{Component: "cart-api-1.4.0.tar.gz@1.4.0", Missing: []string{"filename"}}}
+	if diff := cmp.Diff(want, briefs(got.Findings)); diff != "" {
+		t.Errorf("findings (-want +got):\n%s", diff)
+	}
+	for _, e := range got.Evaluations {
+		if e.Scope == "components" && e.Requirement == "filename" && (e.Evaluated != 1 || e.Failed != 1) {
+			t.Errorf("components.filename evaluation = %+v, want 1 evaluated, 1 failed", e)
+		}
+	}
+}
+
+// Without a profile the gate is exactly as before: subject-nested components
+// are not in its inventory.
+func TestDefaultGateIgnoresSubjectNestedComponents(t *testing.T) {
+	got := gate.CheckRequirements(loadMap(t, subjectNested()), gate.Requirements{Components: []gate.Requirement{gate.RequireName, gate.RequireVersion, gate.RequirePURL}})
+	if got.ComponentCount != 3 {
+		t.Errorf("ComponentCount = %d, want 3", got.ComponentCount)
+	}
+	for _, f := range got.Findings {
+		if strings.Contains(f.Component, "cart-api-1.4.0.tar.gz") {
+			t.Errorf("default gate checked a subject-nested component: %+v", f)
+		}
+	}
+}

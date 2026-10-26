@@ -73,3 +73,17 @@ func TestIntegrityFindingsAreDeduplicatedAndOrdered(t *testing.T) {
 		t.Fatalf("IntegrityFindings() (-want +got):\n%s", diff)
 	}
 }
+
+// Components nested under the subject, such as the TR file components rio
+// writes from the build context, are bom-ref holders too.
+func TestIntegrityFindingsResolveSubjectNestedComponents(t *testing.T) {
+	doc := load(t, []byte(`{"bomFormat":"CycloneDX","specVersion":"1.6","version":1,
+"metadata":{"component":{"bom-ref":"subject","type":"application","name":"app","version":"1",
+  "components":[{"bom-ref":"file","type":"file","name":"app.tar.gz","components":[{"bom-ref":"inner","type":"file","name":"inner"}]}]}},
+"dependencies":[{"ref":"subject","dependsOn":["file","ghost"]},{"ref":"file","dependsOn":["inner"]},{"ref":"inner","dependsOn":[]}]}`))
+
+	want := []sbom.IntegrityFinding{{Ref: "ghost", Kind: "dependsOn", From: "subject"}}
+	if diff := cmp.Diff(want, doc.IntegrityFindings()); diff != "" {
+		t.Fatalf("IntegrityFindings() (-want +got):\n%s", diff)
+	}
+}

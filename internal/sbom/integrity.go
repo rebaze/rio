@@ -33,6 +33,9 @@ func (d *Document) IntegrityFindings() []IntegrityFinding {
 		if ref := stringField(comp, "bom-ref"); ref != "" {
 			known[ref] = true
 		}
+		// Components nested under the subject, such as the TR file
+		// components rio writes from the build context, hold bom-refs too.
+		collectNestedRefs(comp["components"], known)
 	}
 
 	deps, _ := d.raw["dependencies"].([]any)

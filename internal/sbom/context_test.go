@@ -44,6 +44,8 @@ func contextResolved(fields ...buildcontext.Field) *buildcontext.Resolved {
 			a.Build.ID = &v
 		case "lifecycle":
 			a.Lifecycle = &v
+		case "level":
+			a.Level = v
 		}
 	}
 	return &buildcontext.Resolved{File: buildcontext.FileRef{Path: "context.json", SHA256: strings.Repeat("b", 64)}, Selector: "/artifacts/0", Artifact: a, Fields: fields}
