@@ -376,42 +376,73 @@ func mergeDetails(a, b map[string]string) map[string]string {
 }
 
 // evaluations lists every requirement the profile run evaluated, in reporting
-// order, with the number of components it was evaluated for. A subject or
-// component field no level demanded is listed as not-evaluated, so the list
-// has the same shape for every document.
+// order, with the number of components it was evaluated for and how often it
+// failed. Its shape is ProfileEvaluationCounts for this document.
 func (run *profileRun) evaluations(reqs Requirements, findings []Finding) []Evaluation {
+	subjectLevel := ""
+	if run.subject != nil {
+		subjectLevel = run.subject.level
+	}
+	children := map[string]int{}
+	for _, c := range run.children {
+		children[c.level]++
+	}
+	out := ProfileEvaluationCounts(subjectLevel, children, reqs)
+	for i, e := range out {
+		out[i] = evaluate(e.Scope, Requirement(e.Requirement), e.Evaluated, findings)
+	}
+	return out
+}
+
+// ProfileEvaluationCounts is the evaluation list a profile run reports, in
+// reporting order, with each entry's Evaluated count and nothing else: the sbom
+// scope; the subject's name and version; every profile field for a subject at
+// subjectLevel ("" when metadata.component is not an object, which evaluates
+// none); the subject fields reqs.Subject opts into; the components' name,
+// version and, when reqs.Components opts into it, purl; then every profile
+// field, counted over the components at each level in children. A field no
+// level demanded is listed with count 0, so the list has the same entries for
+// every document under the same opt-ins. A reader of recorded evaluations
+// checks them against it.
+func ProfileEvaluationCounts(subjectLevel string, children map[string]int, reqs Requirements) []Evaluation {
+	count := func(scope string, r Requirement, n int) Evaluation {
+		return Evaluation{Scope: scope, Requirement: string(r), Evaluated: n}
+	}
 	out := []Evaluation{}
 	for _, r := range sbomFields {
-		out = append(out, evaluate("sbom", r, 1, findings))
+		out = append(out, count("sbom", r, 1))
 	}
 
-	out = append(out, evaluate("subject", RequireName, 1, findings), evaluate("subject", RequireVersion, 1, findings))
+	out = append(out, count("subject", RequireName, 1), count("subject", RequireVersion, 1))
 	for _, r := range profileFields {
-		count := 0
-		if run.subject != nil && applies(run.subject.level, r) {
-			count = 1
+		n := 0
+		if subjectLevel != "" && applies(subjectLevel, r) {
+			n = 1
 		}
-		out = append(out, evaluate("subject", r, count, findings))
+		out = append(out, count("subject", r, n))
 	}
 	for _, r := range []Requirement{RequireSecurityContact, RequireDigest} {
 		if wants(reqs.Subject, r) {
-			out = append(out, evaluate("subject", r, 1, findings))
+			out = append(out, count("subject", r, 1))
 		}
 	}
 
-	n := len(run.children)
-	out = append(out, evaluate("components", RequireName, n, findings), evaluate("components", RequireVersion, n, findings))
+	total := 0
+	for _, n := range children {
+		total += n
+	}
+	out = append(out, count("components", RequireName, total), count("components", RequireVersion, total))
 	if wants(reqs.Components, RequirePURL) {
-		out = append(out, evaluate("components", RequirePURL, n, findings))
+		out = append(out, count("components", RequirePURL, total))
 	}
 	for _, r := range profileFields {
-		count := 0
-		for _, c := range run.children {
-			if applies(c.level, r) {
-				count++
+		n := 0
+		for level, k := range children {
+			if applies(level, r) {
+				n += k
 			}
 		}
-		out = append(out, evaluate("components", r, count, findings))
+		out = append(out, count("components", r, n))
 	}
 	return out
 }

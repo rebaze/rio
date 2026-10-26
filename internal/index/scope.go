@@ -91,6 +91,54 @@ func (c *EffectiveChecks) validProfile() bool {
 	return sum == c.ComponentCount || sum == c.ComponentCount+1
 }
 
+// profileEvaluationsMatch reports whether the evaluations are, entry for
+// entry and in order, what the gate's profile run emits for some placement of
+// the subject among profileLevels: no subject, or a subject at one of the
+// levels counted there, with the rest being the ComponentCount components.
+// Failed and Outcome are checked against the findings separately.
+func (c *EffectiveChecks) profileEvaluationsMatch(selection, subject map[string]bool) bool {
+	var reqs gate.Requirements
+	if selection["purl"] {
+		reqs.Components = []gate.Requirement{gate.RequirePURL}
+	}
+	for _, r := range []gate.Requirement{gate.RequireSecurityContact, gate.RequireDigest} {
+		if subject[string(r)] {
+			reqs.Subject = append(reqs.Subject, r)
+		}
+	}
+	for _, subjectLevel := range append([]string{""}, profileLevelKeys...) {
+		children := map[string]int{}
+		total, placed := 0, true
+		for _, k := range profileLevelKeys {
+			children[k] = c.ProfileLevels[k]
+			if k == subjectLevel {
+				children[k]--
+			}
+			placed = placed && children[k] >= 0
+			total += children[k]
+		}
+		if !placed || total != c.ComponentCount {
+			continue
+		}
+		want := gate.ProfileEvaluationCounts(subjectLevel, children, reqs)
+		if len(want) != len(c.Evaluations) {
+			continue
+		}
+		match := true
+		for i, w := range want {
+			e := c.Evaluations[i]
+			if e.Scope != w.Scope || e.Requirement != w.Requirement || e.Evaluated != w.Evaluated {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
+}
+
 // decodeExtension strictly checks known versions; future versions remain opaque.
 func decodeExtension(b []byte, target any) (int, json.RawMessage, error) {
 	var header struct {
@@ -255,8 +303,11 @@ func (c *EffectiveChecks) Validate(a Artifact) error {
 		}
 	}
 	// A profile adds sbom, subject and component evaluations whose number
-	// depends on the document, so only the shared invariants are checked.
+	// depends on the document; they must be exactly the list the gate emits.
 	if !profile && len(c.Evaluations) != len(subject)+len(selection) {
+		return bad()
+	}
+	if profile && !c.profileEvaluationsMatch(selection, subject) {
 		return bad()
 	}
 	// A finding can only name a requirement that was selected; otherwise the
