@@ -45,6 +45,12 @@ const (
 	RequirePURL    = "purl"
 )
 
+// ProfileBSITR031832v210 is the gate.profile value for BSI TR-03183-2 2.1.0.
+const ProfileBSITR031832v210 = "bsi-tr-03183-2@2.1.0"
+
+// KnownProfiles lists the gate.profile values this version accepts.
+func KnownProfiles() []string { return []string{ProfileBSITR031832v210} }
+
 // DefaultRequire is what gate.require means when it is not given.
 func DefaultRequire() []string { return []string{RequireName, RequireVersion, RequirePURL} }
 
@@ -128,6 +134,10 @@ type Gate struct {
 	ModeExplicit bool
 	Mode         string
 	Require      []string
+	// RequireExplicit is true when the manifest gave gate.require itself.
+	RequireExplicit bool
+	// Profile is gate.profile, empty when not set.
+	Profile string
 	// SubjectRequire is gate.subject.require: subject requirements beyond the
 	// name and version every subject needs. Empty unless opted into.
 	SubjectRequire []string
@@ -281,6 +291,7 @@ type outputSection struct {
 
 type gateSection struct {
 	Mode    *string             `yaml:"mode"`
+	Profile *string             `yaml:"profile"`
 	Require *[]string           `yaml:"require"`
 	Subject *gateSubjectSection `yaml:"subject"`
 }
@@ -432,6 +443,21 @@ func (l loader) gate(f *fileSection, m *Manifest) error {
 		m.Gate.Mode = *f.Gate.Mode
 		m.Gate.ModeExplicit = true
 	}
+	if f.Gate != nil && f.Gate.Profile != nil {
+		p := *f.Gate.Profile
+		known := false
+		for _, k := range KnownProfiles() {
+			known = known || p == k
+		}
+		if !known {
+			return l.errf("gate.profile", "%q is not a known profile, the allowed value is %s",
+				p, strings.Join(KnownProfiles(), ", "))
+		}
+		if m.Output.SpecVersionFloor != "1.6" {
+			return l.errf("gate.profile", "BSI TR-03183-2 2.1.0 requires CycloneDX 1.6; set output.specVersionFloor to 1.6")
+		}
+		m.Gate.Profile = p
+	}
 	m.Gate.SubjectRequire = []string{}
 	if f.Gate != nil && f.Gate.Subject != nil {
 		seen := map[string]bool{}
@@ -449,8 +475,12 @@ func (l loader) gate(f *fileSection, m *Manifest) error {
 	}
 	if f.Gate == nil || f.Gate.Require == nil {
 		m.Gate.Require = DefaultRequire()
+		if m.Gate.Profile != "" {
+			m.Gate.Require = []string{}
+		}
 		return nil
 	}
+	m.Gate.RequireExplicit = true
 
 	// An explicitly empty list is the empty subset (§2): the subject check in
 	// §5 step 4 still runs, but no per-component field is required.
@@ -552,7 +582,7 @@ var yamlTargets = map[string]struct {
 	// The one type several keys share, which is why it names none of them
 	// when the lookup below cannot tell which one was meant.
 	"string": {shape: "a string", where: regexp.MustCompile(
-		`^((?:artifacts|artifactSets)\[[0-9]+\]\.(id|modules|idFrom|sbom|exclude\[[0-9]+\]|subject\.(name|version)|context\.file)|output\.specVersionFloor|gate\.require\[[0-9]+\]|gate\.subject\.require\[[0-9]+\]|(?:artifacts|artifactSets)\[[0-9]+\]\.context\.(require|replace)\[[0-9]+\]|((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment\..+)$`)},
+		`^((?:artifacts|artifactSets)\[[0-9]+\]\.(id|modules|idFrom|sbom|exclude\[[0-9]+\]|subject\.(name|version)|context\.file)|output\.specVersionFloor|gate\.profile|gate\.require\[[0-9]+\]|gate\.subject\.require\[[0-9]+\]|(?:artifacts|artifactSets)\[[0-9]+\]\.context\.(require|replace)\[[0-9]+\]|((?:artifacts|artifactSets)\[[0-9]+\]\.)?enrichment\..+)$`)},
 }
 
 // yamlDetail reduces a decode failure to go-yaml's own words, without the
