@@ -112,6 +112,27 @@ type Checks struct {
 	// fixed order of FailedRequirementIDs. Present only when the gate failed;
 	// receipts written before it existed omit it even then.
 	Failed []FailedRequirement `json:"failed,omitempty"`
+	// Profile names the gate profile the artifact was checked against, and
+	// ProfileLevels counts the components found at each level. Both are
+	// absent when no profile ran.
+	Profile       *ProfileRef    `json:"profile,omitempty"`
+	ProfileLevels map[string]int `json:"profileLevels,omitempty"`
+}
+
+// ProfileRef identifies a gate profile and the guideline version it encodes.
+type ProfileRef struct {
+	Name             string `json:"name"`
+	Guideline        string `json:"guideline"`
+	GuidelineVersion string `json:"guidelineVersion"`
+}
+
+// ProfileLevelKeys are the keys profileLevels holds, in level order.
+var ProfileLevelKeys = []string{"full", "logical", "assembled", "identified", "referenced"}
+
+// knownProfile is the one profile rio ships. It is spelled out here rather
+// than imported from internal/gate so the receipt stays a leaf package.
+func knownProfile(p *ProfileRef) bool {
+	return p != nil && *p == ProfileRef{Name: "bsi-tr-03183-2@2.1.0", Guideline: "BSI TR-03183-2", GuidelineVersion: "2.1.0"}
 }
 
 // FailedRequirement is one requirement that failed and how many times: once
@@ -124,7 +145,15 @@ type FailedRequirement struct {
 // FailedRequirementIDs are the stable requirement identifiers, in reporting
 // order: the scope, a dot, and the field the requirement concerns.
 func FailedRequirementIDs() []string {
-	return []string{"subject.name", "subject.version", "subject.securityContact", "subject.digest", "components.name", "components.version", "components.purl"}
+	return []string{
+		"sbom.specVersion", "sbom.creator", "sbom.timestamp", "sbom.vulnerabilities",
+		"subject.name", "subject.version", "subject.level", "subject.creator", "subject.filename", "subject.dependencies",
+		"subject.distributionLicences", "subject.deployableHash", "subject.executable", "subject.archive", "subject.structured",
+		"subject.securityContact", "subject.digest",
+		"components.name", "components.version", "components.purl", "components.level", "components.creator", "components.filename",
+		"components.dependencies", "components.distributionLicences", "components.deployableHash", "components.executable",
+		"components.archive", "components.structured",
+	}
 }
 
 type Target struct {

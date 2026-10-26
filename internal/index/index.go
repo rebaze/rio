@@ -89,6 +89,9 @@ type GateFinding struct {
 	// metadata.component, rather than a component in the list. A subject
 	// failure fails the artifact regardless of gate.require.
 	Subject bool `json:"subject,omitempty"`
+	// SBOM is true when the failure concerns the document as a whole, which
+	// only a gate profile reports.
+	SBOM bool `json:"sbom,omitempty"`
 	// Component identifies the offending component, by purl where it has one
 	// and by name otherwise. Empty on a subject finding.
 	Component string `json:"component,omitempty"`
