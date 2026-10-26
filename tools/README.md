@@ -20,7 +20,7 @@ inputs and remain separate from its runtime.
 | [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, shipped-file digests, refusals and owned-claim replacement | with Rio 0.9.0+ and Python 3.9+ |
 | [`demo-artifact-sets/`](#artifact-sets-demo) | discovers module SBOMs, refuses missing/overlapping inputs and retains offline scope/check evidence | with Rio 0.7.0+ and Python 3.9+ |
 | [`demo-recovery/`](demo-recovery/) | demonstrates partial delivery, explicit retry, reconciliation and offline crash recovery | with Rio 0.7.0+ and Python 3.9+ |
-| [`demo-handoff-checks/`](#handoff-checks-demo) | demonstrates the opt-in security-contact and digest checks and actionable gate failures | with Rio 0.9.0+ and Python 3.9+ |
+| [`demo-handoff-checks/`](#handoff-checks-demo) | demonstrates the opt-in security-contact and digest checks, a BSI TR-03183-2 profile failure and its repair, and actionable gate failures | with Rio 0.9.0+ and Python 3.9+ |
 | [`demo-normalization-evidence/`](demo-normalization-evidence/) | explains repair sources, exact changes and offline retention | with an installed release containing normalization evidence |
 | [`demo-repair/`](#first-repair-sample) | shows optional p2 repair with an unchanged input and an audit record | when evaluating Eclipse/OSGi coordinate repair |
 | [`demo-agent-integration/`](#agent-integration-examples) | tests project onboarding configurations and a one-command CI receipt step | with Rio 0.7.0+ and Python 3.9+ |
@@ -869,7 +869,11 @@ required but missing or unsupported, and passes once a reviewed contact is suppl
 enrichment. With `digest` required it fails until a build context file declares the shipped
 files under `distributions`; then the SBOM subject and the receipt list them. Failures deliver
 nothing and list `subject.securityContact` or `subject.digest` under the receipt's
-`checks.failed`. Requires Rio 0.9.0+ and Python 3.9+.
+`checks.failed`. Two more scenarios run `gate.profile: bsi-tr-03183-2@2.1.0` on a synthetic SBOM:
+`bsi-profile-missing` fails with `sbom.creator`, `subject.creator` and `subject.deployableHash`,
+and `bsi-profile-repaired` passes after `enrichment.producer`, `enrichment.subject.manufacturer`
+and a build context file declaring a logical subject and two shipped files; it prints the receipt's
+`checks.profile` and `profileLevels`. Requires Rio 0.9.0+ and Python 3.9+.
 
 ## Native OCI delivery
 

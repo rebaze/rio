@@ -1,0 +1,134 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-10-26T10:00:00Z",
+    "properties": [
+      {
+        "name": "example:fixture",
+        "value": "Synthetic demo data; not a real product"
+      }
+    ],
+    "component": {
+      "type": "application",
+      "bom-ref": "cart-api",
+      "name": "cart-api",
+      "version": "1.4.0",
+      "purl": "pkg:generic/example/cart-api@1.4.0",
+      "licenses": [
+        {
+          "expression": "Apache-2.0",
+          "acknowledgement": "concluded"
+        }
+      ]
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "jackson-databind",
+      "group": "com.fasterxml.jackson.core",
+      "name": "jackson-databind",
+      "version": "2.17.1",
+      "purl": "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.17.1",
+      "manufacturer": {
+        "name": "Example Components GmbH",
+        "contact": [
+          {
+            "email": "sbom@example.org"
+          }
+        ]
+      },
+      "licenses": [
+        {
+          "expression": "Apache-2.0",
+          "acknowledgement": "concluded"
+        }
+      ],
+      "properties": [
+        {
+          "name": "rio:tr-03183-2:level",
+          "value": "assembled"
+        },
+        {
+          "name": "bsi:component:executable",
+          "value": "non-executable"
+        },
+        {
+          "name": "bsi:component:archive",
+          "value": "no archive"
+        },
+        {
+          "name": "bsi:component:structured",
+          "value": "unstructured"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "slf4j-api",
+      "group": "org.slf4j",
+      "name": "slf4j-api",
+      "version": "2.0.13",
+      "purl": "pkg:maven/org.slf4j/slf4j-api@2.0.13",
+      "manufacturer": {
+        "name": "Example Components GmbH",
+        "contact": [
+          {
+            "email": "sbom@example.org"
+          }
+        ]
+      },
+      "licenses": [
+        {
+          "expression": "MIT",
+          "acknowledgement": "concluded"
+        }
+      ],
+      "properties": [
+        {
+          "name": "rio:tr-03183-2:level",
+          "value": "assembled"
+        },
+        {
+          "name": "bsi:component:executable",
+          "value": "non-executable"
+        },
+        {
+          "name": "bsi:component:archive",
+          "value": "no archive"
+        },
+        {
+          "name": "bsi:component:structured",
+          "value": "unstructured"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "cart-api",
+      "dependsOn": [
+        "jackson-databind",
+        "slf4j-api"
+      ]
+    },
+    {
+      "ref": "jackson-databind"
+    },
+    {
+      "ref": "slf4j-api"
+    }
+  ],
+  "compositions": [
+    {
+      "aggregate": "complete",
+      "dependencies": [
+        "cart-api",
+        "jackson-databind",
+        "slf4j-api"
+      ]
+    }
+  ]
+}
