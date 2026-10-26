@@ -172,9 +172,19 @@ jobs:
         if: steps.changes.outputs.go == 'true'
         run: |
           tools/source-sbom.sh 0.0.0 "$RUNNER_TEMP/rio-source.cdx.json" "$PWD/rio" "$RUNNER_TEMP/rio-source-receipt.json"
-          jq -e '.bomFormat == "CycloneDX" and .specVersion == "1.6" and (.components | length) > 0
-            and .compositions[0].aggregate == "complete" and (.dependencies | length) > (.components | length)' "$RUNNER_TEMP/rio-source.cdx.json"
-          jq -e '.artifacts[0].checks | .gate == "pass" and .profile.name == "bsi-tr-03183-2@2.1.0"' "$RUNNER_TEMP/rio-source-receipt.json"
+          # The SBOM declares a complete inventory of its subject, and the
+          # standard library is a dependency of every module.
+          jq -e '.metadata.component["bom-ref"] as $root
+            | ([.components[] | select(.name == "std")."bom-ref"][0]) as $std
+            | .bomFormat == "CycloneDX" and .specVersion == "1.6" and (.components | length) > 0
+            and .compositions == [{aggregate: "complete", assemblies: [$root], dependencies: ([$root] + [.components[]."bom-ref"])}]
+            and (.dependencies | length) == (.components | length) + 1 and $std != null
+            and all(.dependencies[] | select(.ref != $std); .dependsOn | index($std))' "$RUNNER_TEMP/rio-source.cdx.json"
+          # What Clear to Ship's rio-receipt checkpoint requires of the receipt.
+          jq -e '.artifacts[0].checks | . as $c
+            | .gate == "pass" and .mode == "fail" and .schema == "pass" and .findings == 0
+            and .componentEvaluation == "evaluated" and .profile.name == "bsi-tr-03183-2@2.1.0"
+            and all("name", "version", "purl"; . as $r | $c.componentRequirements | index($r))' "$RUNNER_TEMP/rio-source-receipt.json"
 
       - name: Exercise GoReleaser without publishing
         if: steps.changes.outputs.go == 'true' || steps.changes.outputs.goreleaser == 'true'

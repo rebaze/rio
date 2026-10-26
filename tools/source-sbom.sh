@@ -76,23 +76,28 @@ set -- "$work"/linux-amd64.cdx.json "$work"/linux-arm64.cdx.json "$work"/darwin-
 	"$work"/darwin-arm64.cdx.json "$work"/windows-amd64.cdx.json "$work"/windows-arm64.cdx.json
 
 # One component per bom-ref, and for each ref the union of what it depends on
-# on any target.
+# on any target. cyclonedx-gomod makes the standard library a dependency of
+# rio only, but every linked module imports it, so it becomes one of each.
 jq -n '[inputs] as $docs | $docs[0]
 	| .components = ([$docs[].components[]] | group_by(."bom-ref") | map(.[0]))
+	| ([.components[] | select(.name == "std")."bom-ref"][0]
+		// error("source-sbom.sh: cyclonedx-gomod listed no standard library")) as $std
 	| .dependencies = ([$docs[].dependencies[]] | group_by(.ref)
-		| map({ref: .[0].ref, dependsOn: ([.[].dependsOn // [] | .[]] | unique)}))' "$@" >"$work/merged.cdx.json"
+		| map(.[0].ref as $ref | {ref: $ref, dependsOn: ([.[].dependsOn // [] | .[]]
+			+ (if $ref == $std then [] else [$std] end) | unique)}))' "$@" >"$work/merged.cdx.json"
 
 # The table's verdict: one line per module it cannot vouch for.
 subject=$(jq -r '.metadata.component.name' "$work/merged.cdx.json")
 jq -r --slurpfile table "$modules" --arg subject "$subject" '$table[0].modules as $rows
 	| ([.components[]] + [.metadata.component])[]
 	| .name as $name | $rows[$name] as $row
-	| ([.evidence.licenses[]?.license.id // empty] | sort | join(" AND ")) as $detected
+	| ([.evidence.licenses[]? | .license.id // .license.name // .expression // empty] | sort | join(" AND ")) as $detected
 	| if $row == null then "no row for \($name)"
 	  elif ($row.licence // "") == "" then "no licence for \($name)"
 	  elif $name != $subject and ($row.creator // "") == "" then "no creator for \($name)"
 	  elif $row.detected != null and ($row.note // "") == "" then "no note for \($name), whose detected licence differs"
-	  elif $detected != "" and $detected != ($row.detected // $row.licence) then "\($name) is detected as \($detected), but the table concludes \($row.licence)"
+	  elif $detected != "" and $row.detected != null and $detected != $row.detected then "\($name) is detected as \($detected), but the table records the detection \($row.detected)"
+	  elif $detected != "" and $row.detected == null and $detected != $row.licence then "\($name) is detected as \($detected), but the table concludes \($row.licence)"
 	  else empty end' "$work/merged.cdx.json" >"$work/problems"
 if [ -s "$work/problems" ]; then
 	echo "source-sbom.sh: $modules does not cover the linked modules:" >&2
