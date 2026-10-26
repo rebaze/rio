@@ -47,13 +47,16 @@ func TestGateExplainProfile(t *testing.T) {
 			{Subject: true, Missing: []string{"creator"}},
 			{Component: "a@1", Missing: []string{"deployableHash", "distributionLicences"}},
 			{Component: "b@1", Missing: []string{"deployableHash"}},
+			{Subject: true, Missing: []string{"filename", "deployableHash"}},
 		},
 	}
 	want := []string{
 		"sbom.creator (BSI TR-03183-2 2.1.0 §5.2.1): the SBOM has no creator (metadata.manufacturer with a contact email or URL). Set enrichment.producer in rio.yaml, or have the SBOM generator emit one.",
 		"subject.creator (BSI TR-03183-2 2.1.0 §5.2.2): the SBOM subject has no creator (manufacturer). Set enrichment.subject.manufacturer in rio.yaml, or have the SBOM generator emit one.",
+		"subject.filename (BSI TR-03183-2 2.1.0 §5.2.2): the SBOM subject has no filename (bsi:component:filename). Have the SBOM generator emit it, or, if the subject is a product rather than one shipped file, declare it logical with level in the build context file or rio:tr-03183-2:level from the generator.",
+		"subject.deployableHash (BSI TR-03183-2 2.1.0 §5.2.2): the SBOM subject has no SHA-512 hash on a distribution reference. Have the SBOM generator emit it, or, if the subject is a product rather than one shipped file, declare it logical with level in the build context file or rio:tr-03183-2:level from the generator; list the shipped files with sha512 under distributions in the build context file. Rio does not hash files.",
 		`components.distributionLicences (BSI TR-03183-2 2.1.0 §5.2.2, §6.1): 1 component has no concluded licence in SPDX form, for example "a@1". Have the SBOM generator emit it.`,
-		`components.deployableHash (BSI TR-03183-2 2.1.0 §5.2.2): 2 components have no SHA-512 hash on a distribution reference, for example "a@1". Have the SBOM generator emit it, add the shipped files with sha512 under distributions in the build context file, or mark components whose file does not exist on its own with rio:tr-03183-2:level. Rio does not hash files.`,
+		`components.deployableHash (BSI TR-03183-2 2.1.0 §5.2.2): 2 components have no SHA-512 hash on a distribution reference, for example "a@1". Have the SBOM generator emit it, or mark components that do not exist as a file of their own (for example statically linked libraries) as assembled with rio:tr-03183-2:level. Rio does not hash files.`,
 	}
 	got := gateExplanations(r)
 	// distributionLicences precedes deployableHash in the failed-ID order.
@@ -99,12 +102,20 @@ func TestRootProfileFails(t *testing.T) {
 	if len(c.Failed) == 0 || c.Failed[0].Requirement != "sbom.creator" {
 		t.Errorf("checks.failed = %+v, want sbom.creator first", c.Failed)
 	}
+	if !strings.Contains(stderr, "subject.deployableHash (BSI TR-03183-2 2.1.0 §5.2.2): the SBOM subject has no SHA-512 hash on a distribution reference. Have the SBOM generator emit it, or, if the subject is a product") {
+		t.Errorf("stderr lacks the subject.deployableHash line:\n%s", stderr)
+	}
 	raw, err := os.ReadFile(filepath.Join(runDir, "index.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var idx struct {
 		Artifacts []struct {
+			Checks struct {
+				Profile struct {
+					Name, Guideline, GuidelineVersion string
+				} `json:"profile"`
+			} `json:"checks"`
 			GateFindings []struct {
 				SBOM bool `json:"sbom"`
 			} `json:"gateFindings"`
@@ -112,6 +123,9 @@ func TestRootProfileFails(t *testing.T) {
 	}
 	if err := json.Unmarshal(raw, &idx); err != nil {
 		t.Fatal(err)
+	}
+	if p := idx.Artifacts[0].Checks.Profile; p.Name != profileName || p.Guideline != "BSI TR-03183-2" || p.GuidelineVersion != "2.1.0" {
+		t.Errorf("index checks.profile = %+v", p)
 	}
 	found := false
 	for _, f := range idx.Artifacts[0].GateFindings {

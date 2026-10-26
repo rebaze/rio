@@ -168,13 +168,21 @@ const emitAdvice = "Have the SBOM generator emit it."
 // profileFix is who can fix a profile field, for the fields that have more to
 // say than "have the generator emit it".
 func profileFix(scope, field string) string {
+	const logical = "if the subject is a product rather than one shipped file, declare it logical with level in the build context file or rio:tr-03183-2:level from the generator"
 	switch field {
 	case string(gate.RequireCreator):
 		if scope == "subject" {
 			return "Set enrichment.subject.manufacturer in rio.yaml, or have the SBOM generator emit one."
 		}
 	case string(gate.RequireDeployableHash):
-		return "Have the SBOM generator emit it, add the shipped files with sha512 under distributions in the build context file, or mark components whose file does not exist on its own with rio:tr-03183-2:level. Rio does not hash files."
+		if scope == "subject" {
+			return "Have the SBOM generator emit it, or, " + logical + "; list the shipped files with sha512 under distributions in the build context file. Rio does not hash files."
+		}
+		return "Have the SBOM generator emit it, or mark components that do not exist as a file of their own (for example statically linked libraries) as assembled with rio:tr-03183-2:level. Rio does not hash files."
+	case string(gate.RequireFilename), string(gate.RequireExecutable), string(gate.RequireArchive), string(gate.RequireStructured):
+		if scope == "subject" {
+			return "Have the SBOM generator emit it, or, " + logical + "."
+		}
 	}
 	return emitAdvice
 }
