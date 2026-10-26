@@ -661,7 +661,7 @@ func TestPlanJSONProfile(t *testing.T) {
 
 	r := rio(t, dir, "plan")
 	requireExit(t, r, ExitOK)
-	line := "gate  profile bsi-tr-03183-2@2.1.0 (BSI TR-03183-2 2.1.0)\ngate  require nothing\n"
+	line := "gate  profile bsi-tr-03183-2@2.1.0 (BSI TR-03183-2 2.1.0)\ngate  require nothing beyond the profile\n"
 	if !strings.Contains(r.stdout, line) {
 		t.Fatalf("stdout =\n%s", r.stdout)
 	}

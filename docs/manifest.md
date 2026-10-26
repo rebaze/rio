@@ -124,7 +124,8 @@ rio: artifact "cart-api" failed the gate; gate mode fail, so nothing was deliver
   components.deployableHash (BSI TR-03183-2 2.1.0 §5.2.2): 2 components have no SHA-512 hash on a distribution reference, for example "pkg:generic/zlib@1.3.1". Have the SBOM generator emit it, or mark components that do not exist as a file of their own (for example statically linked libraries) as assembled with rio:tr-03183-2:level. Rio does not hash files.
 ```
 
-`rio plan` shows the profile before anything runs: a line `gate  profile bsi-tr-03183-2@2.1.0 (BSI TR-03183-2 2.1.0)`,
+`rio plan` shows the profile before anything runs: a line `gate  profile bsi-tr-03183-2@2.1.0 (BSI TR-03183-2 2.1.0)`
+and, when `gate.require` is empty, `gate  require nothing beyond the profile`,
 and in `--json` output `gate.profile` as `{"name": "bsi-tr-03183-2@2.1.0", "guideline": "BSI TR-03183-2", "guidelineVersion": "2.1.0"}`
 next to the effective `gate.require`.
 

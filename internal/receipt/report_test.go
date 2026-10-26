@@ -110,3 +110,33 @@ func TestDerivedPublicationsRefuseInternalState(t *testing.T) {
 		}
 	}
 }
+
+func TestHTMLNamesTheProfile(t *testing.T) {
+	render := func(c *Checks) string {
+		d := fixture()
+		d.Artifacts[0].Checks = c
+		raw, e := Marshal(d)
+		if e != nil {
+			t.Fatal(e)
+		}
+		page, e := HTML(raw)
+		if e != nil {
+			t.Fatal(e)
+		}
+		return string(page)
+	}
+	plain := render(&Checks{Mode: "fail", Gate: "pass", Schema: "pass", ComponentScope: "including-nested", ComponentsEvaluated: 1, ComponentRequirements: []string{"name"}, ComponentEvaluation: "evaluated"})
+	for _, bad := range []string{"Profile <code>", "none beyond the profile", "by level"} {
+		if strings.Contains(plain, bad) {
+			t.Errorf("report without a profile contains %q", bad)
+		}
+	}
+	profiled := render(&Checks{Mode: "fail", Gate: "pass", Schema: "pass", ComponentScope: "including-nested", ComponentsEvaluated: 3, ComponentEvaluation: "evaluated",
+		Profile:       &ProfileRef{Name: "bsi-tr-03183-2@2.1.0", Guideline: "BSI TR-03183-2", GuidelineVersion: "2.1.0"},
+		ProfileLevels: map[string]int{"full": 1, "logical": 1, "assembled": 0, "identified": 1, "referenced": 0}})
+	for _, want := range []string{"Profile <code>bsi-tr-03183-2@2.1.0</code> (BSI TR-03183-2 2.1.0)", "full 1 · logical 1 · assembled 0 · identified 1 · referenced 0", "Component requirements: none beyond the profile"} {
+		if !strings.Contains(profiled, want) {
+			t.Errorf("profile report missing %q", want)
+		}
+	}
+}

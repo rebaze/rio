@@ -381,7 +381,11 @@ func writePlanText(p plan, man *manifest.Manifest, opts *globalOptions, stdout i
 	if p := p.Gate.Profile; p != nil {
 		fmt.Fprintf(stdout, "gate  profile %s (%s %s)\n", p.Name, p.Guideline, p.GuidelineVersion)
 	}
-	fmt.Fprintf(stdout, "gate  require %s\n", requireList(p.Gate.Require))
+	require := requireList(p.Gate.Require)
+	if p.Gate.Profile != nil && len(p.Gate.Require) == 0 {
+		require += " beyond the profile"
+	}
+	fmt.Fprintf(stdout, "gate  require %s\n", require)
 	if len(p.Gate.SubjectRequire) > 0 {
 		fmt.Fprintf(stdout, "gate  subject requires name, version, %s\n", strings.Join(p.Gate.SubjectRequire, ", "))
 	}
