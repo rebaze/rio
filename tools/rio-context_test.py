@@ -243,5 +243,72 @@ class ContextProducerTest(unittest.TestCase):
                            "url": "https://dl.example.org/widget/widget.tar.gz"}])
 
 
+    def write_pair(self, name="app-1.0-linux.tar.gz", sha512_name=None):
+        d = Path(self.directory.name)
+        (d / "sums256.txt").write_text("%s  %s\n" % ("a" * 64, name))
+        (d / "sums512.txt").write_text("%s  %s\n" % ("b" * 128, sha512_name or name))
+        return str(d / "sums256.txt"), str(d / "sums512.txt")
+
+    def test_sha512_and_properties(self):
+        s256, s512 = self.write_pair()
+        result = self.run_helper("--checksums", s256, "--sha512-checksums", s512,
+                                 "--file-properties", "*.tar.gz=archive,structured")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entry = json.loads(result.stdout)["artifacts"][0]["distributions"][0]
+        self.assertEqual(entry, {"name": "app-1.0-linux.tar.gz", "sha256": "a" * 64, "sha512": "b" * 128,
+                                 "executable": False, "archive": True, "structured": True})
+        self.assertEqual(list(entry), ["name", "sha256", "sha512", "executable", "archive", "structured"])
+
+    def test_first_match_wins_and_none(self):
+        s256, s512 = self.write_pair()
+        result = self.run_helper("--checksums", s256, "--sha512-checksums", s512,
+                                 "--file-properties", "*.gz=none", "--file-properties", "*=executable")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entry = json.loads(result.stdout)["artifacts"][0]["distributions"][0]
+        self.assertEqual((entry["executable"], entry["archive"], entry["structured"]), (False, False, False))
+
+    def test_sha512_name_mismatch(self):
+        s256, s512 = self.write_pair(sha512_name="other.tar.gz")
+        result = self.run_helper("--checksums", s256, "--sha512-checksums", s512, "--file-properties", "*=none")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("sums512.txt", result.stderr)
+
+    def test_unmatched_name(self):
+        s256, s512 = self.write_pair()
+        result = self.run_helper("--checksums", s256, "--sha512-checksums", s512,
+                                 "--file-properties", "*.zip=archive")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("app-1.0-linux.tar.gz", result.stderr)
+
+    def test_sha512_option_errors(self):
+        s256, s512 = self.write_pair()
+        cases = {
+            "no checksums": (["--sha512-checksums", s512, "--file-properties", "*=none"], "--checksums"),
+            "unknown flag": (["--checksums", s256, "--sha512-checksums", s512,
+                              "--file-properties", "*=bogus"], "bogus"),
+            "no equals": (["--checksums", s256, "--sha512-checksums", s512,
+                           "--file-properties", "*"], "--file-properties"),
+            "properties alone": (["--checksums", s256, "--file-properties", "*=none"], "--sha512-checksums"),
+            "short digest": (["--checksums", s256, "--sha512-checksums", s256,
+                              "--file-properties", "*=none"], "sums256.txt"),
+        }
+        for label, (args, text) in cases.items():
+            with self.subTest(label):
+                result = self.run_helper(*args)
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(result.stdout, "")
+                self.assertIn(text, result.stderr)
+
+    def test_level(self):
+        result = self.run_helper("--level", "assembled", "--lifecycle", "build")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        entry = json.loads(result.stdout)["artifacts"][0]
+        self.assertEqual(entry["level"], "assembled")
+        self.assertEqual(list(entry), ["id", "sbom", "lifecycle", "level"])
+        self.assertEqual(self.run_helper("--level", "bogus").returncode, 2)
+
+
 if __name__ == "__main__":
     unittest.main()

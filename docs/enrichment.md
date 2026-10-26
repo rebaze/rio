@@ -56,7 +56,7 @@ security contact also accepts a `mailto:` address.
 | `subject.supplier` | `metadata.component.supplier` | Organization supplying the product |
 | `subject.securityContact`, `.website`, `.documentation`, `.support` | Typed entries in `metadata.component.externalReferences` | Product contact and information URLs |
 | `producer` | `metadata.manufacturer` | Organization that created the SBOM; requires 1.6 |
-| `dataLicense` | `metadata.licenses` | One SPDX license ID for the SBOM data, such as `CC0-1.0`; does not change component licenses |
+| `dataLicense` | `metadata.licenses` | One SPDX licence identifier for the SBOM data, such as `CC0-1.0`; an exception identifier such as `LLVM-exception` is refused at manifest load. Does not change component licenses |
 
 CycloneDX 1.5 supports the other modeled fields. A 1.5 output with `producer` or
 `subject.manufacturer` is refused: rio does not substitute a different organization role. The

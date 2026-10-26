@@ -47,16 +47,36 @@ type Artifact struct {
 	Build     *Build  `json:"build,omitempty"`
 	Generator *Tool   `json:"generator,omitempty"`
 	Lifecycle *string `json:"lifecycle,omitempty"`
+	// Level is the producer's TR-03183-2 level for the subject: logical,
+	// identified or assembled. Rio never infers it.
+	Level string `json:"level,omitempty"`
 	// Distributions are producer-asserted digests of the shipped files. Rio
 	// records them; it never hashes the files.
 	Distributions []Distribution `json:"distributions,omitempty"`
 }
 
-// Distribution is the SHA-256 a producer asserts for one shipped file.
+// Distribution is the SHA-256 a producer asserts for one shipped file. With
+// the four TR fields (SHA512, Executable, Archive, Structured), all or none,
+// rio also writes the file as a BSI TR-03183-2 file component.
 type Distribution struct {
-	Name   string `json:"name"`
-	SHA256 string `json:"sha256"`
-	URL    string `json:"url,omitempty"`
+	Name       string `json:"name"`
+	SHA256     string `json:"sha256"`
+	SHA512     string `json:"sha512,omitempty"`
+	Executable *bool  `json:"executable,omitempty"`
+	Archive    *bool  `json:"archive,omitempty"`
+	Structured *bool  `json:"structured,omitempty"`
+	URL        string `json:"url,omitempty"`
+}
+
+// HasTRFields reports whether d carries the TR file fields. Parsing ensures an
+// entry carries all four or none.
+func (d Distribution) HasTRFields() bool { return d.SHA512 != "" }
+
+// Equal compares two distributions by value, booleans included.
+func (d Distribution) Equal(o Distribution) bool {
+	sameBool := func(a, b *bool) bool { return (a == nil) == (b == nil) && (a == nil || *a == *b) }
+	return d.Name == o.Name && d.SHA256 == o.SHA256 && d.SHA512 == o.SHA512 && d.URL == o.URL &&
+		sameBool(d.Executable, o.Executable) && sameBool(d.Archive, o.Archive) && sameBool(d.Structured, o.Structured)
 }
 
 // Source describes the source assertion associated with a product artifact.
@@ -111,7 +131,7 @@ var knownFields = map[string]bool{
 	"source.ref": true, "source.workspace": true, "build.url": true,
 	"build.id": true, "build.timestamp": true, "build.system.name": true,
 	"build.system.version": true, "generator.name": true, "generator.version": true,
-	"lifecycle": true,
+	"lifecycle": true, "level": true,
 }
 
 // ValidateBinding validates the manifest-side policy. A nil binding means no
@@ -132,8 +152,8 @@ func ValidateBinding(binding *Binding) error {
 			if !knownFields[key] {
 				return fmt.Errorf("context.%s: %q is not a known context field", part.name, key)
 			}
-			if part.name == "replace" && key == "lifecycle" {
-				return errors.New("context.replace: lifecycle cannot be replaced")
+			if part.name == "replace" && (key == "lifecycle" || key == "level") {
+				return fmt.Errorf("context.replace: %s cannot be replaced", key)
 			}
 			if seen[key] {
 				return fmt.Errorf("context.%s: %q is listed more than once", part.name, key)
@@ -266,6 +286,9 @@ func flatten(a Artifact, index int, workspaceDefaulted bool) ([]Field, []string)
 		add("generator.version", a.Generator.Version, prefix+"/generator/version")
 	}
 	add("lifecycle", a.Lifecycle, prefix+"/lifecycle")
+	if a.Level != "" {
+		add("level", &a.Level, prefix+"/level")
+	}
 	sort.Slice(fields, func(i, j int) bool { return fields[i].Name < fields[j].Name })
 	defaulted := make([]string, 0, 1)
 	for _, field := range fields {
@@ -299,7 +322,18 @@ func cloneArtifact(in Artifact) Artifact {
 	}
 	out.Lifecycle = cloneString(in.Lifecycle)
 	if in.Distributions != nil {
-		out.Distributions = append([]Distribution(nil), in.Distributions...)
+		out.Distributions = make([]Distribution, len(in.Distributions))
+		cloneBool := func(v *bool) *bool {
+			if v == nil {
+				return nil
+			}
+			x := *v
+			return &x
+		}
+		for i, d := range in.Distributions {
+			d.Executable, d.Archive, d.Structured = cloneBool(d.Executable), cloneBool(d.Archive), cloneBool(d.Structured)
+			out.Distributions[i] = d
+		}
 	}
 	return out
 }
@@ -410,7 +444,7 @@ func parseArtifact(value any, field string) (Artifact, error) {
 	if !ok {
 		return Artifact{}, fmt.Errorf("%s must be an object", field)
 	}
-	if err := only(m, "id", "sbom", "source", "build", "generator", "lifecycle", "distributions"); err != nil {
+	if err := only(m, "id", "sbom", "source", "build", "generator", "lifecycle", "level", "distributions"); err != nil {
 		return Artifact{}, err
 	}
 	id, err := requiredString(m, "id", field)
@@ -467,6 +501,16 @@ func parseArtifact(value any, field string) (Artifact, error) {
 		}
 		a.Lifecycle = &lifecycle
 	}
+	if raw, present := m["level"]; present {
+		level, err := stringValue(raw, field+".level")
+		if err != nil {
+			return Artifact{}, err
+		}
+		if !KnownLevel(level) {
+			return Artifact{}, fmt.Errorf("%s.level must be logical, identified or assembled", field)
+		}
+		a.Level = level
+	}
 	if raw, present := m["distributions"]; present {
 		distributions, err := parseDistributions(raw, field+".distributions")
 		if err != nil {
@@ -497,7 +541,7 @@ func parseDistributions(value any, field string) ([]Distribution, error) {
 		if !ok {
 			return nil, fmt.Errorf("%s must be an object", label)
 		}
-		if err := only(m, "name", "sha256", "url"); err != nil {
+		if err := only(m, "name", "sha256", "sha512", "executable", "archive", "structured", "url"); err != nil {
 			return nil, err
 		}
 		name, err := requiredString(m, "name", label)
@@ -522,6 +566,9 @@ func parseDistributions(value any, field string) ([]Distribution, error) {
 			return nil, fmt.Errorf("%s.sha256 must be 64 lowercase hexadecimal characters", label)
 		}
 		d := Distribution{Name: name, SHA256: sum}
+		if err := parseTRFields(m, label, &d); err != nil {
+			return nil, err
+		}
 		if u, err := optionalString(m, "url", label); err != nil {
 			return nil, err
 		} else if u != nil {
@@ -537,6 +584,54 @@ func parseDistributions(value any, field string) ([]Distribution, error) {
 		out = append(out, d)
 	}
 	return out, nil
+}
+
+// trFields are the distribution fields a TR file component needs. An entry
+// carries all of them or none.
+var trFields = []string{"sha512", "executable", "archive", "structured"}
+
+func parseTRFields(m map[string]any, label string, d *Distribution) error {
+	present := 0
+	for _, key := range trFields {
+		if _, ok := m[key]; ok {
+			present++
+		}
+	}
+	if present == 0 {
+		return nil
+	}
+	if present != len(trFields) {
+		return fmt.Errorf("%s: sha512, executable, archive and structured must be given together", label)
+	}
+	sum, err := requiredString(m, "sha512", label)
+	if err != nil {
+		return err
+	}
+	if !lowerHex(sum, 128) {
+		return fmt.Errorf("%s.sha512 must be 128 lowercase hexadecimal characters", label)
+	}
+	d.SHA512 = sum
+	for _, f := range []struct {
+		key    string
+		target **bool
+	}{{"executable", &d.Executable}, {"archive", &d.Archive}, {"structured", &d.Structured}} {
+		b, ok := m[f.key].(bool)
+		if !ok {
+			return fmt.Errorf("%s.%s must be a boolean", label, f.key)
+		}
+		*f.target = &b
+	}
+	return nil
+}
+
+// KnownLevel reports whether level is a TR-03183-2 level a producer may
+// assert for the subject. referenced is inferred, never asserted.
+func KnownLevel(level string) bool {
+	switch level {
+	case "logical", "identified", "assembled":
+		return true
+	}
+	return false
 }
 
 // ParseEffective validates a previously recorded effective artifact without

@@ -898,3 +898,74 @@ func mustGetwd(t *testing.T) string {
 	}
 	return wd
 }
+
+const profileBase = "version: 1\nartifacts:\n  - id: only\n    sbom: bom.json\n"
+
+func TestGateProfileLoads(t *testing.T) {
+	m, err := manifest.Load(write(t, profileBase+"gate:\n  profile: bsi-tr-03183-2@2.1.0\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if m.Gate.Profile != manifest.ProfileBSITR031832v210 {
+		t.Errorf("Profile = %q", m.Gate.Profile)
+	}
+	if m.Gate.Require == nil || len(m.Gate.Require) != 0 {
+		t.Errorf("Require = %#v, want empty non-nil", m.Gate.Require)
+	}
+	if m.Gate.RequireExplicit {
+		t.Error("RequireExplicit = true, want false")
+	}
+	if diff := cmp.Diff([]string{"bsi-tr-03183-2@2.1.0"}, manifest.KnownProfiles()); diff != "" {
+		t.Errorf("KnownProfiles (-want +got):\n%s", diff)
+	}
+}
+
+func TestGateProfileExplicitRequireAdds(t *testing.T) {
+	m, err := manifest.Load(write(t, profileBase+"gate:\n  profile: bsi-tr-03183-2@2.1.0\n  require: [purl]\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if diff := cmp.Diff([]string{"purl"}, m.Gate.Require); diff != "" {
+		t.Errorf("Require (-want +got):\n%s", diff)
+	}
+	if !m.Gate.RequireExplicit {
+		t.Error("RequireExplicit = false, want true")
+	}
+}
+
+func TestGateProfileUnknown(t *testing.T) {
+	for _, p := range []string{"bsi-tr-03183-2", "bsi-tr-03183-2@2.0.0"} {
+		_, err := manifest.Load(write(t, profileBase+"gate:\n  profile: "+p+"\n"))
+		if err == nil {
+			t.Fatalf("profile %q loaded, want an error", p)
+		}
+		for _, want := range []string{"gate.profile", "bsi-tr-03183-2@2.1.0"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q does not contain %q", err, want)
+			}
+		}
+	}
+}
+
+func TestGateProfileFloor15(t *testing.T) {
+	_, err := manifest.Load(write(t, profileBase+"output:\n  specVersionFloor: \"1.5\"\ngate:\n  profile: bsi-tr-03183-2@2.1.0\n"))
+	if err == nil {
+		t.Fatal("Load succeeded, want an error")
+	}
+	want := "BSI TR-03183-2 2.1.0 requires CycloneDX 1.6; set output.specVersionFloor to 1.6"
+	if !strings.Contains(err.Error(), want) {
+		t.Errorf("error %q does not contain %q", err, want)
+	}
+}
+
+func TestGateProfileWrongType(t *testing.T) {
+	_, err := manifest.Load(write(t, profileBase+"gate:\n  profile: [x]\n"))
+	if err == nil {
+		t.Fatal("Load succeeded, want an error")
+	}
+	for _, want := range []string{"gate.profile: line 6", "must be a string", "a list"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+}

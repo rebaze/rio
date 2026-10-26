@@ -350,3 +350,161 @@ func TestParseEffectiveAcceptsDistributions(t *testing.T) {
 		t.Fatal("empty distributions accepted")
 	}
 }
+
+// trEntry builds a one-artifact context whose single distribution carries
+// extra, a JSON fragment of TR fields.
+func trEntry(extra string) string {
+	sum := strings.Repeat("a", 64)
+	return `{"contextVersion":1,"artifacts":[{"id":"a","sbom":{"sha256":"` + sum + `"},"distributions":[{"name":"a.tar.gz","sha256":"` + sum + `"` + extra + `}]}]}`
+}
+
+func TestDistributionTRFieldsAllOrNone(t *testing.T) {
+	sha512 := `,"sha512":"` + strings.Repeat("b", 128) + `"`
+	const together = "artifacts[0].distributions[0]: sha512, executable, archive and structured must be given together"
+	for _, tc := range []struct{ name, extra string }{
+		{"sha512 alone", sha512},
+		{"executable alone", `,"executable":true`},
+		{"archive alone", `,"archive":false`},
+		{"structured alone", `,"structured":true`},
+		{"three of four", sha512 + `,"executable":true,"archive":false`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeContext(t, dir, trEntry(tc.extra))
+			_, err := buildcontext.Read(dir, "build-context.json")
+			if err == nil || !strings.Contains(err.Error(), together) {
+				t.Fatalf("error = %v, want %q", err, together)
+			}
+		})
+	}
+	for _, tc := range []struct{ name, extra, want string }{
+		{"string boolean", sha512 + `,"executable":"true","archive":false,"structured":true`, "artifacts[0].distributions[0].executable must be a boolean"},
+		{"null boolean", sha512 + `,"executable":false,"archive":null,"structured":true`, "artifacts[0].distributions[0].archive must be a boolean"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeContext(t, dir, trEntry(tc.extra))
+			_, err := buildcontext.Read(dir, "build-context.json")
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+
+	dir := t.TempDir()
+	writeContext(t, dir, trEntry(sha512+`,"executable":false,"archive":true,"structured":true`))
+	f, err := buildcontext.Read(dir, "build-context.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := f.Resolve("a", strings.Repeat("a", 64), buildcontext.Binding{File: "build-context.json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := resolved.Artifact.Distributions[0]
+	if !d.HasTRFields() || d.SHA512 != strings.Repeat("b", 128) || *d.Executable || !*d.Archive || !*d.Structured {
+		t.Fatalf("distribution = %+v", d)
+	}
+	// Resolve hands out its own booleans: a caller's change cannot leak.
+	*resolved.Artifact.Distributions[0].Archive = false
+	again, err := f.Resolve("a", strings.Repeat("a", 64), buildcontext.Binding{File: "build-context.json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !*again.Artifact.Distributions[0].Archive {
+		t.Fatal("resolve shares distribution booleans")
+	}
+	f1, t1, t2 := false, true, true
+	want := buildcontext.Distribution{Name: "a.tar.gz", SHA256: strings.Repeat("a", 64), SHA512: strings.Repeat("b", 128), Executable: &f1, Archive: &t1, Structured: &t2}
+	if !want.Equal(again.Artifact.Distributions[0]) || want.Equal(resolved.Artifact.Distributions[0]) {
+		t.Fatal("Equal must compare boolean values, not pointers")
+	}
+	d = want
+	effective, err := buildcontext.ParseEffective([]byte(`{"id":"a","sbom":{"sha256":"` + strings.Repeat("a", 64) + `"},"distributions":[{"name":"a.tar.gz","sha256":"` + strings.Repeat("a", 64) + `"` + sha512 + `,"executable":false,"archive":true,"structured":true}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !effective.Distributions[0].Equal(d) {
+		t.Fatalf("effective = %+v, want %+v", effective.Distributions[0], d)
+	}
+	plain := buildcontext.Distribution{Name: "a", SHA256: strings.Repeat("a", 64)}
+	if plain.HasTRFields() {
+		t.Fatal("plain distribution reported TR fields")
+	}
+}
+
+func TestDistributionSHA512Form(t *testing.T) {
+	const flags = `,"executable":true,"archive":false,"structured":false`
+	for _, tc := range []struct{ name, sum string }{
+		{"uppercase", strings.Repeat("B", 128)},
+		{"127 characters", strings.Repeat("b", 127)},
+		{"129 characters", strings.Repeat("b", 129)},
+		{"non-hex", strings.Repeat("g", 128)},
+		{"sha256 length", strings.Repeat("b", 64)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeContext(t, dir, trEntry(`,"sha512":"`+tc.sum+`"`+flags))
+			_, err := buildcontext.Read(dir, "build-context.json")
+			want := "artifacts[0].distributions[0].sha512 must be 128 lowercase hexadecimal characters"
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("error = %v, want %q", err, want)
+			}
+		})
+	}
+}
+
+func TestContextLevel(t *testing.T) {
+	sum := strings.Repeat("a", 64)
+	body := func(level string) string {
+		return `{"contextVersion":1,"artifacts":[{"id":"a","sbom":{"sha256":"` + sum + `"},"level":` + level + `}]}`
+	}
+	for _, level := range []string{"logical", "identified", "assembled"} {
+		t.Run(level, func(t *testing.T) {
+			dir := t.TempDir()
+			writeContext(t, dir, body(`"`+level+`"`))
+			f, err := buildcontext.Read(dir, "build-context.json")
+			if err != nil {
+				t.Fatal(err)
+			}
+			resolved, err := f.Resolve("a", sum, buildcontext.Binding{File: "build-context.json", Require: []string{"level"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resolved.Artifact.Level != level {
+				t.Fatalf("level = %q", resolved.Artifact.Level)
+			}
+			got := findField(t, resolved.Fields, "level")
+			if got.Value != level || got.Selector != "/artifacts/0/level" || got.Defaulted {
+				t.Fatalf("level field = %+v", got)
+			}
+		})
+	}
+	for _, bad := range []string{`"referenced"`, `"full"`, `""`, `1`, `null`} {
+		t.Run("rejects "+bad, func(t *testing.T) {
+			dir := t.TempDir()
+			writeContext(t, dir, body(bad))
+			_, err := buildcontext.Read(dir, "build-context.json")
+			if err == nil || !strings.Contains(err.Error(), "artifacts[0].level") {
+				t.Fatalf("error = %v, want artifacts[0].level refusal", err)
+			}
+		})
+	}
+	t.Run("required but absent", func(t *testing.T) {
+		dir := t.TempDir()
+		writeContext(t, dir, `{"contextVersion":1,"artifacts":[{"id":"a","sbom":{"sha256":"`+sum+`"}}]}`)
+		f, err := buildcontext.Read(dir, "build-context.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.Resolve("a", sum, buildcontext.Binding{File: "build-context.json", Require: []string{"level"}}); err == nil || !strings.Contains(err.Error(), "requires explicitly supplied level") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+	if err := buildcontext.ValidateBinding(&buildcontext.Binding{File: "ctx.json", Require: []string{"level"}}); err != nil {
+		t.Fatalf("level not accepted in require: %v", err)
+	}
+	if err := buildcontext.ValidateBinding(&buildcontext.Binding{File: "ctx.json", Replace: []string{"level"}}); err == nil || err.Error() != "context.replace: level cannot be replaced" {
+		t.Fatalf("level replace error = %v", err)
+	}
+}

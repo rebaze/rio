@@ -62,7 +62,7 @@ func HTML(raw []byte) ([]byte, error) {
 	if e != nil {
 		return nil, e
 	}
-	tmpl, e := template.New("receipt").Funcs(template.FuncMap{"value": displayValue, "tls": observed}).Parse(reportTemplate)
+	tmpl, e := template.New("receipt").Funcs(template.FuncMap{"value": displayValue, "tls": observed, "profileLevels": profileLevelText}).Parse(reportTemplate)
 	if e != nil {
 		return nil, e
 	}
@@ -168,4 +168,13 @@ func plural(n int) string {
 		return ""
 	}
 	return "s"
+}
+
+// profileLevelText renders the level counts in level order, for the HTML report.
+func profileLevelText(levels map[string]int) string {
+	parts := make([]string, 0, len(ProfileLevelKeys))
+	for _, k := range ProfileLevelKeys {
+		parts = append(parts, fmt.Sprintf("%s %d", k, levels[k]))
+	}
+	return strings.Join(parts, " · ")
 }

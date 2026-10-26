@@ -257,11 +257,8 @@ func subjectRequirements(c *index.EffectiveChecks) []string {
 }
 
 // countFailed adds one finding's failed requirements to the receipt's tally.
-func countFailed(failed []receipt.FailedRequirement, subject bool, missing []string) []receipt.FailedRequirement {
-	scope := "components."
-	if subject {
-		scope = "subject."
-	}
+func countFailed(failed []receipt.FailedRequirement, sbom, subject bool, missing []string) []receipt.FailedRequirement {
+	scope := findingScope(sbom, subject) + "."
 	for _, m := range missing {
 		found := false
 		for i := range failed {
@@ -298,9 +295,10 @@ func compactArtifact(a *artifact) receipt.Artifact {
 	}
 	if a.checks != nil {
 		c := a.checks
-		out.Checks = &receipt.Checks{Mode: c.Mode, Gate: gateState, Schema: c.SchemaValidation, SubjectRequirements: subjectRequirements(c), ComponentRequirements: c.ComponentRequirements, ComponentScope: c.ComponentScope, ComponentEvaluation: c.ComponentEvaluation, ComponentsEvaluated: c.ComponentCount, Findings: len(a.gate.Findings), GraphFindings: c.GraphFindings}
+		out.Checks = &receipt.Checks{Mode: c.Mode, Gate: gateState, Schema: c.SchemaValidation, SubjectRequirements: subjectRequirements(c), ComponentRequirements: c.ComponentRequirements, ComponentScope: c.ComponentScope, ComponentEvaluation: c.ComponentEvaluation, ComponentsEvaluated: c.ComponentCount, Findings: len(a.gate.Findings), GraphFindings: c.GraphFindings, ProfileLevels: c.ProfileLevels}
+		out.Checks.Profile = receiptProfile(c.Profile)
 		for _, f := range a.gate.Findings {
-			out.Checks.Failed = countFailed(out.Checks.Failed, f.Subject, f.Missing)
+			out.Checks.Failed = countFailed(out.Checks.Failed, f.SBOM, f.Subject, f.Missing)
 		}
 		out.Checks.Failed = orderFailed(out.Checks.Failed)
 	}
@@ -387,4 +385,12 @@ func receiptDistributions(rec *sbom.ContextRecord) []receipt.Distribution {
 		out = append(out, receipt.Distribution{Name: d.Name, SHA256: d.SHA256, Assertion: "producer"})
 	}
 	return out
+}
+
+// receiptProfile copies the index's profile reference into the receipt's.
+func receiptProfile(p *index.ProfileRef) *receipt.ProfileRef {
+	if p == nil {
+		return nil
+	}
+	return &receipt.ProfileRef{Name: p.Name, Guideline: p.Guideline, GuidelineVersion: p.GuidelineVersion}
 }

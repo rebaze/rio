@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sort"
 
 	"github.com/rebaze/rio/internal/gate"
 )
@@ -53,7 +54,89 @@ type EffectiveChecks struct {
 	SchemaValidation    string            `json:"schemaValidation"`
 	GraphCheck          string            `json:"graphCheck"`
 	GraphFindings       int               `json:"graphFindings"`
-	opaque              json.RawMessage
+	// Profile and ProfileLevels are present only when a gate profile ran.
+	Profile       *ProfileRef    `json:"profile,omitempty"`
+	ProfileLevels map[string]int `json:"profileLevels,omitempty"`
+	opaque        json.RawMessage
+}
+
+// ProfileRef identifies the gate profile an artifact was checked against.
+type ProfileRef struct {
+	Name             string `json:"name"`
+	Guideline        string `json:"guideline"`
+	GuidelineVersion string `json:"guidelineVersion"`
+}
+
+var profileLevelKeys = []string{"full", "logical", "assembled", "identified", "referenced"}
+
+// validProfile accepts only a profile gate knows, spelled exactly.
+func (c *EffectiveChecks) validProfile() bool {
+	if c.Profile == nil {
+		return c.ProfileLevels == nil
+	}
+	p, ok := gate.LookupProfile(c.Profile.Name)
+	if !ok || p.Guideline != c.Profile.Guideline || p.GuidelineVersion != c.Profile.GuidelineVersion || len(c.ProfileLevels) != len(profileLevelKeys) {
+		return false
+	}
+	sum := 0
+	for _, k := range profileLevelKeys {
+		v, ok := c.ProfileLevels[k]
+		if !ok || v < 0 {
+			return false
+		}
+		sum += v
+	}
+	// The subject is counted only when metadata.component is an object,
+	// which the index cannot see.
+	return sum == c.ComponentCount || sum == c.ComponentCount+1
+}
+
+// profileEvaluationsMatch reports whether the evaluations are, entry for
+// entry and in order, what the gate's profile run emits for some placement of
+// the subject among profileLevels: no subject, or a subject at one of the
+// levels counted there, with the rest being the ComponentCount components.
+// Failed and Outcome are checked against the findings separately.
+func (c *EffectiveChecks) profileEvaluationsMatch(selection, subject map[string]bool) bool {
+	var reqs gate.Requirements
+	if selection["purl"] {
+		reqs.Components = []gate.Requirement{gate.RequirePURL}
+	}
+	for _, r := range []gate.Requirement{gate.RequireSecurityContact, gate.RequireDigest} {
+		if subject[string(r)] {
+			reqs.Subject = append(reqs.Subject, r)
+		}
+	}
+	for _, subjectLevel := range append([]string{""}, profileLevelKeys...) {
+		children := map[string]int{}
+		total, placed := 0, true
+		for _, k := range profileLevelKeys {
+			children[k] = c.ProfileLevels[k]
+			if k == subjectLevel {
+				children[k]--
+			}
+			placed = placed && children[k] >= 0
+			total += children[k]
+		}
+		if !placed || total != c.ComponentCount {
+			continue
+		}
+		want := gate.ProfileEvaluationCounts(subjectLevel, children, reqs)
+		if len(want) != len(c.Evaluations) {
+			continue
+		}
+		match := true
+		for i, w := range want {
+			e := c.Evaluations[i]
+			if e.Scope != w.Scope || e.Requirement != w.Requirement || e.Evaluated != w.Evaluated {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
 }
 
 // decodeExtension strictly checks known versions; future versions remain opaque.
@@ -182,6 +265,10 @@ func (c *EffectiveChecks) Validate(a Artifact) error {
 	if (c.Mode != "warn" && c.Mode != "fail") || c.ComponentScope != "all components including nested" || c.ComponentCount < a.Components || c.ComponentRequirements == nil || c.Evaluations == nil || c.GraphCheck != "dangling-dependency-references" || c.GraphFindings != len(a.IntegrityFindings) {
 		return bad()
 	}
+	if !c.validProfile() {
+		return bad()
+	}
+	profile := c.Profile != nil
 	schema := "not-available"
 	if a.SchemaValidated {
 		schema = "pass"
@@ -197,7 +284,7 @@ func (c *EffectiveChecks) Validate(a Artifact) error {
 		selection[r] = true
 	}
 	state := "evaluated"
-	if len(selection) == 0 || c.ComponentCount == 0 {
+	if (len(selection) == 0 && !profile) || c.ComponentCount == 0 {
 		state = "not-evaluated"
 	}
 	if c.ComponentEvaluation != state {
@@ -215,12 +302,41 @@ func (c *EffectiveChecks) Validate(a Artifact) error {
 			subject[r] = true
 		}
 	}
-	if len(c.Evaluations) != len(subject)+len(selection) {
+	// A profile adds sbom, subject and component evaluations whose number
+	// depends on the document; they must be exactly the list the gate emits.
+	if !profile && len(c.Evaluations) != len(subject)+len(selection) {
+		return bad()
+	}
+	if profile && !c.profileEvaluationsMatch(selection, subject) {
 		return bad()
 	}
 	// A finding can only name a requirement that was selected; otherwise the
 	// checks would claim less was evaluated than the findings show.
+	evaluated := map[string]bool{}
+	for _, e := range c.Evaluations {
+		evaluated[e.Scope+"/"+e.Requirement] = true
+	}
 	for _, f := range a.GateFindings {
+		if profile {
+			if f.SBOM && f.Subject {
+				return bad()
+			}
+			scope := "components"
+			if f.SBOM {
+				scope = "sbom"
+			} else if f.Subject {
+				scope = "subject"
+			}
+			for _, m := range f.Missing {
+				if !profileIDs[scope+"."+m] || !evaluated[scope+"/"+m] {
+					return bad()
+				}
+			}
+			continue
+		}
+		if f.SBOM {
+			return bad()
+		}
 		for _, m := range f.Missing {
 			if (f.Subject && !subject[m]) || (!f.Subject && !selection[m]) {
 				return bad()
@@ -236,21 +352,42 @@ func (c *EffectiveChecks) Validate(a Artifact) error {
 		seen[key] = true
 		count := 1
 		switch e.Scope {
+		case "sbom":
+			if !profile || !profileIDs["sbom."+e.Requirement] {
+				return bad()
+			}
 		case "subject":
-			if !subject[e.Requirement] {
+			if profile {
+				if !profileIDs["subject."+e.Requirement] {
+					return bad()
+				}
+				count = e.Evaluated
+				if count < 0 || count > 1 {
+					return bad()
+				}
+			} else if !subject[e.Requirement] {
 				return bad()
 			}
 		case "components":
-			if !selection[e.Requirement] {
+			if profile {
+				if !profileIDs["components."+e.Requirement] {
+					return bad()
+				}
+				count = e.Evaluated
+				if count < 0 || count > c.ComponentCount {
+					return bad()
+				}
+			} else if !selection[e.Requirement] {
 				return bad()
+			} else {
+				count = c.ComponentCount
 			}
-			count = c.ComponentCount
 		default:
 			return bad()
 		}
 		failed := 0
 		for _, f := range a.GateFindings {
-			if f.Subject != (e.Scope == "subject") {
+			if f.SBOM != (e.Scope == "sbom") || (e.Scope != "sbom" && f.Subject != (e.Scope == "subject")) {
 				continue
 			}
 			for _, m := range f.Missing {
@@ -277,4 +414,31 @@ func (c *EffectiveChecks) Validate(a Artifact) error {
 		return bad()
 	}
 	return nil
+}
+
+// profileIDs are the requirements a profile run can evaluate, by scope.
+var profileIDs = map[string]bool{}
+
+func init() {
+	for _, id := range []string{
+		"sbom.specVersion", "sbom.creator", "sbom.timestamp", "sbom.vulnerabilities",
+		"subject.name", "subject.version", "subject.level", "subject.creator", "subject.filename", "subject.dependencies",
+		"subject.distributionLicences", "subject.deployableHash", "subject.executable", "subject.archive", "subject.structured",
+		"subject.securityContact", "subject.digest",
+		"components.name", "components.version", "components.purl", "components.level", "components.creator", "components.filename",
+		"components.dependencies", "components.distributionLicences", "components.deployableHash", "components.executable",
+		"components.archive", "components.structured",
+	} {
+		profileIDs[id] = true
+	}
+}
+
+// ProfileRequirementIDs lists the requirement IDs a profile run can report.
+func ProfileRequirementIDs() []string {
+	out := make([]string, 0, len(profileIDs))
+	for id := range profileIDs {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
 }

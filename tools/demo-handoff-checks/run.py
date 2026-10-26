@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 
@@ -21,18 +22,38 @@ DISTRIBUTIONS = [
      "url": "https://downloads.example.com/cart-api/1.4.0/cart-api-1.4.0-linux-amd64.tar.gz"},
     {"name": "cart-api-1.4.0.jar", "sha256": "d2" * 32},
 ]
+PROFILE = "gate:\n  profile: bsi-tr-03183-2@2.1.0\n"
+PROFILE_REPAIR = (PROFILE + "enrichment:\n  producer:\n    name: Example Components GmbH\n    contact:\n      - email: sbom@example.org\n"
+                  "  subject:\n    manufacturer:\n      name: Example Components GmbH\n      url: [https://example.org]\n")
 SCENARIOS = [
-    # name, extra manifest, security-contact already in the SBOM, distributions in a build context file, expected exit
-    ("not-required", "", None, None, 0),
-    ("required-missing", REQUIRE, None, None, 1),
-    ("required-supplied", REQUIRE + "enrichment:\n  subject:\n    securityContact: mailto:security@example.com\n", None, None, 0),
-    ("required-unsupported", REQUIRE, "security@example.com", None, 1),
-    ("digest-missing", REQUIRE_DIGEST, None, None, 1),
-    ("digest-supplied", REQUIRE_DIGEST, None, DISTRIBUTIONS, 0),
+    # name, extra manifest, security-contact already in the SBOM, distributions in a build context file, expected exit,
+    # profile (True: the TR-03183-2 fixture and checks)
+    ("not-required", "", None, None, 0, False),
+    ("required-missing", REQUIRE, None, None, 1, False),
+    ("required-supplied", REQUIRE + "enrichment:\n  subject:\n    securityContact: mailto:security@example.com\n", None, None, 0, False),
+    ("required-unsupported", REQUIRE, "security@example.com", None, 1, False),
+    ("digest-missing", REQUIRE_DIGEST, None, None, 1, False),
+    ("digest-supplied", REQUIRE_DIGEST, None, DISTRIBUTIONS, 0, False),
+    # The TR-03183-2 profile: a generator's SBOM lacks the creators and the shipped files; the repair supplies them.
+    ("bsi-profile-missing", PROFILE, None, None, 1, True),
+    ("bsi-profile-repaired", PROFILE_REPAIR, None, "tr", 0, True),
 ]
 
 
+def tr_distributions():
+    """Two synthetic shipped files with declared digests. Rio never hashes or opens them."""
+    files = []
+    for name, payload, executable, archive in (
+            ("cart-api-1.4.0-linux-amd64.tar.gz", b"synthetic archive of cart-api 1.4.0", False, True),
+            ("cart-api-1.4.0.jar", b"synthetic jar of cart-api 1.4.0", False, True)):
+        files.append({"name": name, "sha256": hashlib.sha256(payload).hexdigest(), "sha512": hashlib.sha512(payload).hexdigest(),
+                      "executable": executable, "archive": archive, "structured": True})
+    return files
+
+
 def main():
+    # Rio prints UTF-8 (for example the section sign); a CP1252 console must not make the demo fail.
+    sys.stdout.reconfigure(errors="replace")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary")
     args = parser.parse_args()
@@ -64,19 +85,24 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     env = dict(os.environ, RIO_DEMO_KEY="synthetic-demo-key")
     try:
-        for name, extra, contact, distributions, expected in SCENARIOS:
+        for name, extra, contact, distributions, expected, profile in SCENARIOS:
             work = retained / name
             work.mkdir()
-            sbom = json.loads((HERE / "fixtures/cart-api.cdx.json").read_text())
+            sbom = json.loads((HERE / ("fixtures/cart-api-tr.cdx.json" if profile else "fixtures/cart-api.cdx.json")).read_text())
             if contact:
                 sbom["metadata"]["component"]["externalReferences"] = [{"type": "security-contact", "url": contact}]
             (work / "cart-api.cdx.json").write_text(json.dumps(sbom, indent=2))
             binding = ""
             if distributions:
+                tr = distributions == "tr"
+                if tr:
+                    distributions = tr_distributions()
                 # The context entry binds the SBOM bytes as written, whatever line endings the platform used.
                 digest = hashlib.sha256((work / "cart-api.cdx.json").read_bytes()).hexdigest()
                 context = {"contextVersion": 1, "artifacts": [
                     {"id": "cart-api", "sbom": {"sha256": digest}, "distributions": distributions}]}
+                if tr:
+                    context["artifacts"][0]["level"] = "logical"
                 (work / "build-context.json").write_text(json.dumps(context, indent=2))
                 binding = "    context:\n      file: build-context.json\n"
             (work / "rio.yaml").write_text(
@@ -85,13 +111,36 @@ def main():
                 "      url: http://127.0.0.1:%d\n      allowHTTP: true\n      apiKeyEnv: RIO_DEMO_KEY\n" % server.server_port + extra)
             before = len(uploads)
             result = subprocess.run([binary, "--receipt", str(work / "record.json")], cwd=work, env=env,
-                                    capture_output=True, text=True)
+                                    capture_output=True, text=True, encoding="utf-8", errors="replace")
             assert result.returncode == expected, (name, result.returncode, result.stdout, result.stderr)
             artifact = json.loads((work / "record.json").read_text())["artifacts"][0]
             checks = artifact["checks"]
             delivered = len(uploads) - before
+            if profile:
+                print("==", name, "-> exit", result.returncode, "-", "delivered" if delivered else "not delivered")
+                print("   checks.gate:", checks["gate"])
+                if "failed" in checks:
+                    print("   checks.failed:", [f["requirement"] for f in checks["failed"]])
+                if "profile" in checks:
+                    print("   checks.profile:", json.dumps(checks["profile"], sort_keys=True))
+                    print("   checks.profileLevels:", json.dumps(checks["profileLevels"], sort_keys=True))
+                for line in result.stderr.splitlines():
+                    print("   " + line)
+                if expected:
+                    assert delivered == 0 and checks["gate"] == "fail", name
+                    failed = [f["requirement"] for f in checks["failed"]]
+                    for want in ("sbom.creator", "subject.creator", "subject.deployableHash"):
+                        assert want in failed, (want, failed)
+                        assert "  " + want + " (BSI TR-03183-2 2.1.0" in result.stderr, (want, result.stderr)
+                else:
+                    assert delivered == 1 and checks["gate"] == "pass" and "failed" not in checks, (name, result.stderr)
+                    assert checks["profile"]["name"] == "bsi-tr-03183-2@2.1.0", checks
+                    assert checks["profileLevels"] == {"assembled": 2, "full": 2, "identified": 0, "logical": 1, "referenced": 0}, checks
+                    output = json.loads(next((work / "target/rio/runs").glob("*/cart-api.cdx.json")).read_text())
+                    nested = output["metadata"]["component"]["components"]
+                    assert [c["name"] for c in nested] == [d["name"] for d in distributions], nested
+                continue
 
-            # ASCII only: Windows consoles and redirected Python 3.9 output may use CP1252.
             print("==", name, "-> exit", result.returncode, "-", "delivered" if delivered else "not delivered")
             print("   checks.subjectRequirements:", checks["subjectRequirements"])
             if "failed" in checks:
@@ -137,6 +186,8 @@ def main():
         print("PASS: a reviewed contact supplied through enrichment passes. A pass shows the value is present and well formed, nothing more.")
         print("PASS: a required digest blocks delivery until the build context file declares the shipped files;")
         print("PASS: the declared digests reach the SBOM subject and the receipt as producer assertions. Rio hashes no shipped file.")
+        print("PASS: the BSI TR-03183-2 profile blocks a generator's SBOM and names the creators and shipped-file fields to supply;")
+        print("PASS: enrichment, a declared logical subject and two declared shipped files pass it. The profile checks presence and form only.")
         print("Retained runs:", retained)
     finally:
         server.shutdown()

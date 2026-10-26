@@ -291,7 +291,7 @@ func process(man *manifest.Manifest, a *artifact) error {
 	}
 
 	// Step 4: the gate reads, it never modifies.
-	a.gate = gate.CheckRequirements(doc, gate.Requirements{Components: requirements(man.Gate.Require), Subject: requirements(man.Gate.SubjectRequire)})
+	a.gate = gate.CheckRequirements(doc, gate.Requirements{Components: requirements(man.Gate.Require), Subject: requirements(man.Gate.SubjectRequire), Profile: man.Gate.Profile})
 
 	return nil
 }
@@ -437,6 +437,7 @@ func gateFindings(r gate.Result) []index.GateFinding {
 	out := make([]index.GateFinding, 0, len(r.Findings))
 	for _, f := range r.Findings {
 		out = append(out, index.GateFinding{
+			SBOM:      f.SBOM,
 			Subject:   f.Subject,
 			Component: f.Component,
 			Missing:   f.Missing,

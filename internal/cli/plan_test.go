@@ -640,3 +640,29 @@ func TestPlanAndNormalizeRejectUnknownEnrichmentLicense(t *testing.T) {
 		})
 	}
 }
+
+func TestPlanJSONProfile(t *testing.T) {
+	dir := rcpProject(t)
+	src := "version: 1\nartifacts:\n  - id: a\n    sbom: \"tycho-rcp.cdx.json\"\ngate:\n  profile: bsi-tr-03183-2@2.1.0\n"
+	if err := os.WriteFile(filepath.Join(dir, "rio.yaml"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	j := rio(t, dir, "plan", "--json")
+	requireExit(t, j, ExitOK)
+	gate, _ := decodePlan(t, j.stdout)["gate"].(map[string]any)
+	want := map[string]any{"name": "bsi-tr-03183-2@2.1.0", "guideline": "BSI TR-03183-2", "guidelineVersion": "2.1.0"}
+	if diff := cmp.Diff(want, gate["profile"]); diff != "" {
+		t.Errorf("gate.profile (-want +got):\n%s", diff)
+	}
+	if require, ok := gate["require"].([]any); !ok || len(require) != 0 {
+		t.Errorf("gate.require = %v, want an empty array", gate["require"])
+	}
+
+	r := rio(t, dir, "plan")
+	requireExit(t, r, ExitOK)
+	line := "gate  profile bsi-tr-03183-2@2.1.0 (BSI TR-03183-2 2.1.0)\ngate  require nothing beyond the profile\n"
+	if !strings.Contains(r.stdout, line) {
+		t.Fatalf("stdout =\n%s", r.stdout)
+	}
+}

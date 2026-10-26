@@ -2,6 +2,7 @@
 """Emit one explicit v1 Rio build-context entry for original local SBOM bytes."""
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import re
@@ -19,7 +20,13 @@ FIELDS = (
     "generator-version", "lifecycle",
 )
 MAX_DISTRIBUTIONS = 1000
-CHECKSUM_LINE = re.compile(r"([0-9a-f]{64}) [ *](.*)", re.DOTALL)
+CHECKSUM_LINES = {
+    "sha256": re.compile(r"([0-9a-f]{64}) [ *](.*)", re.DOTALL),
+    "sha512": re.compile(r"([0-9a-f]{128}) [ *](.*)", re.DOTALL),
+}
+DIGEST_LENGTHS = {"sha256": 64, "sha512": 128}
+LEVELS = ("logical", "identified", "assembled")
+FILE_FLAGS = ("executable", "archive", "structured")
 PHASES = ("design", "pre-build", "build", "post-build", "operations", "discovery", "decommission")
 
 
@@ -35,15 +42,16 @@ def check_url(label, value):
         raise ValueError("%s must be an absolute HTTP(S) URL without credentials, query or fragment" % label)
 
 
-def parse_checksums(path, prefix):
+def parse_checksums(path, prefix, algorithm="sha256"):
     """Read sha256sum/GoReleaser lines; the digests are the producer's assertion."""
     distributions, seen = [], set()
     for number, line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), 1):
         if not line:
             continue
-        match = CHECKSUM_LINE.fullmatch(line)
+        match = CHECKSUM_LINES[algorithm].fullmatch(line)
         if not match:
-            raise ValueError("checksums line %d must be 64 lowercase hex characters, a space, a space or *, and a name" % number)
+            raise ValueError("%s line %d must be %d lowercase hex characters, a space, a space or *, and a name"
+                             % (path, number, DIGEST_LENGTHS[algorithm]))
         digest, name = match.groups()
         validate("checksums line %d name" % number, name)
         if "/" in name or "\\" in name:
@@ -51,7 +59,7 @@ def parse_checksums(path, prefix):
         if name in seen:
             raise ValueError("checksums line %d repeats name %s" % (number, name))
         seen.add(name)
-        item = {"name": name, "sha256": digest}
+        item = {"name": name, algorithm: digest}
         if prefix is not None:
             item["url"] = prefix + quote(name, safe="")
             check_url("checksums line %d url" % number, item["url"])
@@ -61,6 +69,45 @@ def parse_checksums(path, prefix):
     if not distributions:
         raise ValueError("checksums file lists no files")
     return distributions
+
+
+def parse_file_properties(specs):
+    rules = []
+    for spec in specs:
+        pattern, separator, flags = spec.rpartition("=")
+        if not separator or not pattern or not flags:
+            raise ValueError("--file-properties %r must be PATTERN=FLAGS" % spec)
+        names = [flag for flag in flags.split(",")]
+        if names != ["none"]:
+            for flag in names:
+                if flag not in FILE_FLAGS:
+                    raise ValueError("--file-properties pattern %r has unknown flag %r; use %s or none"
+                                     % (pattern, flag, ", ".join(FILE_FLAGS)))
+        rules.append((pattern, set(names) - {"none"}))
+    return rules
+
+
+def add_tr_properties(distributions, sha512_path, rules):
+    """Merge SHA-512 digests and file properties into the SHA-256 entries."""
+    strong = parse_checksums(sha512_path, None, "sha512")
+    if {d["name"] for d in strong} != {d["name"] for d in distributions}:
+        raise ValueError("%s must list exactly the same names as --checksums" % sha512_path)
+    digests = {d["name"]: d["sha512"] for d in strong}
+    merged = []
+    for item in distributions:
+        name = item["name"]
+        for pattern, flags in rules:
+            if fnmatch.fnmatchcase(name, pattern):
+                break
+        else:
+            raise ValueError("no --file-properties pattern matches %s" % name)
+        out = {"name": name, "sha256": item["sha256"], "sha512": digests[name]}
+        for flag in FILE_FLAGS:
+            out[flag] = flag in flags
+        if "url" in item:
+            out["url"] = item["url"]
+        merged.append(out)
+    return merged
 
 
 def validate(label, value):
@@ -95,6 +142,10 @@ def main():
         parser.add_argument("--" + field)
     parser.add_argument("--checksums", help="sha256sum/GoReleaser checksums file listing the shipped files")
     parser.add_argument("--distribution-url", help="absolute http(s) URL prefix ending in /; url = prefix + name")
+    parser.add_argument("--sha512-checksums", help="sha512sum-style file listing exactly the --checksums names")
+    parser.add_argument("--file-properties", action="append", default=[], metavar="PATTERN=FLAGS",
+                        help="fnmatch glob on the name = comma list of executable, archive, structured, or none; first match wins")
+    parser.add_argument("--level", choices=LEVELS, help="TR-03183-2 level of the subject")
     args = parser.parse_args()
     try:
         validate("artifact-id", args.artifact_id)
@@ -114,6 +165,15 @@ def main():
                 raise ValueError("distribution-url must end with /")
         if args.checksums is not None:
             distributions = parse_checksums(args.checksums, args.distribution_url)
+        if args.sha512_checksums is not None:
+            if args.checksums is None:
+                raise ValueError("--sha512-checksums requires --checksums")
+            if not args.file_properties:
+                raise ValueError("--sha512-checksums requires --file-properties")
+            distributions = add_tr_properties(distributions, args.sha512_checksums,
+                                              parse_file_properties(args.file_properties))
+        elif args.file_properties:
+            raise ValueError("--file-properties requires --sha512-checksums")
         digest = hashlib.sha256(Path(args.sbom).read_bytes()).hexdigest()
     except (ValueError, OSError, UnicodeError) as error:
         parser.error(str(error))
@@ -138,6 +198,8 @@ def main():
             entry["generator"]["version"] = args.generator_version
     if args.lifecycle is not None:
         entry["lifecycle"] = args.lifecycle
+    if args.level is not None:
+        entry["level"] = args.level
     if distributions is not None:
         entry["distributions"] = distributions
     print(json.dumps({"contextVersion": 1, "artifacts": [entry]}, indent=2))

@@ -2,6 +2,10 @@ package receipt
 
 import (
 	"encoding/json"
+	"github.com/rebaze/rio/internal/gate"
+	"github.com/rebaze/rio/internal/index"
+	"reflect"
+	"sort"
 	"testing"
 )
 
@@ -270,5 +274,113 @@ func TestSubjectDigestFailureOrdersAfterSecurityContact(t *testing.T) {
 	notRequired.Artifacts[0].Checks.SubjectRequirements = []string{"name", "version"}
 	if _, err := Marshal(notRequired); err == nil {
 		t.Fatal("a digest failure without the requirement must be refused")
+	}
+}
+
+func profileReceipt(d *Document) {
+	c := d.Artifacts[0].Checks
+	c.Profile = &ProfileRef{Name: "bsi-tr-03183-2@2.1.0", Guideline: "BSI TR-03183-2", GuidelineVersion: "2.1.0"}
+	c.ProfileLevels = map[string]int{"full": 0, "logical": 0, "assembled": 0, "identified": 0, "referenced": c.ComponentsEvaluated}
+}
+
+func TestFailedRequirementIDsOrder(t *testing.T) {
+	want := []string{"sbom.specVersion", "sbom.creator", "sbom.timestamp", "sbom.vulnerabilities", "subject.name", "subject.version", "subject.level", "subject.creator", "subject.filename", "subject.dependencies", "subject.distributionLicences", "subject.deployableHash", "subject.executable", "subject.archive", "subject.structured", "subject.securityContact", "subject.digest", "components.name", "components.version", "components.purl", "components.level", "components.creator", "components.filename", "components.dependencies", "components.distributionLicences", "components.deployableHash", "components.executable", "components.archive", "components.structured"}
+	if got := FailedRequirementIDs(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("ids = %v", got)
+	}
+}
+
+func TestFailedProfileIDs(t *testing.T) {
+	build := func(withProfile bool, ids ...string) Document {
+		d := gateRelationFixture()
+		failReceiptGate(&d, "warn")
+		c := d.Artifacts[0].Checks
+		c.Failed = nil
+		for _, id := range ids {
+			c.Failed = append(c.Failed, FailedRequirement{Requirement: id, Count: 1})
+		}
+		c.Findings = 3 // sbom, subject, one component
+		if withProfile {
+			profileReceipt(&d)
+		}
+		return d
+	}
+	parse := func(d Document) error {
+		raw, err := Marshal(d)
+		if err != nil {
+			return err
+		}
+		_, err = Parse(raw)
+		return err
+	}
+	ids := []string{"sbom.creator", "subject.level", "components.name", "components.filename"}
+	if err := parse(build(true, ids...)); err != nil {
+		t.Fatalf("profile ids refused: %v", err)
+	}
+	for _, id := range []string{"sbom.creator", "subject.level", "components.filename"} {
+		d := build(false, id)
+		d.Artifacts[0].Checks.Findings = 1
+		if err := parse(d); err == nil {
+			t.Fatalf("%s accepted without a profile", id)
+		}
+	}
+	if err := parse(build(true, "subject.level", "sbom.creator")); err == nil {
+		t.Fatal("out-of-order profile ids accepted")
+	}
+	d := build(true, "sbom.creator")
+	d.Artifacts[0].Checks.Failed[0].Count = 2
+	if err := parse(d); err == nil {
+		t.Fatal("sbom count 2 accepted")
+	}
+	// components.name needs no componentRequirements entry under a profile.
+	d = build(true, "components.version")
+	d.Artifacts[0].Checks.ComponentRequirements = nil
+	d.Artifacts[0].Checks.Findings = 1
+	if err := parse(d); err != nil {
+		t.Fatalf("components.version under a profile refused: %v", err)
+	}
+}
+
+func TestProfileEvidenceValidation(t *testing.T) {
+	cases := map[string]func(*Document){
+		"unknown profile":    func(d *Document) { profileReceipt(d); d.Artifacts[0].Checks.Profile.Name = "x" },
+		"missing level key":  func(d *Document) { profileReceipt(d); delete(d.Artifacts[0].Checks.ProfileLevels, "full") },
+		"wrong sum":          func(d *Document) { profileReceipt(d); d.Artifacts[0].Checks.ProfileLevels["full"] = 99 },
+		"levels w/o profile": func(d *Document) { profileReceipt(d); d.Artifacts[0].Checks.Profile = nil },
+		"negative level":     func(d *Document) { profileReceipt(d); d.Artifacts[0].Checks.ProfileLevels["full"] = -1 },
+	}
+	for name, change := range cases {
+		t.Run(name, func(t *testing.T) {
+			d := gateRelationFixture()
+			change(&d)
+			raw, err := Marshal(d)
+			if err == nil {
+				_, err = Parse(raw)
+			}
+			if err == nil {
+				t.Fatal("invalid profile evidence accepted")
+			}
+		})
+	}
+	d := gateRelationFixture()
+	profileReceipt(&d)
+	d.Artifacts[0].Checks.ProfileLevels["full"]++ // the subject
+	if _, err := Marshal(d); err != nil {
+		t.Fatalf("valid profile evidence refused: %v", err)
+	}
+}
+
+func TestProfileDriftGuards(t *testing.T) {
+	ids := index.ProfileRequirementIDs()
+	want := append([]string(nil), FailedRequirementIDs()...)
+	sort.Strings(want)
+	// components.purl and the subject's securityContact/digest are selected
+	// by the manifest, not the profile, but index allows them too.
+	if !reflect.DeepEqual(ids, want) {
+		t.Fatalf("index profile ids drifted from receipt ids:\n%v\n%v", ids, want)
+	}
+	p, ok := gate.LookupProfile("bsi-tr-03183-2@2.1.0")
+	if !ok || !knownProfile(&ProfileRef{Name: p.Name, Guideline: p.Guideline, GuidelineVersion: p.GuidelineVersion}) {
+		t.Fatalf("receipt known profile drifted from gate: %+v", p)
 	}
 }

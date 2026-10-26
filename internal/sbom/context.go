@@ -27,8 +27,10 @@ type ContextRecord struct {
 	Changes   []ContextChange       `json:"changes"`
 	Assertion string                `json:"assertion"`
 	// OwnedReferences lists URL fields whose bare native reference Rio added,
-	// and "distribution:<name>" for each distribution reference Rio added.
-	// Unlike Changes, it survives reapplication of an unchanged snapshot.
+	// "distribution:<name>" for each distribution reference Rio added,
+	// "distribution-component:<name>" for each TR file component Rio added,
+	// and "level" when Rio wrote the subject's level property. Unlike
+	// Changes, it survives reapplication of an unchanged snapshot.
 	OwnedReferences []string `json:"ownedReferences"`
 }
 
@@ -94,6 +96,12 @@ func (d *Document) ApplyContext(cfg *buildcontext.Resolved) (*ContextRecord, err
 		if bok && name == "lifecycle" {
 			return nil, fmt.Errorf("context lifecycle prior owned assertion cannot be changed or removed")
 		}
+		if bok && name == "level" {
+			if aok {
+				return nil, levelConflict(after, before)
+			}
+			return nil, fmt.Errorf("context level prior owned assertion cannot be changed or removed")
+		}
 		if bok && !replacement[name] {
 			return nil, fmt.Errorf("context %s conflicts with prior owned assertion; explicitly list %s in context.replace", name, name)
 		}
@@ -156,6 +164,17 @@ func (d *Document) ApplyContext(cfg *buildcontext.Resolved) (*ContextRecord, err
 		if changed {
 			rec.Changes = append(rec.Changes, ContextChange{Field: "distributions", Target: "/metadata/component/externalReferences", Before: before, After: after, Selector: selector})
 		}
+		if tr := trDistributions(dists); len(tr) > 0 {
+			changes, owned, err := working.mergeFileComponents(tr, prior)
+			if err != nil {
+				return nil, err
+			}
+			rec.OwnedReferences = append(rec.OwnedReferences, owned...)
+			for _, c := range changes {
+				c.Field, c.Selector = "distributions", selector
+				rec.Changes = append(rec.Changes, c)
+			}
+		}
 	}
 	if phase, ok := current["lifecycle"]; ok {
 		before, after, changed, err := working.mergeLifecycle(phase)
@@ -164,6 +183,18 @@ func (d *Document) ApplyContext(cfg *buildcontext.Resolved) (*ContextRecord, err
 		}
 		if changed {
 			rec.Changes = append(rec.Changes, ContextChange{Field: "lifecycle", Target: "/metadata/lifecycles", Before: before, After: after, Selector: selectors["lifecycle"]})
+		}
+	}
+	if level := cfg.Artifact.Level; level != "" {
+		before, after, owned, changed, err := mergeLevel(working.metadataComponent(false), level, prior)
+		if err != nil {
+			return nil, err
+		}
+		if owned {
+			rec.OwnedReferences = append(rec.OwnedReferences, levelOwner)
+		}
+		if changed {
+			rec.Changes = append(rec.Changes, ContextChange{Field: "level", Target: "/metadata/component/properties", Before: before, After: after, Selector: selectors["level"]})
 		}
 	}
 	encoded, err := json.Marshal(rec)
@@ -326,12 +357,18 @@ func parsePriorContext(value, id string) (*ContextRecord, error) {
 		distributions := map[string]bool{}
 		for _, d := range effective.Distributions {
 			distributions[distributionOwner+d.Name] = true
+			if d.HasTRFields() {
+				distributions[fileComponentOwner+d.Name] = true
+			}
+		}
+		if effective.Level != "" {
+			distributions[levelOwner] = true
 		}
 		for _, item := range list {
 			field, ok := item.(string)
 			active := ((field == "source.repository" || field == "build.url") && leaves[field] != "") || distributions[field]
 			if !ok || !active || seen[field] {
-				return nil, fmt.Errorf("ownedReferences must contain distinct active URL fields or distributions")
+				return nil, fmt.Errorf("ownedReferences must contain distinct active URL fields, distributions, distribution components or level")
 			}
 			seen[field] = true
 			owned = append(owned, field)
@@ -468,10 +505,21 @@ func validChangeSelector(entry, source, field, target string, after any, default
 func validContextChange(field, target string, before, after any) bool {
 	if field == "distributions" {
 		// Distributions are only ever added, never replaced or removed.
-		if target == "context:/distributions" {
+		// File components, their dependencies and their composition are only
+		// ever added; a change lists the entries rio added or changed.
+		switch target {
+		case "context:/distributions":
 			return before == nil && validDistributionClaim(after)
+		case "/metadata/component/externalReferences":
+			return validNativeArray(before, "reference") && validNativeArray(after, "reference")
+		case "/metadata/component/components":
+			return before == nil && after != nil && validNativeArray(after, "component")
+		case "/dependencies":
+			return validNativeArray(before, "dependency") && after != nil && validNativeArray(after, "dependency")
+		case "/compositions":
+			return before == nil && after != nil && validNativeArray(after, "composition")
 		}
-		return target == "/metadata/component/externalReferences" && validNativeArray(before, "reference") && validNativeArray(after, "reference")
+		return false
 	}
 	if err := buildcontext.ValidateBinding(&buildcontext.Binding{File: "prior", Require: []string{field}}); err != nil {
 		return false
@@ -485,6 +533,9 @@ func validContextChange(field, target string, before, after any) bool {
 	}
 	if target == "/metadata/lifecycles" && field == "lifecycle" {
 		return validNativeArray(before, "lifecycle") && validNativeArray(after, "lifecycle")
+	}
+	if target == "/metadata/component/properties" && field == "level" {
+		return validNativeArray(before, "property") && validNativeArray(after, "property")
 	}
 	return false
 }
@@ -503,6 +554,25 @@ func validDistributionClaim(v any) bool {
 		keys := []string{"name", "sha256"}
 		if _, exists := entry["url"]; exists {
 			keys = append(keys, "url")
+		}
+		_, tr := entry["sha512"]
+		for _, key := range []string{"executable", "archive", "structured"} {
+			if _, exists := entry[key]; exists {
+				tr = true
+			}
+		}
+		if tr {
+			// All four or none; recordObject requires each listed key.
+			keys = append(keys, "sha512", "executable", "archive", "structured")
+			sum, _ := entry["sha512"].(string)
+			if !lowerHexDigest(sum, 128) {
+				return false
+			}
+			for _, key := range []string{"executable", "archive", "structured"} {
+				if _, ok := entry[key].(bool); !ok {
+					return false
+				}
+			}
 		}
 		if _, err := recordObject(entry, label, keys...); err != nil {
 			return false
@@ -542,11 +612,28 @@ func validNativeArray(v any, kind string) bool {
 		if !ok {
 			return false
 		}
-		if kind == "reference" {
+		switch kind {
+		case "reference":
 			if !nonblankMember(entry, "type") || !nonblankMember(entry, "url") {
 				return false
 			}
-		} else {
+		case "component":
+			if !nonblankMember(entry, "type") || !nonblankMember(entry, "name") || !nonblankMember(entry, "bom-ref") {
+				return false
+			}
+		case "dependency":
+			if !nonblankMember(entry, "ref") {
+				return false
+			}
+		case "composition":
+			if !nonblankMember(entry, "aggregate") {
+				return false
+			}
+		case "property":
+			if !nonblankMember(entry, "name") {
+				return false
+			}
+		default:
 			_, hasPhase := entry["phase"]
 			_, hasName := entry["name"]
 			if (!hasPhase && !hasName) || (hasPhase && !nonblankMember(entry, "phase")) || (hasName && !nonblankMember(entry, "name")) {
@@ -595,8 +682,10 @@ func recordString(value any, label string) (string, error) {
 	return s, nil
 }
 
-func contextDigest(s string) bool {
-	if len(s) != 64 {
+func contextDigest(s string) bool { return lowerHexDigest(s, 64) }
+
+func lowerHexDigest(s string, length int) bool {
+	if len(s) != length {
 		return false
 	}
 	for _, r := range s {
@@ -660,7 +749,7 @@ func sameDistributions(a, b []buildcontext.Distribution) bool {
 		byName[d.Name] = d
 	}
 	for _, d := range b {
-		if other, ok := byName[d.Name]; !ok || other != d {
+		if other, ok := byName[d.Name]; !ok || !other.Equal(d) {
 			return false
 		}
 	}
@@ -690,7 +779,7 @@ func firstDistributionDifference(prior, next []buildcontext.Distribution) string
 			return fmt.Sprintf("%q removed", n)
 		case !inOld && inCur:
 			return fmt.Sprintf("%q added", n)
-		case o != c:
+		case !o.Equal(c):
 			return fmt.Sprintf("%q changed", n)
 		}
 	}

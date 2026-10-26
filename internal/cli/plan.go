@@ -107,8 +107,25 @@ type planFile struct {
 type planGate struct {
 	Mode    string   `json:"mode"`
 	Require []string `json:"require"`
+	// Profile is gate.profile, present only when one is set.
+	Profile *planProfile `json:"profile,omitempty"`
 	// SubjectRequire is gate.subject.require, present only when opted into.
 	SubjectRequire []string `json:"subjectRequire,omitempty"`
+}
+
+// planProfile names the gate profile and the guideline it implements.
+type planProfile struct {
+	Name             string `json:"name"`
+	Guideline        string `json:"guideline"`
+	GuidelineVersion string `json:"guidelineVersion"`
+}
+
+// gateProfile describes a gate.profile value, nil when none is set.
+func gateProfile(name string) *planProfile {
+	if name != manifest.ProfileBSITR031832v210 {
+		return nil
+	}
+	return &planProfile{Name: name, Guideline: "BSI TR-03183-2", GuidelineVersion: "2.1.0"}
 }
 
 // planTransform is one transform as the plan describes it: its manifest name,
@@ -252,7 +269,7 @@ func runPlan(cmd *cobra.Command, opts *globalOptions, o pipelineOptions, asJSON 
 		// gate.require may legally be the empty subset, and a nil slice
 		// serializes as null. Every array this format promises is an array,
 		// exactly as in index.json, so a consumer can iterate it unguarded.
-		Gate: planGate{Mode: mode, Require: append([]string{}, man.Gate.Require...), SubjectRequire: man.Gate.SubjectRequire},
+		Gate: planGate{Mode: mode, Require: append([]string{}, man.Gate.Require...), SubjectRequire: man.Gate.SubjectRequire, Profile: gateProfile(man.Gate.Profile)},
 	}
 
 	for _, input := range resolved {
@@ -361,7 +378,14 @@ func writePlanText(p plan, man *manifest.Manifest, opts *globalOptions, stdout i
 		fmt.Fprintln(stdout)
 	}
 
-	fmt.Fprintf(stdout, "gate  require %s\n", requireList(p.Gate.Require))
+	if p := p.Gate.Profile; p != nil {
+		fmt.Fprintf(stdout, "gate  profile %s (%s %s)\n", p.Name, p.Guideline, p.GuidelineVersion)
+	}
+	require := requireList(p.Gate.Require)
+	if p.Gate.Profile != nil && len(p.Gate.Require) == 0 {
+		require += " beyond the profile"
+	}
+	fmt.Fprintf(stdout, "gate  require %s\n", require)
 	if len(p.Gate.SubjectRequire) > 0 {
 		fmt.Fprintf(stdout, "gate  subject requires name, version, %s\n", strings.Join(p.Gate.SubjectRequire, ", "))
 	}

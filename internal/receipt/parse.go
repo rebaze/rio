@@ -163,7 +163,10 @@ func Validate(d Document) error {
 			if !oneOf(c.Mode, "fail", "warn", "pre-existing") || !oneOf(c.Gate, "pass", "fail", "not-evaluated", "not-available") || !oneOf(c.Schema, "pass", "fail", "not-evaluated", "not-available") || !oneOf(c.ComponentEvaluation, "evaluated", "not-evaluated", "not-available") || c.ComponentsEvaluated < 0 || c.Findings < 0 || c.GraphFindings < 0 {
 				return invalid("checks")
 			}
-			if c.ComponentEvaluation == "evaluated" && (len(c.ComponentRequirements) == 0 || c.ComponentsEvaluated == 0) {
+			if err := validateProfile(c); err != nil {
+				return err
+			}
+			if c.ComponentEvaluation == "evaluated" && ((len(c.ComponentRequirements) == 0 && c.Profile == nil) || c.ComponentsEvaluated == 0) {
 				return invalid("empty checks claimed evaluated")
 			}
 			if c.Gate == "pass" && c.Findings > 0 {
@@ -307,7 +310,7 @@ func validateFailed(c *Checks) error {
 	if subjectRequired == nil {
 		subjectRequired = []string{"name", "version"}
 	}
-	next, subjectFailed, componentMax, componentSum := 0, false, 0, 0
+	next, sbomFailed, subjectFailed, componentMax, componentSum := 0, false, false, 0, 0
 	for _, f := range c.Failed {
 		order := -1
 		for i, id := range FailedRequirementIDs() {
@@ -321,13 +324,26 @@ func validateFailed(c *Checks) error {
 		next = order + 1
 		scope, field, _ := strings.Cut(f.Requirement, ".")
 		switch scope {
+		case "sbom":
+			if f.Count != 1 || c.Profile == nil {
+				return bad()
+			}
+			sbomFailed = true
 		case "subject":
-			if f.Count != 1 || !contains(subjectRequired, field) {
+			profileOnly := field != "name" && field != "version" && field != "securityContact" && field != "digest"
+			if f.Count != 1 || (profileOnly && c.Profile == nil) || (!profileOnly && !contains(subjectRequired, field)) {
 				return bad()
 			}
 			subjectFailed = true
 		case "components":
-			if f.Count > c.ComponentsEvaluated || !contains(c.ComponentRequirements, field) {
+			profileOnly := field != "name" && field != "version" && field != "purl"
+			if f.Count > c.ComponentsEvaluated || (profileOnly && c.Profile == nil) {
+				return bad()
+			}
+			if !profileOnly && c.Profile == nil && !contains(c.ComponentRequirements, field) {
+				return bad()
+			}
+			if field == "purl" && !contains(c.ComponentRequirements, field) {
 				return bad()
 			}
 			componentMax = max(componentMax, f.Count)
@@ -340,8 +356,38 @@ func validateFailed(c *Checks) error {
 	if subjectFailed {
 		componentFindings--
 	}
+	if sbomFailed {
+		componentFindings--
+	}
 	if componentFindings < componentMax || componentFindings > componentSum || componentFindings > c.ComponentsEvaluated {
 		return bad()
+	}
+	return nil
+}
+
+// validateProfile checks the profile evidence: the one known triple, and level
+// counts that account for every component, plus the subject when the document
+// has one (which the receipt cannot see).
+func validateProfile(c *Checks) error {
+	if c.Profile == nil {
+		if c.ProfileLevels != nil {
+			return invalid("profile levels without a profile")
+		}
+		return nil
+	}
+	if !knownProfile(c.Profile) || len(c.ProfileLevels) != len(ProfileLevelKeys) {
+		return invalid("profile")
+	}
+	sum := 0
+	for _, k := range ProfileLevelKeys {
+		v, ok := c.ProfileLevels[k]
+		if !ok || v < 0 {
+			return invalid("profile levels")
+		}
+		sum += v
+	}
+	if sum != c.ComponentsEvaluated && sum != c.ComponentsEvaluated+1 {
+		return invalid("profile levels")
 	}
 	return nil
 }
