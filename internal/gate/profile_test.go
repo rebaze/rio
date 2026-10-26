@@ -518,6 +518,29 @@ func TestProfileBOMReferenceWins(t *testing.T) {
 	}
 }
 
+// A bom reference counts only when its url identifies another BOM; a blank
+// url leaves the component checked, and reported, as full.
+func TestProfileBlankBOMReferenceIsFull(t *testing.T) {
+	for name, url := range map[string]any{"empty": "", "whitespace": "  \t", "absent": nil, "not a string": 7} {
+		t.Run(name, func(t *testing.T) {
+			doc := conforming()
+			ref := map[string]any{"type": "bom"}
+			if url != nil {
+				ref["url"] = url
+			}
+			component(doc, 3)["externalReferences"] = []any{ref}
+			got := profileCheck(t, doc, gate.Requirements{})
+			if got.ProfileLevels["referenced"] != 0 || got.ProfileLevels["full"] != 2 {
+				t.Errorf("ProfileLevels = %v, want base-image counted as full", got.ProfileLevels)
+			}
+			want := []brief{{Component: "base-image@1.0", Missing: []string{"filename", "dependencies", "distributionLicences", "deployableHash", "executable", "archive", "structured"}}}
+			if diff := cmp.Diff(want, briefs(got.Findings)); diff != "" {
+				t.Errorf("findings (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func TestProfileMalformedShapes(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -547,6 +570,10 @@ func TestProfileMalformedShapes(t *testing.T) {
 		{"contact and url wrong shapes", func(d map[string]any) {
 			at(d, "metadata")["manufacturer"] = map[string]any{"contact": "sbom@example.org", "url": "https://example.org"}
 			component(d, 3)["manufacturer"] = map[string]any{"contact": []any{"sbom@example.org", map[string]any{"email": 5}}, "url": []any{3, "ftp://example.org", "https://"}}
+		}, []brief{{SBOM: true, Missing: []string{"creator"}}, {Component: "base-image@1.0", Missing: []string{"creator"}}}},
+		{"creator url without a host name", func(d map[string]any) {
+			at(d, "metadata")["manufacturer"] = map[string]any{"url": []any{"https://:443", "http://:80/path"}}
+			component(d, 3)["manufacturer"] = map[string]any{"url": []any{"https://:443"}}
 		}, []brief{{SBOM: true, Missing: []string{"creator"}}, {Component: "base-image@1.0", Missing: []string{"creator"}}}},
 		{"properties not an array", func(d map[string]any) { component(d, 0)["properties"] = map[string]any{"bsi:component:filename": "x"} },
 			[]brief{{Component: "cart-api-1.4.0.tar.gz@1.4.0", Missing: []string{"filename", "executable", "archive", "structured"}}}},

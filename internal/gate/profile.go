@@ -259,12 +259,13 @@ func (run *profileRun) check(c sbom.ComponentObject) checkedComponent {
 }
 
 // resolveLevel returns the level obj is checked at, and a detail when its
-// level property is unusable. A bom external reference makes a component
-// referenced whatever its property says; the property is then not read.
-// An unusable property leaves the component checked as full.
+// level property is unusable. A bom external reference with a nonblank url
+// makes a component referenced whatever its property says; the property is
+// then not read. A bom reference that does not identify another BOM counts
+// for nothing. An unusable property leaves the component checked as full.
 func resolveLevel(obj map[string]any) (level, detail string) {
 	for _, ref := range objects(obj["externalReferences"]) {
-		if ref["type"] == "bom" {
+		if url, ok := ref["url"].(string); ok && ref["type"] == "bom" && !blank(url) {
 			return LevelReferenced, ""
 		}
 	}

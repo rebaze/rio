@@ -13,7 +13,7 @@ import (
 // findings rather than a panic. None of them modifies what it reads.
 
 // validCreator passes a manufacturer object with a contact email that has text
-// on both sides of an "@", or an absolute http(s) URL.
+// on both sides of an "@", or an absolute http(s) URL that names a host.
 func validCreator(v any) bool {
 	m, ok := v.(map[string]any)
 	if !ok {
@@ -38,7 +38,7 @@ func validCreator(v any) bool {
 
 func absoluteHTTP(s string) bool {
 	u, err := url.Parse(strings.TrimSpace(s))
-	return err == nil && (strings.EqualFold(u.Scheme, "http") || strings.EqualFold(u.Scheme, "https")) && u.Host != ""
+	return err == nil && (strings.EqualFold(u.Scheme, "http") || strings.EqualFold(u.Scheme, "https")) && u.Hostname() != ""
 }
 
 func validTimestamp(v any) bool {

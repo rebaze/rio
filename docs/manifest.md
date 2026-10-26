@@ -162,7 +162,7 @@ sit there, in `metadata.component.components`).
 | ID | TR | Applies to | CycloneDX 1.6 | Rio checks |
 |---|---|---|---|---|
 | `sbom.specVersion` | §4 | SBOM | `specVersion` | 1.6 or higher. Schema validity is recorded separately as `checks.schema`. |
-| `sbom.creator` | §5.2.1 | SBOM | `metadata.manufacturer` | a `contact[].email` with text on both sides of an `@`, or a `url[]` entry that is an absolute http(s) URL |
+| `sbom.creator` | §5.2.1 | SBOM | `metadata.manufacturer` | a `contact[].email` with text on both sides of an `@`, or a `url[]` entry that is an absolute http(s) URL naming a host |
 | `sbom.timestamp` | §5.2.1 | SBOM | `metadata.timestamp` | present, RFC 3339 date-time |
 | `sbom.vulnerabilities` | §3.1 | SBOM | `vulnerabilities` | absent or empty (the TR says an SBOM must not carry vulnerability information) |
 | `*.name` | §5.2.2 | every level | `name` | nonblank |
@@ -186,8 +186,9 @@ and `digest`, as without a profile.
 The TR describes a component at one of four levels, each with its own MUST fields, and CycloneDX
 has no field that says which. Rio checks every component as **full** (a deployable file) unless:
 
-- it has an external reference of type `bom`: it is **referenced** (described in another BOM).
-  This wins over the property. Rio infers this level and no other.
+- it has an external reference of type `bom` whose `url` is nonblank: it is **referenced**
+  (described in another BOM). This wins over the property. A `bom` reference without a usable
+  `url` identifies no BOM and is ignored. Rio infers this level and no other.
 - it carries the property `rio:tr-03183-2:level` with the value `logical`, `identified` or
   `assembled`. A producer asserts this; rio does not infer it. The value `full` is not accepted,
   because it is the default.
