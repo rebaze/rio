@@ -103,15 +103,16 @@ func (run *profileRun) validDependencies(obj map[string]any) bool {
 }
 
 // validLicences passes a concluded licence in SPDX form: an expression entry
-// acknowledged as concluded, or a license with a known SPDX id acknowledged
-// as concluded. A licence name or text alone never counts (§6.1).
+// acknowledged as concluded, or a license with a known SPDX licence id (not an
+// exception id) acknowledged as concluded. A licence name or text alone never
+// counts (§6.1).
 func validLicences(obj map[string]any) bool {
 	for _, e := range objects(obj["licenses"]) {
 		if expr, ok := e["expression"].(string); ok && e["acknowledgement"] == "concluded" && validSPDXExpression(expr) {
 			return true
 		}
 		if l, ok := e["license"].(map[string]any); ok && l["acknowledgement"] == "concluded" {
-			if id, ok := l["id"].(string); ok && sbom.KnownSPDXIdentifier(id) {
+			if id, ok := l["id"].(string); ok && sbom.KnownSPDXLicence(id) {
 				return true
 			}
 		}

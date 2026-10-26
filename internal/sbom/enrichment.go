@@ -36,13 +36,17 @@ type EnrichmentSource struct {
 }
 
 var (
-	spdxOnce sync.Once
-	spdxIDs  map[string]bool
-	spdxErr  error
+	spdxOnce       sync.Once
+	spdxLicences   map[string]bool
+	spdxExceptions map[string]bool
+	spdxErr        error
 )
 
-// spdxIdentifiers loads the embedded SPDX enum (licences and exceptions).
-func spdxIdentifiers() (map[string]bool, error) {
+// spdxIdentifiers loads the embedded SPDX enum, which lists licence IDs in
+// case-insensitive order and then exception IDs in the same order. It splits
+// the list where that order breaks, and fails unless it breaks exactly once,
+// so a schema update with another layout cannot mix exceptions into licences.
+func spdxIdentifiers() (licences, exceptions map[string]bool, err error) {
 	spdxOnce.Do(func() {
 		var schema struct {
 			Enum []string `json:"enum"`
@@ -51,20 +55,49 @@ func spdxIdentifiers() (map[string]bool, error) {
 		if err == nil {
 			err = json.Unmarshal(data, &schema)
 		}
-		spdxErr = err
-		spdxIDs = map[string]bool{}
-		for _, v := range schema.Enum {
-			spdxIDs[v] = true
+		if err != nil {
+			spdxErr = err
+			return
+		}
+		split := -1
+		for i := 1; i < len(schema.Enum); i++ {
+			if strings.ToLower(schema.Enum[i]) < strings.ToLower(schema.Enum[i-1]) {
+				if split >= 0 {
+					spdxErr = errors.New("the embedded SPDX list is not licences then exceptions")
+					return
+				}
+				split = i
+			}
+		}
+		if split < 0 {
+			spdxErr = errors.New("the embedded SPDX list has no exceptions after its licences")
+			return
+		}
+		spdxLicences, spdxExceptions = map[string]bool{}, map[string]bool{}
+		for i, v := range schema.Enum {
+			if i < split {
+				spdxLicences[v] = true
+			} else {
+				spdxExceptions[v] = true
+			}
 		}
 	})
-	return spdxIDs, spdxErr
+	return spdxLicences, spdxExceptions, spdxErr
 }
 
-// KnownSPDXIdentifier reports whether id is in the embedded SPDX list, which
-// holds licence and exception identifiers. A load failure reads as unknown.
-func KnownSPDXIdentifier(id string) bool {
-	known, err := spdxIdentifiers()
-	return err == nil && known[id]
+// KnownSPDXLicence reports whether id is a licence ID in the embedded SPDX
+// list. Exception IDs are not licences. A load failure reads as unknown.
+func KnownSPDXLicence(id string) bool {
+	licences, _, err := spdxIdentifiers()
+	return err == nil && licences[id]
+}
+
+// KnownSPDXException reports whether id is a licence exception ID in the
+// embedded SPDX list, the right side of a WITH. A load failure reads as
+// unknown.
+func KnownSPDXException(id string) bool {
+	_, exceptions, err := spdxIdentifiers()
+	return err == nil && exceptions[id]
 }
 
 // ValidateEnrichmentConfig uses Rio's embedded SPDX vocabulary. The manifest
@@ -81,12 +114,13 @@ func ValidateEnrichmentConfig(cfg *enrichment.Resolved) error {
 		if err := json.Unmarshal(f.Value, &id); err != nil {
 			return fmt.Errorf("%s: dataLicense must be an SPDX identifier", f.Source)
 		}
-		known, err := spdxIdentifiers()
+		// A data licence is a licence: an exception ID names none.
+		licences, _, err := spdxIdentifiers()
 		if err != nil {
 			return fmt.Errorf("reading embedded SPDX identifiers: %w", err)
 		}
-		if !known[id] {
-			return fmt.Errorf("%s: dataLicense %q is not an SPDX identifier in Rio's embedded list", f.Source, id)
+		if !licences[id] {
+			return fmt.Errorf("%s: dataLicense %q is not an SPDX licence identifier in Rio's embedded list", f.Source, id)
 		}
 	}
 	return nil

@@ -13,10 +13,11 @@ const (
 )
 
 // validSPDXExpression reports whether s is an SPDX licence expression whose
-// identifiers rio can vouch for: ids from the embedded SPDX list (optionally
-// with a trailing "+"), LicenseRef-… and DocumentRef-…:LicenseRef-…, joined
-// with AND, OR and WITH (uppercase or all lowercase) and parentheses. The
-// right side of WITH is an id from the same list.
+// identifiers rio can vouch for: licence ids from the embedded SPDX list
+// (optionally with a trailing "+"), LicenseRef-… and DocumentRef-…:LicenseRef-…,
+// joined with AND, OR and WITH (uppercase or all lowercase) and parentheses.
+// The right side of WITH is an exception id from the same list; an exception
+// id is never a licence, and a licence id never an exception.
 //
 // It checks form only. A well-formed expression can still name the wrong
 // licence.
@@ -131,7 +132,7 @@ func (p *spdxParser) with() bool {
 	p.pos++
 	if p.operator("WITH") {
 		exc := p.peek()
-		if exc == "" || isSPDXOperator(exc) || !validIDChars(exc) || !sbom.KnownSPDXIdentifier(exc) {
+		if exc == "" || isSPDXOperator(exc) || !validIDChars(exc) || !sbom.KnownSPDXException(exc) {
 			return false
 		}
 		p.pos++
@@ -147,7 +148,7 @@ func isSPDXOperator(t string) bool {
 	return false
 }
 
-// validLicenceID accepts a known SPDX id with an optional trailing "+",
+// validLicenceID accepts a known SPDX licence id with an optional trailing "+",
 // LicenseRef-… and DocumentRef-…:LicenseRef-….
 func validLicenceID(t string) bool {
 	if validLicenseRef(t) {
@@ -157,7 +158,7 @@ func validLicenceID(t string) bool {
 		return validIDChars(strings.TrimPrefix(doc, "DocumentRef-")) && validLicenseRef(ref)
 	}
 	id := strings.TrimSuffix(t, "+")
-	return validIDChars(id) && sbom.KnownSPDXIdentifier(id)
+	return validIDChars(id) && sbom.KnownSPDXLicence(id)
 }
 
 func validLicenseRef(t string) bool {

@@ -52,6 +52,13 @@ func TestSPDXExpression(t *testing.T) {
 		"MIT/Apache-2.0",
 		"MIT, Apache-2.0",
 		"Apache License 2.0",
+		// An exception is not a licence, and a licence is not an exception.
+		"MIT WITH Apache-2.0",
+		"LLVM-exception",
+		"LLVM-exception+",
+		"MIT OR LLVM-exception",
+		"LLVM-exception WITH LLVM-exception",
+		"Apache-2.0 WITH LicenseRef-x",
 	}
 	for _, s := range accepted {
 		if !validSPDXExpression(s) {

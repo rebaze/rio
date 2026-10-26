@@ -55,11 +55,6 @@ func TestProfileViews(t *testing.T) {
 		t.Error("MetadataObject() non-nil for absent metadata")
 	}
 
-	for id, want := range map[string]bool{"Apache-2.0": true, "LLVM-exception": true, "NotALicence-1.0": false} {
-		if got := sbom.KnownSPDXIdentifier(id); got != want {
-			t.Errorf("KnownSPDXIdentifier(%q) = %v, want %v", id, got, want)
-		}
-	}
 }
 
 func TestAtLeast(t *testing.T) {

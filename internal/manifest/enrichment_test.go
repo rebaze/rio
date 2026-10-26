@@ -134,6 +134,14 @@ func TestEnrichmentRejectsUnknownSPDXIdentifier(t *testing.T) {
 	}
 }
 
+// A data licence is a licence; an SPDX exception ID names none.
+func TestEnrichmentRejectsSPDXExceptionAsDataLicense(t *testing.T) {
+	_, err := manifest.Load(write(t, "version: 1\nenrichment: {dataLicense: LLVM-exception}\nartifacts: [{id: a, sbom: a.json}]\n"))
+	if err == nil || !strings.Contains(err.Error(), "dataLicense") {
+		t.Fatalf("error=%v, want dataLicense validation", err)
+	}
+}
+
 func TestEnrichmentStrictStringsThroughYAMLMerges(t *testing.T) {
 	for _, value := range []string{"1.2", "true", "null"} {
 		for _, tt := range []struct{ name, body, path string }{
