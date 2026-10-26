@@ -173,9 +173,9 @@ sit there, in `metadata.component.components`).
 | `*.dependencies` | §5.2.2 | full, assembled, logical | `dependencies[]`, `compositions[]` | the component's `bom-ref` has its own `dependencies` entry (empty if it has none) and is listed in the `dependencies` or `assemblies` of a `compositions` entry whose `aggregate` is a string other than `not_specified` |
 | `*.distributionLicences` | §5.2.2, §6.1 | full, assembled, logical | `licenses[]` | one entry with `acknowledgement: concluded` that is an `expression` in SPDX form, or a `license.id` that rio's embedded SPDX list knows as a licence. Licence identifiers must be licence IDs in that list, or be `LicenseRef-…` or `DocumentRef-…:LicenseRef-…`; the right side of `WITH` must be an exception ID in that list. An exception ID such as `LLVM-exception` is not a licence, alone or as a `license.id`. A `license.name` or licence text alone does not count (§6.1). |
 | `*.deployableHash` | §5.2.2 | full | `externalReferences[type=distribution].hashes[alg=SHA-512]` | 128 hex characters |
-| `*.executable` | §5.2.2 | full, assembled | property `bsi:component:executable` | exactly once, `executable` or `non-executable` |
-| `*.archive` | §5.2.2 | full, assembled | property `bsi:component:archive` | exactly once, `archive` or `no archive` |
-| `*.structured` | §5.2.2 | full, assembled | property `bsi:component:structured` | exactly once, `structured` or `unstructured` |
+| `*.executable` | §5.2.2 | full | property `bsi:component:executable` | exactly once, `executable` or `non-executable` |
+| `*.archive` | §5.2.2 | full | property `bsi:component:archive` | exactly once, `archive` or `no archive` |
+| `*.structured` | §5.2.2 | full | property `bsi:component:structured` | exactly once, `structured` or `unstructured` |
 
 `*.level` carries no TR section because the property is rio's own. The `subject.*` and
 `components.*` scopes also keep `name`, `version` and, when required, `purl`, `securityContact`
@@ -197,7 +197,7 @@ has no field that says which. Rio checks every component as **full** (a deployab
 |---|---|---|
 | full | a deployable file | creator, filename, dependencies, distributionLicences, deployableHash, executable, archive, structured |
 | logical | a product or app grouping files (TR 3.2.2) | creator, dependencies, distributionLicences |
-| assembled | parts that cannot be recovered, such as a statically linked library (TR 3.2.1) | as full, without filename and deployableHash |
+| assembled | parts that cannot be recovered, such as a statically linked library (TR 3.2.1) | creator, dependencies, distributionLicences: a part assembled into another component is not a file, so its filename, hash and file properties are omitted |
 | identified | first dependency outside the scope of delivery (TR 3.2.4) | creator |
 | referenced | described in another BOM (TR 3.2.5) | creator |
 

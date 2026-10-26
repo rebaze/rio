@@ -52,6 +52,18 @@ It can be used independently, without a hosted account. Rebaze also offers
 [release-controls implementation](https://www.rebaze.de/release-controls/) in existing customer
 toolchains; using those services does not require Rio.
 
+## Rio's own SBOM
+
+From v0.9.0 each release ships a CycloneDX SBOM of Rio, `rio-<tag>-source.cdx.json`, attested
+with the release archives. It lists every Go module linked into any of the release binaries,
+the standard library included, with the dependency graph, and it declares that inventory
+`complete`. That claim covers the linked Go modules only: not the Go toolchain, the other files
+in the archives, or the archives themselves. Each module's creator and concluded licence come
+from a reviewed table, and the SBOM passes Rio's own `bsi-tr-03183-2@2.1.0` profile before
+release preflight attests it. [How it is made](../tools/README.md#rios-source-sbom-and-candidate-checks).
+Releases up to and including v0.9.0-rc1 shipped a directory scan with no dependency graph or
+completeness claim; their SBOMs are unchanged.
+
 ## Build from source
 
 Use the Go version declared in [go.mod](../go.mod). From a checkout:

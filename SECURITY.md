@@ -130,7 +130,9 @@ zero findings. The original `testdata/` exception alone was insufficient. This d
 suppress the advisory in other directories, other advisories, or actual module dependencies.
 Re-run Scorecard after merging; local results do not close the hosted alert.
 
-Release tools (cosign, Syft and GoReleaser) are the official upstream releases, installed by
+Release tools (cosign and GoReleaser) are the official upstream releases, installed by
 their official GitHub Actions pinned to commit SHAs and with explicit tool versions. They run
 only in CI and the release pipeline and are not part of the shipped binary. The daily
 vulnerability scan covers Rio's own module and binary, not these third-party tools.
+cyclonedx-gomod, which makes Rio's own SBOM, is built from the version pinned in
+`tools/security/go.sum`, and CI scans it with govulncheck alongside govulncheck itself.

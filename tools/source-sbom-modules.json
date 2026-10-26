@@ -1,0 +1,69 @@
+{
+  "about": "Reviewed facts about each Go module linked into rio's release binaries, applied by tools/source-sbom.sh. creator is the module's project page (BSI TR-03183-2 5.2.2 accepts the project's web page); licence is the concluded SPDX expression, read from the module's licence files. detected records what cyclonedx-gomod's licence detection reports where the conclusion differs, and note says why. A module with no row, or a detection that differs from both, fails the script.",
+  "modules": {
+    "github.com/rebaze/rio": {
+      "licence": "Apache-2.0",
+      "note": "rio itself; its creator comes from enrichment.subject.manufacturer"
+    },
+    "std": {
+      "creator": "https://go.dev",
+      "licence": "BSD-3-Clause"
+    },
+    "github.com/CycloneDX/cyclonedx-go": {
+      "creator": "https://github.com/CycloneDX/cyclonedx-go",
+      "licence": "Apache-2.0"
+    },
+    "github.com/bmatcuk/doublestar/v4": {
+      "creator": "https://github.com/bmatcuk/doublestar",
+      "licence": "MIT"
+    },
+    "github.com/inconshreveable/mousetrap": {
+      "creator": "https://github.com/inconshreveable/mousetrap",
+      "licence": "Apache-2.0"
+    },
+    "github.com/opencontainers/go-digest": {
+      "creator": "https://github.com/opencontainers/go-digest",
+      "licence": "Apache-2.0",
+      "detected": "CC-BY-SA-4.0",
+      "note": "CC-BY-SA-4.0 is LICENSE.docs, the documentation's licence; the code's LICENSE is Apache-2.0"
+    },
+    "github.com/opencontainers/image-spec": {
+      "creator": "https://github.com/opencontainers/image-spec",
+      "licence": "Apache-2.0"
+    },
+    "github.com/package-url/packageurl-go": {
+      "creator": "https://github.com/package-url/packageurl-go",
+      "licence": "MIT"
+    },
+    "github.com/santhosh-tekuri/jsonschema/v6": {
+      "creator": "https://github.com/santhosh-tekuri/jsonschema",
+      "licence": "Apache-2.0"
+    },
+    "github.com/spf13/cobra": {
+      "creator": "https://github.com/spf13/cobra",
+      "licence": "Apache-2.0"
+    },
+    "github.com/spf13/pflag": {
+      "creator": "https://github.com/spf13/pflag",
+      "licence": "BSD-3-Clause"
+    },
+    "golang.org/x/sync": {
+      "creator": "https://go.dev",
+      "licence": "BSD-3-Clause"
+    },
+    "golang.org/x/text": {
+      "creator": "https://go.dev",
+      "licence": "BSD-3-Clause"
+    },
+    "gopkg.in/yaml.v3": {
+      "creator": "https://github.com/go-yaml/yaml",
+      "licence": "Apache-2.0 AND MIT",
+      "detected": "Apache-2.0",
+      "note": "LICENSE covers the files ported from libyaml under MIT and the rest under Apache-2.0"
+    },
+    "oras.land/oras-go/v2": {
+      "creator": "https://oras.land",
+      "licence": "Apache-2.0"
+    }
+  }
+}
