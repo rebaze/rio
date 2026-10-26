@@ -26,7 +26,7 @@ It can name an omitted leaf to permit removal of an old owned assertion. Replace
 wildcard. The allowed leaves are `source.repository`, `source.revision`,
 `source.subdirectory`, `source.ref`, `source.workspace`, `build.url`, `build.id`,
 `build.timestamp`, `build.system.name`, `build.system.version`, `generator.name`,
-`generator.version`, and `lifecycle`. `lifecycle` may be required but cannot be replaced.
+`generator.version`, `lifecycle` and `level`. `lifecycle` and `level` may be required but cannot be replaced.
 IDs and digests cannot be replaced, so `distributions` can be named in neither list.
 Duplicate/unknown selectors and wrong YAML types fail.
 
@@ -89,10 +89,13 @@ When a source object exists but omits workspace, Rio records effective `unknown`
 `source.workspace` under `defaulted`; this does **not** satisfy `require` for that leaf. Build
 timestamps must be RFC3339. A supplied build system or generator must have a name; version is
 optional. Lifecycle phases are `design`, `pre-build`, `build`, `post-build`, `operations`,
-`discovery`, `decommission`. A supplied `distributions` array is nonempty and holds at most
-1000 objects with exactly `name`, `sha256` and an optional `url`. Each `name` follows the
+`discovery`, `decommission`. `level` is `logical`, `identified` or `assembled` (see
+[TR file components](#tr-file-components)). A supplied `distributions` array is nonempty and holds at most
+1000 objects with `name`, `sha256` and an optional `url`, and optionally `sha512`, `executable`,
+`archive` and `structured`, which come together or not at all. Each `name` follows the
 supplied-string rule, contains neither `/` nor `\`, is not `.` or `..` and is unique within the
-entry; `sha256` is lowercase 64-character hex; `url` follows the repository URL rule and is
+entry; `sha256` is lowercase 64-character hex; `sha512` is lowercase 128-character hex; `executable`,
+`archive` and `structured` are booleans; `url` follows the repository URL rule and is
 unique within the entry. Unknown JSON keys, duplicate keys at any depth, null/wrong types,
 trailing documents, empty artifact lists and duplicate IDs fail before outputs are written.
 
@@ -182,6 +185,103 @@ Rio does not hash the shipped files and never opens them. A distribution digest 
 producer says it shipped; nothing proves those files were built from the components the SBOM
 describes. The [context demo](../tools/README.md#ci-build-context-demo) declares two synthetic
 files and shows the references and the receipt list.
+
+### TR file components
+
+[BSI TR-03183-2](manifest.md#requirement-profiles) wants, for each shipped file, a SHA-512 hash,
+the file name and three file properties. A `distributions` entry can assert them:
+
+```json
+{"name": "cart-api-1.4.0-linux-amd64.tar.gz",
+ "sha256": "58a2b94946578e74c783026a5ca8813d57be893e3ce5d48977ce7945147846de",
+ "sha512": "f4c3007ddcdee256119b1db68eafbab212b4f395e28f5dadd95568ca69df7da6ff1e8f01c713a8dc8ff5cced4481a6ea8885f383d31e35f18781348b25d882f2",
+ "executable": false, "archive": true, "structured": true,
+ "url": "https://downloads.example.org/cart-api/1.4.0/cart-api-1.4.0-linux-amd64.tar.gz"}
+```
+
+An entry carries `sha512`, `executable`, `archive` and `structured` all together or none; a partial
+entry is refused when the context file is read, because half an assertion would only produce a gate
+finding later, far from its cause. [`rio-context.py`](../tools/README.md#rio-contextpy) emits them
+from SHA-512 checksum files. Rio still never hashes or opens a file: these are the producer's
+assertions, recorded with `assertion: "producer"`.
+
+For each entry that carries the four fields, rio adds one component under the subject, in
+`metadata.component.components`. They are not in the top-level `components` array, so the
+dependency component array in equals the one out ([output](output.md#what-rio-writes-into-the-output-sbom)),
+and tools that read only the top-level array, such as Dependency-Track, do not list the shipped files.
+The profile gate does check them. For the entry above, with the subject at version 1.4.0 and a
+manufacturer and a concluded licence (this output comes from a real run on synthetic data):
+
+```json
+{
+  "type": "file",
+  "bom-ref": "rio:distribution:cart-api-1.4.0-linux-amd64.tar.gz",
+  "name": "cart-api-1.4.0-linux-amd64.tar.gz",
+  "version": "1.4.0",
+  "manufacturer": {"name": "Example GmbH", "url": ["https://example.org"]},
+  "licenses": [{"acknowledgement": "concluded", "expression": "Apache-2.0"}],
+  "properties": [
+    {"name": "bsi:component:filename", "value": "cart-api-1.4.0-linux-amd64.tar.gz"},
+    {"name": "bsi:component:executable", "value": "non-executable"},
+    {"name": "bsi:component:archive", "value": "archive"},
+    {"name": "bsi:component:structured", "value": "structured"}
+  ],
+  "externalReferences": [{
+    "type": "distribution",
+    "url": "https://downloads.example.org/cart-api/1.4.0/cart-api-1.4.0-linux-amd64.tar.gz",
+    "hashes": [
+      {"alg": "SHA-256", "content": "58a2b94946578e74c783026a5ca8813d57be893e3ce5d48977ce7945147846de"},
+      {"alg": "SHA-512", "content": "f4c3007ddcdee256119b1db68eafbab212b4f395e28f5dadd95568ca69df7da6ff1e8f01c713a8dc8ff5cced4481a6ea8885f383d31e35f18781348b25d882f2"}
+    ]
+  }]
+}
+```
+
+(Rio writes keys in sorted order; they are reordered here for reading.) `version`, `manufacturer`
+and `licenses` are copied from the subject, and only when the subject has them when the context is
+applied. Enrichment runs first, so an `enrichment.subject.manufacturer` counts. A subject without
+them leaves the file components without them, and the profile reports both. `executable`, `archive`
+and `structured` map to `executable`/`non-executable`, `archive`/`no archive` and
+`structured`/`unstructured`.
+
+Rio also gives each file component its own empty `dependencies` entry, adds the file refs to the
+subject's `dependsOn` (when the subject has a `bom-ref`; rio never invents one), and adds one
+`compositions` entry with `aggregate: complete` over the file refs, because the producer listed
+every file it ships. The `distribution` references on the subject itself are written as before,
+with SHA-256 only, so `gate.subject.require: [digest]` works unchanged. Entries without the four
+fields behave exactly as before: a reference on the subject and nothing else.
+
+**`level`.** With its files listed as components, the subject is what the TR calls a logical
+component (3.2.2). Generators do not say so, and rio never infers it. The entry's optional
+`"level": "logical"` (also `identified` or `assembled`) is written to the subject as the property
+`rio:tr-03183-2:level`, as a producer assertion. `level` can be named in `context.require` and
+never in `replace`; a different value already on the SBOM fails the run.
+
+**Audit and ownership.** Each addition is an audit change with `field: "distributions"` and
+`selector: /artifacts/N/distributions` for these targets: `/metadata/component/components`,
+`/dependencies` and `/compositions` (only the entries rio added or changed, not the whole array),
+alongside the existing `context:/distributions` and `/metadata/component/externalReferences`
+changes. The level property is a change with `field: "level"` on
+`/metadata/component/properties`. `ownedReferences` lists `distribution-component:<name>` for
+each file component rio added and `level` for the property.
+
+**No replacement.** Distributions cannot be replaced, and that includes these components. A
+component that has the same `bom-ref` and the same content is kept, not duplicated; any other
+content, or another component with that `bom-ref`, fails the run with `distributions cannot be
+replaced: <name>`.
+
+The trap: the file components copy the subject's `version`, `manufacturer` and `licenses` at the
+time the context is applied. If you change the subject's version, manufacturer or licences later
+and normalize rio's own output again with the same `distributions`, the freshly built components
+no longer match the ones already in the SBOM and the run is refused:
+
+```text
+rio: rio.yaml: artifact "cart-api": context /artifacts/0: context distribution "cart-api-1.4.0-linux-amd64.tar.gz" conflicts with an existing component with bom-ref rio:distribution:cart-api-1.4.0-linux-amd64.tar.gz; distributions cannot be replaced: cart-api-1.4.0-linux-amd64.tar.gz
+```
+
+Make those changes in the SBOM before the first context run, or build the SBOM again from its
+source rather than editing the normalized output. A subject version bump is a new release with
+new files and a new context file.
 
 ## Authority and contracts
 

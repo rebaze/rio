@@ -36,7 +36,7 @@ This is a value digest and encoded length, **not the full value**. The digest co
 
 Bulk changes retain operation/rule, traversal scope, evaluated/applied/unmapped/skipped counts, and unresolved reasons/counts. Applied and unmapped may overlap: a qualifier can be repaired while coordinates remain unresolved. Never add overlapping counters into a supposed component total. Unchanged dependency inventory, Rio bookkeeping and per-component rewrite ledgers are not copied into the receipt.
 
-Checks retain effective component/subject requirements, traversal scope, policy mode, evaluated component count, schema status and concise finding counts. `subjectRequirements` always holds `name` and `version`, followed by any `gate.subject.require` values (`securityContact`, `digest`) in manifest order. When the gate fails, `failed` lists each failed requirement once with its count, using stable IDs in a fixed order: `subject.name`, `subject.version`, `subject.securityContact`, `subject.digest`, `components.name`, `components.version`, `components.purl`. Component-by-component detail stays in the run's `index.json` (`gateFindings`). Empty component requirements/inventory are explicitly `not-evaluated`; unsupported schema versions are `not-available`. Absent checks are not passes. A warn policy does not change a recorded failed check into success. Standalone delivery labels checks as pre-existing rather than claiming to have performed earlier normalization checks.
+Checks retain effective component/subject requirements, traversal scope, policy mode, evaluated component count, schema status and concise finding counts. `subjectRequirements` always holds `name` and `version`, followed by any `gate.subject.require` values (`securityContact`, `digest`) in manifest order. When the gate fails, `failed` lists each failed requirement once with its count, using stable IDs in a fixed order: `subject.name`, `subject.version`, `subject.securityContact`, `subject.digest`, `components.name`, `components.version`, `components.purl` (with a [requirement profile](#requirement-profile-checks), the longer list below). Component-by-component detail stays in the run's `index.json` (`gateFindings`). Empty component requirements/inventory are explicitly `not-evaluated`; unsupported schema versions are `not-available`. Absent checks are not passes. A warn policy does not change a recorded failed check into success. Standalone delivery labels checks as pre-existing rather than claiming to have performed earlier normalization checks.
 
 ### Distributions
 
@@ -93,13 +93,75 @@ A retry or network reconciliation is a **new invocation** with a new receipt and
 
 Each execution owns `<out>/runs/<run-id>/`. Normalization creates one `<id>.cdx.json` per processed artifact and writes `index.json` last. Optional standalone `normalize --attest` creates unsigned `<id>.intoto.json` statements. The index is the local handoff for intentional `deliver --index ...`, not a client archive to embed in a receipt.
 
+#### Requirement profile checks
+
+With [`gate.profile`](manifest.md#requirement-profiles), `checks` also records which requirement
+set the SBOM was checked against and how the components were levelled. These are the receipt's
+`checks` for the passing synthetic fixture `testdata/profile/bsi-pass.cdx.json` (the unchanged
+fields are as in any receipt):
+
+```json
+{
+  "mode": "fail",
+  "gate": "pass",
+  "schema": "pass",
+  "subjectRequirements": ["name", "version"],
+  "componentScope": "all components including nested",
+  "componentEvaluation": "evaluated",
+  "componentsEvaluated": 4,
+  "findings": 0,
+  "profile": {"name": "bsi-tr-03183-2@2.1.0", "guideline": "BSI TR-03183-2", "guidelineVersion": "2.1.0"},
+  "profileLevels": {"assembled": 1, "full": 1, "identified": 1, "logical": 1, "referenced": 1}
+}
+```
+
+- `profile` names the profile and the guideline version it encodes. Both fields are absent when no
+  profile ran. A pass names what was checked, not that the SBOM is correct: the profile checks
+  presence and form of fields only.
+- `profileLevels` counts the checked components at each level, the subject included, so the sum
+  is `componentsEvaluated + 1`. A recipient sees how much was relaxed by `rio:tr-03183-2:level`
+  and `bom` references.
+- Under a profile `componentsEvaluated` counts every component below the subject, which includes
+  the subject's own nested file components. It can therefore exceed the artifact's `components`
+  count in `index.json`, which does not count the subject's nested file components.
+- A failing profile run adds `failed`. Its IDs are, in this fixed order (the `sbom` and `subject`
+  entries always have count 1; a `components` entry counts the failing components):
+
+  ```text
+  sbom.specVersion  sbom.creator  sbom.timestamp  sbom.vulnerabilities
+  subject.name  subject.version  subject.level  subject.creator  subject.filename
+  subject.dependencies  subject.distributionLicences  subject.deployableHash
+  subject.executable  subject.archive  subject.structured
+  subject.securityContact  subject.digest
+  components.name  components.version  components.purl  components.level  components.creator
+  components.filename  components.dependencies  components.distributionLicences
+  components.deployableHash  components.executable  components.archive  components.structured
+  ```
+
+  `subject.securityContact`, `subject.digest` and `components.purl` appear only when the manifest
+  requires them. The `sbom.*` IDs and the profile fields appear only with a profile.
+
+In `index.json`, each artifact's `gateFindings` gains an entry with `"sbom": true` for the
+SBOM-scope failures, ahead of the `"subject": true` entry. For the failing fixture
+`testdata/profile/bsi-fail.cdx.json`:
+
+```json
+{"sbom": true, "missing": ["creator", "timestamp"]}
+```
+
+The artifact's effective `checks` in `index.json` list one evaluation per requirement, with
+`scope` `sbom`, `subject` or `components`, and carry the same `profile` and `profileLevels`.
+Receipts that carry a profile or these IDs cannot be read by a release that predates them.
+
 The index retains tool/manifest identity, input/output hashes and paths, selected members, exact normalization details and check results. Input paths are manifest-relative; output paths are index-relative. Enforced gate failures still write the processed SBOMs/index so findings can be examined. Invalid input/configuration may leave a failed receipt; no stale index from another run is substituted. `runDirectory` identifies current outputs; no mutable latest pointer is required.
 
 ## What rio writes into the output SBOM
 
 **Component membership never changes.** v1 adds no component and removes none. Configured repairs
 can rewrite dependency identities; enrichment updates subject and SBOM metadata. The dependency
-component array in equals the component array out, member for member.
+component array in equals the component array out, member for member. The files that a [build context](context.md#tr-file-components)
+lists with SHA-512 and TR properties are written as `type: file` components nested under the
+subject (`metadata.component.components`), so the dependency component array is still unchanged.
 
 An input-versus-output diff still shows more than the repaired purls. rio appends itself to
 `metadata.tools`, in whichever shape the document already uses: an entry in the flat array, or a

@@ -763,8 +763,10 @@ python3 tools/rio-context.py --artifact-id console --sbom target/console.cdx.jso
 ```
 
 Use the same temporary-file-then-move handling as the first example. Rio then writes each file as a
-`distribution` reference on the SBOM subject and lists it in the receipt; see
-[shipped files](../docs/context.md#shipped-files-distributions).
+`distribution` reference on the SBOM subject and lists it in the receipt; a file with SHA-512 and
+properties also becomes a file component under the subject. See
+[shipped files](../docs/context.md#shipped-files-distributions) and
+[TR file components](../docs/context.md#tr-file-components).
 
 ## Artifact sets demo
 

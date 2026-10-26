@@ -4,6 +4,7 @@
 
 - [Explicit artifacts and defaults](#explicit-artifacts-and-defaults)
 - [Output version and gate](#output-version-and-gate)
+- [Requirement profiles (BSI TR-03183-2)](#requirement-profiles)
 - [Module discovery](#discovering-module-artifacts)
 - [Transforms and supplied metadata](#processing-options)
 
@@ -43,6 +44,7 @@ output:
 gate:
   mode: fail                     # root default; explicit --gate overrides it
   require: [name, version, purl]  # subset of these three; defaults to all three
+  # profile: bsi-tr-03183-2@2.1.0  # optional named requirement profile (see below)
   subject:
     require: [securityContact, digest]  # optional, either or both; defaults to []
 ```
@@ -92,6 +94,136 @@ rio: artifact "cart-api" failed the gate; gate mode fail, so nothing was deliver
 `gate.mode` accepts `fail` or `warn`. Explicit `--gate` wins over the manifest. Root defaults to `fail`; standalone `normalize` retains its historical `warn` default only when no manifest mode is supplied. Failed checks remain failed in either mode. Enforced failure blocks every selected root upload and returns exit 1; warn can continue while recording the effective exception. Standalone `deliver` still requires its separate `--allow-failed-gate` override. See [exit codes](cli.md#exit-codes).
 
 `output.directory` selects the output root relative to the manifest. Explicit `--out` is caller-relative and takes precedence. If both are omitted, the caller-relative default is `target/rio`. Every execution creates `runs/<run-id>/` under that root, with its own receipt and generated outputs. `--receipt PATH` changes only the public receipt destination. No enable flag or collection step is required.
+
+### Requirement profiles
+
+`gate.profile` names a published requirement set and checks every SBOM against it, in addition to
+the checks above. It exists for a recipient who asks for an SBOM that meets
+[BSI TR-03183-2](https://www.bsi.bund.de/EN/Themen/Unternehmen-und-Organisationen/Standards-und-Zertifizierung/Technische-Richtlinien/TR-nach-Thema-sortiert/tr03183/TR-03183_node.html)
+and wants to see that it was checked, without rechecking it by hand.
+
+**The profile checks presence and form of fields only.** A pass does not establish that the
+listed components, hashes or licences are correct or complete, and it is not a certification
+against the TR. Rio compares nothing with the build, never hashes a file and never looks a value
+up.
+
+Current generators do not emit most of the fields the TR requires, so an SBOM straight from one
+usually fails. The profile shows that gap rather than hiding it. This is the synthetic fixture
+`testdata/profile/bsi-fail.cdx.json`, which passes the default gate, run with
+`gate.profile: bsi-tr-03183-2@2.1.0`. The run exits 1 and prints one line per failed field, 18
+in all; seven are shown:
+
+```text
+rio: artifact "cart-api" failed the gate; gate mode fail, so nothing was delivered.
+  sbom.creator (BSI TR-03183-2 2.1.0 §5.2.1): the SBOM has no creator (metadata.manufacturer with a contact email or URL). Set enrichment.producer in rio.yaml, or have the SBOM generator emit one.
+  sbom.timestamp (BSI TR-03183-2 2.1.0 §5.2.1): the SBOM has no timestamp (metadata.timestamp in RFC 3339 form). Have the SBOM generator emit it.
+  subject.creator (BSI TR-03183-2 2.1.0 §5.2.2): the SBOM subject has no creator (manufacturer). Set enrichment.subject.manufacturer in rio.yaml, or have the SBOM generator emit one.
+  subject.dependencies (BSI TR-03183-2 2.1.0 §5.2.2): the SBOM subject has no dependencies entry covered by a compositions entry. Have the SBOM generator emit it.
+  subject.distributionLicences (BSI TR-03183-2 2.1.0 §5.2.2, §6.1): the SBOM subject has no concluded licence in SPDX form. Have the SBOM generator emit it.
+  components.creator (BSI TR-03183-2 2.1.0 §5.2.2): 2 components have no creator (manufacturer), for example "pkg:generic/zlib@1.3.1". Have the SBOM generator emit it.
+  components.deployableHash (BSI TR-03183-2 2.1.0 §5.2.2): 2 components have no SHA-512 hash on a distribution reference, for example "pkg:generic/zlib@1.3.1". Have the SBOM generator emit it, or mark components that do not exist as a file of their own (for example statically linked libraries) as assembled with rio:tr-03183-2:level. Rio does not hash files.
+```
+
+`rio plan` shows the profile before anything runs: a line `gate  profile bsi-tr-03183-2@2.1.0 (BSI TR-03183-2 2.1.0)`,
+and in `--json` output `gate.profile` as `{"name": "bsi-tr-03183-2@2.1.0", "guideline": "BSI TR-03183-2", "guidelineVersion": "2.1.0"}`
+next to the effective `gate.require`.
+
+```yaml
+gate:
+  profile: bsi-tr-03183-2@2.1.0
+  require: [purl]                   # optional; adds to the profile
+  subject:
+    require: [securityContact]      # optional; adds to the profile
+```
+
+- `bsi-tr-03183-2@2.1.0` is the only known profile. The name pins the guideline version: a new TR
+  version gets a new profile name, and an existing name keeps its meaning. Version 2.1.0 is the
+  one dated 2025-08-20; section 7 of the TR requires the most recent version. An unknown value, or
+  one without `@version`, fails at load and names the allowed value.
+- Under a profile, an omitted `gate.require` means `[]`, not `[name, version, purl]`. The profile
+  already demands a name and a version of every component, and the file components that a
+  [build context](context.md#tr-file-components) writes have no purl. An explicit `gate.require`
+  adds to the profile, so `require: [purl]` also demands purls, which the TR does not.
+  `gate.subject.require` also adds to it.
+- A profile with `output.specVersionFloor: "1.5"` fails at load ("BSI TR-03183-2 2.1.0 requires
+  CycloneDX 1.6; set output.specVersionFloor to 1.6"). Otherwise a 1.5 input would stay at 1.5 and
+  fail every run.
+- Findings are reported in a fixed order: `sbom.*`, then `subject.*`, then `components.*`. Each
+  message names the guideline version and section and says who can fix it.
+
+#### Checked fields
+
+The subject (`metadata.component`) is a component too (TR 3.2.1), so the per-component fields
+apply to it with `subject.*` IDs. Every component is checked, including nested ones and the
+subject's own nested components (the [file components](context.md#tr-file-components) rio writes
+sit there, in `metadata.component.components`).
+
+| ID | TR | Applies to | CycloneDX 1.6 | Rio checks |
+|---|---|---|---|---|
+| `sbom.specVersion` | §4 | SBOM | `specVersion` | 1.6 or higher. Schema validity is recorded separately as `checks.schema`. |
+| `sbom.creator` | §5.2.1 | SBOM | `metadata.manufacturer` | a `contact[].email` with text on both sides of an `@`, or a `url[]` entry that is an absolute http(s) URL |
+| `sbom.timestamp` | §5.2.1 | SBOM | `metadata.timestamp` | present, RFC 3339 date-time |
+| `sbom.vulnerabilities` | §3.1 | SBOM | `vulnerabilities` | absent or empty (the TR says an SBOM must not carry vulnerability information) |
+| `*.name` | §5.2.2 | every level | `name` | nonblank |
+| `*.version` | §5.2.2 | every level | `version` | nonblank. Rio cannot tell the TR's "file modification date when no version exists" from a real version, so this is presence only. |
+| `*.level` | none | every component | property `rio:tr-03183-2:level` | at most once, with a known value (see levels) |
+| `*.creator` | §5.2.2 | every level | `manufacturer` | as `sbom.creator` |
+| `*.filename` | §5.2.2 | full | property `bsi:component:filename` | exactly once, nonblank, no `/` or `\` (a file name, not a path) |
+| `*.dependencies` | §5.2.2 | full, assembled, logical | `dependencies[]`, `compositions[]` | the component's `bom-ref` has its own `dependencies` entry (empty if it has none) and is listed in the `dependencies` or `assemblies` of a `compositions` entry whose `aggregate` is a string other than `not_specified` |
+| `*.distributionLicences` | §5.2.2, §6.1 | full, assembled, logical | `licenses[]` | one entry with `acknowledgement: concluded` that is an `expression` in SPDX form, or a `license.id` rio's embedded SPDX list knows. Identifiers must be in that list, or be `LicenseRef-…` or `DocumentRef-…:LicenseRef-…`. A `license.name` or licence text alone does not count (§6.1). |
+| `*.deployableHash` | §5.2.2 | full | `externalReferences[type=distribution].hashes[alg=SHA-512]` | 128 hex characters |
+| `*.executable` | §5.2.2 | full, assembled | property `bsi:component:executable` | exactly once, `executable` or `non-executable` |
+| `*.archive` | §5.2.2 | full, assembled | property `bsi:component:archive` | exactly once, `archive` or `no archive` |
+| `*.structured` | §5.2.2 | full, assembled | property `bsi:component:structured` | exactly once, `structured` or `unstructured` |
+
+`*.level` carries no TR section because the property is rio's own. The `subject.*` and
+`components.*` scopes also keep `name`, `version` and, when required, `purl`, `securityContact`
+and `digest`, as without a profile.
+
+#### Component levels
+
+The TR describes a component at one of four levels, each with its own MUST fields, and CycloneDX
+has no field that says which. Rio checks every component as **full** (a deployable file) unless:
+
+- it has an external reference of type `bom`: it is **referenced** (described in another BOM).
+  This wins over the property. Rio infers this level and no other.
+- it carries the property `rio:tr-03183-2:level` with the value `logical`, `identified` or
+  `assembled`. A producer asserts this; rio does not infer it. The value `full` is not accepted,
+  because it is the default.
+
+| Level | Meaning | Fields checked beyond name and version |
+|---|---|---|
+| full | a deployable file | creator, filename, dependencies, distributionLicences, deployableHash, executable, archive, structured |
+| logical | a product or app grouping files (TR 3.2.2) | creator, dependencies, distributionLicences |
+| assembled | parts that cannot be recovered, such as a statically linked library (TR 3.2.1) | as full, without filename and deployableHash |
+| identified | first dependency outside the scope of delivery (TR 3.2.4) | creator |
+| referenced | described in another BOM (TR 3.2.5) | creator |
+
+An unusable property (more than once, an unknown value, or not a string) is a `*.level` finding,
+and the component is then checked as full. The receipt counts the components at each level
+(`checks.profileLevels`), so a recipient sees how much was relaxed and on whose word. The property
+is an extension the TR permits (§3.1: an SBOM may be expanded as long as that introduces no
+contradiction); a recipient's own TR tooling ignores it. `rio.yaml` cannot set a component's level.
+The subject's level comes from the SBOM, or from `level` in the
+[build context file](context.md#tr-file-components).
+
+#### Not checked, and why
+
+- **5.2.3 SBOM-URI and 5.2.4** (source code URI, URI of the deployable form, other unique
+  identifiers, original licences). These are required only if they exist, and rio cannot tell an
+  absent value from one that does not exist.
+- **5.2.5 optional fields** (effective licence, source code hash, security.txt URL). These are
+  optional. `gate.subject.require: [securityContact]` still works beside a profile.
+- **5.1 level of detail** (recursive resolution down to the first component outside the scope of
+  delivery), **3.1** (one SBOM per software version) and **3.2.1** (the linker's component is
+  listed). These are facts about the build, not about the document.
+- **Whether a value is true.** Rio checks that a file name, hash or licence is present and well
+  formed, not that it is right, and a hash is never compared with a file.
+
+The receipt records the profile and its level counts under `checks`; see
+[checks](output.md#changes-and-checks). Nothing a profile checks changes the SBOM. The
+[context reference](context.md#tr-file-components) shows how a producer supplies the shipped
+files' SHA-512 and properties.
 
 ## Discovering module artifacts
 
