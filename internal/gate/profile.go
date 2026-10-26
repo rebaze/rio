@@ -100,9 +100,12 @@ var sbomFields = []Requirement{RequireSpecVersion, RequireCreator, RequireTimest
 
 // levelFields is what each level demands beyond name and version, which
 // every level demands, and level itself, which is resolved for everything.
+// An assembled part, such as a statically linked library, is not a file, so
+// its filename, hash and file properties are not available and are omitted
+// (§3.2.1).
 var levelFields = map[string]map[Requirement]bool{
 	LevelFull:       set(RequireCreator, RequireFilename, RequireDependencies, RequireDistributionLicences, RequireDeployableHash, RequireExecutable, RequireArchive, RequireStructured),
-	LevelAssembled:  set(RequireCreator, RequireDependencies, RequireDistributionLicences, RequireExecutable, RequireArchive, RequireStructured),
+	LevelAssembled:  set(RequireCreator, RequireDependencies, RequireDistributionLicences),
 	LevelLogical:    set(RequireCreator, RequireDependencies, RequireDistributionLicences),
 	LevelIdentified: set(RequireCreator),
 	LevelReferenced: set(RequireCreator),

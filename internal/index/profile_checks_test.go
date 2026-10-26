@@ -31,8 +31,8 @@ func profileChecks() (EffectiveChecks, Artifact) {
 			ev("subject", "archive", 0), ev("subject", "structured", 0),
 			ev("components", "name", 3), ev("components", "version", 3),
 			ev("components", "level", 3), ev("components", "creator", 3), ev("components", "filename", 1), ev("components", "dependencies", 2),
-			ev("components", "distributionLicences", 2), ev("components", "deployableHash", 1), ev("components", "executable", 2),
-			ev("components", "archive", 2), ev("components", "structured", 2),
+			ev("components", "distributionLicences", 2), ev("components", "deployableHash", 1), ev("components", "executable", 1),
+			ev("components", "archive", 1), ev("components", "structured", 1),
 		},
 		SchemaValidation: "not-available", GraphCheck: "dangling-dependency-references",
 		Profile:       &ProfileRef{Name: "bsi-tr-03183-2@2.1.0", Guideline: "BSI TR-03183-2", GuidelineVersion: "2.1.0"},
@@ -139,8 +139,8 @@ func TestEffectiveChecksProfileInvalid(t *testing.T) {
 			e := evaluation(t, c, "components", "filename")
 			e.Evaluated, e.Outcome = 0, "not-evaluated"
 		},
-		"executable count ignores assembled": func(t *testing.T, c *EffectiveChecks, _ *Artifact) {
-			evaluation(t, c, "components", "executable").Evaluated = 1
+		"executable count includes assembled": func(t *testing.T, c *EffectiveChecks, _ *Artifact) {
+			evaluation(t, c, "components", "executable").Evaluated = 2
 		},
 		"licences count includes identified": func(t *testing.T, c *EffectiveChecks, _ *Artifact) {
 			evaluation(t, c, "components", "distributionLicences").Evaluated = 3

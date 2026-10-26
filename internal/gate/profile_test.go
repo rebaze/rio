@@ -299,9 +299,9 @@ func TestProfileEvaluations(t *testing.T) {
 		ev("components", "dependencies", 2, 0),
 		ev("components", "distributionLicences", 2, 0),
 		ev("components", "deployableHash", 1, 0),
-		ev("components", "executable", 2, 0),
-		ev("components", "archive", 2, 0),
-		ev("components", "structured", 2, 0),
+		ev("components", "executable", 1, 0),
+		ev("components", "archive", 1, 0),
+		ev("components", "structured", 1, 0),
 	}
 	if diff := cmp.Diff(want, got.Evaluations); diff != "" {
 		t.Errorf("Evaluations (-want +got):\n%s", diff)
@@ -384,15 +384,15 @@ func TestProfileFieldFailures(t *testing.T) {
 			component(d, 0)["externalReferences"] = []any{distribution("SHA-256", strings.Repeat("ab", 32))}
 		}, compScope(fileID, "deployableHash")},
 		{"components.executable", gate.Requirements{}, func(d map[string]any) {
-			setProp(component(d, 1), "bsi:component:executable", "Executable")
-		}, compScope("zlib@1.3.1", "executable")},
+			setProp(component(d, 0), "bsi:component:executable", "Executable")
+		}, compScope(fileID, "executable")},
 		{"components.archive", gate.Requirements{}, func(d map[string]any) {
 			c := component(d, 0)
 			c["properties"] = append(c["properties"].([]any), prop("bsi:component:archive", "archive"))
 		}, compScope(fileID, "archive")},
 		{"components.structured", gate.Requirements{}, func(d map[string]any) {
-			dropProp(component(d, 1), "bsi:component:structured")
-		}, compScope("zlib@1.3.1", "structured")},
+			dropProp(component(d, 0), "bsi:component:structured")
+		}, compScope(fileID, "structured")},
 	}
 	for _, tc := range cases {
 		t.Run(tc.id, func(t *testing.T) {
@@ -464,6 +464,27 @@ func TestProfileLevelRelaxes(t *testing.T) {
 	}
 	if diff := cmp.Diff(allLevels(1, 2, 1, 2, 1), got.ProfileLevels); diff != "" {
 		t.Errorf("ProfileLevels (-want +got):\n%s", diff)
+	}
+}
+
+// A part compiled into a binary is not a file, so it has no executable,
+// archive or structured property either (TR 3.2.1); it still needs a
+// concluded licence.
+func TestProfileAssembledNeedsNoFileProperties(t *testing.T) {
+	doc := conforming()
+	lib := component(doc, 1)
+	for _, name := range []string{"bsi:component:executable", "bsi:component:archive", "bsi:component:structured"} {
+		dropProp(lib, name)
+	}
+	if got := profileCheck(t, doc, gate.Requirements{}); !got.OK() {
+		t.Fatalf("OK() = false; findings: %+v", briefs(got.Findings))
+	}
+
+	delete(lib, "licenses")
+	got := profileCheck(t, doc, gate.Requirements{})
+	want := []brief{{Component: "zlib@1.3.1", Missing: []string{"distributionLicences"}}}
+	if diff := cmp.Diff(want, briefs(got.Findings)); diff != "" {
+		t.Errorf("findings (-want +got):\n%s", diff)
 	}
 }
 
