@@ -1,0 +1,27 @@
+# Clear to Ship's fast track for rio (rebaze/cleartoship#174, #185).
+#
+# Only the version Toni signed last on app.cleartoship.de counts, and a change
+# to this file never takes the fast track. For now Clear to Ship only reads
+# here (mode receipt): it judges every pull request and keeps a receipt, but
+# sets no check and merges nothing. dependabot-auto-merge.yaml keeps merging
+# as before, so the two can be compared before the gate takes over.
+#
+# Left out on purpose, so they stay with a human: release notes and
+# verification guides (docs/releases, docs/release-verification), AGENTS.md,
+# SECURITY.md, and anything CI or release runs.
+version: 1
+classes:
+  - name: dependency-patch
+    title: Go patch bumps
+    paths: [go.mod, go.sum]
+    shape: dependency-patch-bump
+    ecosystems: [go]
+    agents: ["dependabot[bot]", "rebaze-otto[bot]"]
+    evidence:
+      - check: build
+      - check: Analyze Go
+  - name: docs
+    title: README and guides
+    paths: [README.md, docs/*.md]
+    shape: docs-only
+    agents: ["rebaze-otto[bot]"]
