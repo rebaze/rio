@@ -16,7 +16,7 @@ classes:
     paths: [go.mod, go.sum]
     shape: dependency-patch-bump
     ecosystems: [go]
-    agents: ["dependabot[bot]", "rebaze-agent[bot]"]
+    agents: ["dependabot[bot]", "rebaze-otto[bot]"]
     evidence:
       - check: build
       - check: Analyze Go
@@ -24,4 +24,4 @@ classes:
     title: README and guides
     paths: [README.md, docs/*.md]
     shape: docs-only
-    agents: ["rebaze-agent[bot]"]
+    agents: ["rebaze-otto[bot]"]
