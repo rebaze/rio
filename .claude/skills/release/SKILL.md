@@ -51,6 +51,13 @@ gh run view <id> --json conclusion,headSha
 ## 3. Write the notes
 
 Write `docs/releases/<tag>.md`. The pipeline publishes its exact bytes as the GitHub release body.
+
+If `origin/main` already has that file, a draft written with the changes, it is the starting
+point: never overwrite it. Keep its lead, example and wording where they are still right, and bring
+it up to date: regenerate the example output with a binary built from the candidate, pin links to
+the tag, and add every user-visible change that landed after the draft (check the change list from
+step 2 against it). Show the user what you changed in the draft, not only the result.
+
 Match the most recent file in `docs/releases/` in voice and shape:
 
 - Line 1 is exactly `# Rio <tag>`. The body must not be empty.
@@ -72,10 +79,13 @@ only question. If they asked not to be asked, ship without it.
 
 ## 4. Land the notes
 
+If the notes were an existing draft that needed no change, there is nothing to land: `$REL` is
+`$SHA`, and you go straight to step 5.
+
 ```bash
 git switch -c release-notes-<tag> origin/main
 git add docs/releases/<tag>.md
-git commit -m "Release notes for <tag>"
+git commit -m "Release notes for <tag>"   # an updated draft is committed the same way
 ```
 
 Commits here are signed. If `git commit` hangs or fails on 1Password, load the
