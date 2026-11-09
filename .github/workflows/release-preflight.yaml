@@ -55,8 +55,8 @@ jobs:
 
 
   # The candidate's source SBOM and rio's receipt for it, attested before any
-  # tag, so that a release gate can verify both for this exact commit. The
-  # subject stands for the commit: its name is
+  # tag, so that anyone can verify both for this exact commit with
+  # gh attestation verify. The subject stands for the commit: its name is
   # git+https://github.com/<repo>@<sha>, its digest the SHA-256 of that name;
   # the signing certificate names the commit itself. rio built from the
   # candidate checks the SBOM with its strict gate; a failing gate fails the

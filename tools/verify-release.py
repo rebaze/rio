@@ -61,7 +61,13 @@ def check_assessment(code, assessment):
 def validate_release(data, tag, notes):
     if data.get("tag_name") != tag or data.get("draft") is not False or data.get("prerelease") is not False:
         raise ValueError("release identity or stable/publication state differs")
-    if data.get("body", "").encode("utf-8") != notes:
+    body = data.get("body") or ""
+    if notes is None:
+        # No docs/releases/<tag>.md at the commit: the release carries
+        # GoReleaser's generated notes, which only the build job saw.
+        if not body.strip():
+            raise ValueError("release body is empty")
+    elif body.encode("utf-8") != notes:
         raise ValueError("release body differs from authored notes")
     assets = data.get("assets", [])
     names = [x.get("name") for x in assets]
@@ -125,7 +131,7 @@ def verify(args):
     repository = json.loads(command(["gh", "api", "repos/" + args.repo]))
     if repository.get("private") is not False:
         raise ValueError("release repository is not public")
-    notes = args.notes.read_bytes()
+    notes = args.notes.read_bytes() if args.notes else None
     validate_release(metadata, args.tag, notes)
     command(["gh", "release", "download", args.tag, "--repo", args.repo, "--dir", assets])
     if {p.name for p in assets.iterdir()} != names:
@@ -173,7 +179,8 @@ def verify(args):
         demo = command([sys.executable, ROOT / "tools/demo-client-record/run.py", binary])
         (args.output / "native-demo.log").write_text(demo)
     summary = {"tag": args.tag, "commit": args.commit, "repo": args.repo, "releaseURL": metadata["html_url"],
-               "assetSHA256": hashes, "notesSHA256": hashlib.sha256(notes).hexdigest(),
+               "assetSHA256": hashes, "notesSHA256": hashlib.sha256(notes if notes is not None else (metadata.get("body") or "").encode("utf-8")).hexdigest(),
+               "notesSource": "authored" if notes is not None else "generated",
                "cosignVerified": True, "attestedSourceCommitVerified": True,
                "nativeExecution": {"os": system, "arch": arch, "binarySHA256": digest(binary), "version": version.strip()},
                "gatekeeper": {"quarantinedExecution": True, "assessment": assessment} if notarized else None,
@@ -189,7 +196,7 @@ def main():
     parser.add_argument("--tag", required=True)
     parser.add_argument("--commit", required=True)
     parser.add_argument("--repo", default="rebaze/rio")
-    parser.add_argument("--notes", type=Path, required=True)
+    parser.add_argument("--notes", type=Path, help="docs/releases/<tag>.md at the release commit; omit when it does not exist")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:

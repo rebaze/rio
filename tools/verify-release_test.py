@@ -27,6 +27,16 @@ class VerifyTests(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(ValueError):
                 verify.validate_release(altered, "v0.6.0", data["body"].encode())
 
+    def test_generated_notes_need_a_nonempty_body(self):
+        names = verify.expected_assets("v1.0.0")
+        data = {"tag_name": "v1.0.0", "draft": False, "prerelease": False,
+                "body": "## Changelog\n* abc123 Fix a thing\n",
+                "assets": [{"name": n, "size": 1} for n in names]}
+        verify.validate_release(data, "v1.0.0", None)
+        for body in ("", " \n"):
+            with self.subTest(body=body), self.assertRaises(ValueError):
+                verify.validate_release(dict(data, body=body), "v1.0.0", None)
+
     def test_client_demo_cannot_be_waived_for_new_release(self):
         self.assertFalse(verify.client_demo_required("v0.5.0", True))
         self.assertTrue(verify.client_demo_required("v0.6.0", False))

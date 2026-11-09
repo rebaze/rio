@@ -554,8 +554,7 @@ python3 tools/release-publish.py stage \
 The GitHub attestation actions consume these staged files. Build provenance covers every asset
 that can carry it: the archives, `checksums.txt` and the source SBOM. Only the checksum signature
 and the attestation bundle, made after it, have none. The workflow combines the bundles into
-`release-bundle/rio-<tag>.intoto.jsonl`, outside the frozen asset directory, uploads each release
-file as a run artifact (below), then uploads a draft:
+`release-bundle/rio-<tag>.intoto.jsonl`, outside the frozen asset directory, then uploads a draft:
 
 ```sh
 python3 tools/release-publish.py draft \
@@ -577,40 +576,32 @@ compares each draft asset's GitHub `digest` and its bytes, downloaded by asset I
 draft, with the inventory, then writes `release-draft.json` naming the draft and its assets. The
 inventory and record go to the next job as job outputs. The draft is not public yet.
 
-Before the draft exists, the build job uploads every release file as its own run artifact with `upload-artifact`
-`archive: false`, so each artifact's digest is that file's SHA-256. There are ten: the six archives,
-`checksums.txt`, its signature, the source SBOM and the attestation bundle. Clear to Ship's App
-reads these while `publish` waits ([cleartoship#79](https://github.com/rebaze/cleartoship/issues/79)).
-
-The `publish` job runs in the `release` environment, which the Clear to Ship App holds until the
-gate for the commit is clear. It uses no signing secret. It checks the draft once more and makes
-it public:
+The `publish` job runs right after `build`, in the `release` environment, which accepts only `v*`
+tags and has no approval rule: pushing the tag is the decision to release. It uses no signing
+secret. It checks the draft once more and makes it public:
 
 ```sh
 python3 tools/release-publish.py publish \
   --inventory release-inventory.json --record release-draft.json \
-  --run "$GITHUB_RUN_ID" --tag "$TAG" --repo "$GITHUB_REPOSITORY"
+  --tag "$TAG" --repo "$GITHUB_REPOSITORY"
 ```
 
 It requires all of these before it publishes the identified draft:
 
-- every release file is exactly one unexpired artifact of the run, with the same digest;
 - the tag has exactly that one draft, with an unchanged prerelease flag;
 - every asset's GitHub `digest` and downloaded bytes equal the record and the inventory;
 - no asset is missing or extra.
 
 Right after publication it lists the assets again and fails if any differ, which keeps a
-swapped asset out of the tap. So what becomes public equals the run's release artifacts. The App
-comparing those artifacts with the build provenance before it approves is Clear to Ship's side of
-[decision 0024](https://github.com/rebaze/cleartoship/issues/79). Until the App does that,
-`publish`'s checks are the byte check. `publish-tap` reads `checksums.txt` from the published
+swapped asset out of the tap. So what becomes public equals the bytes `draft` verified against
+their attestations. `publish-tap` reads `checksums.txt` from the published
 release, and only stable tags update the tap.
 
 `vacant` and `draft` refuse a tag that already has a release **or draft**, and lookup and
 verification errors also block them. The tool never deletes tags, replaces assets, or
 recreates a release. When a run stops, what to do depends on where:
 
-- **`publish` failed or the gate refused it:** fix the cause, then re-run only the failed
+- **`publish` failed:** fix the cause, then re-run only the failed
   `publish` job. It reads the earlier `build` job's outputs and checks the same draft.
 - **`build` failed after the draft exists:** a maintainer deletes that draft, then re-runs all
   jobs on the same tag. This is the case when no record was written, for example because the
@@ -905,16 +896,18 @@ All require an installed Rio 0.7.0+ and Python 3.9+; none requires a Go toolchai
 
 Each normal execution automatically publishes one `rio-run-receipt`, schema version 1. No `--evidence`, collection step, embedded source archive or legacy format reader remains. A retry/reconciliation has its own receipt with prior references, not a merged account of work from different invocations. See the [field guide, bounds and recovery semantics](../docs/output.md).
 
-## Authored release notes
+## Release notes
 
 `release-notes.py` selects `docs/releases/<tag>.md` before `release-publish.py stage` freezes the
 release inventory. The first line must identify the exact tag (`# Rio v0.6.0`, optionally followed
 by a title), and the body must be nonempty. Exact bytes are copied into `dist/CHANGELOG.md`, which
 remains inside the existing verification/publication boundary.
 
-Tags v0.6.0 and newer, including prereleases, refuse missing, empty or mismatched authored notes.
-For tags below v0.6.0, a missing authored file explicitly permits the nonempty generated GoReleaser
-changelog; an authored file that exists still must validate. Existing tags/releases remain immutable.
+A missing file never blocks a release: a tag pushed by hand, without notes, is published with
+GoReleaser's generated changelog, which must be nonempty. An authored file that exists must still
+validate, so a wrong heading or an empty body stops the release before anything is built into a
+draft. The `/release` skill (`.claude/skills/release/`) writes the notes and merges them before it
+tags, so the notes in the source are the release body. Existing tags/releases remain immutable.
 
 ## Published-release verification
 
@@ -922,6 +915,8 @@ changelog; an authored file that exists still must validate. Existing tags/relea
 checks archive checksums, the Sigstore checksum bundle, and GitHub build/SBOM attestations against
 the exact repository, release workflow/tag and source commit. The downloaded source SBOM must match
 the signed predicate, and the public non-draft release body must match the supplied authored notes.
+Without `--notes`, for a release published with generated notes, the body only has to be nonempty;
+the summary's `notesSource` says which case it was.
 Only after those checks does it extract and execute the native binary, assert version/commit, and
 run the complete client-record demo. It does not install or replace a user's Rio binary.
 
@@ -1065,8 +1060,8 @@ Before a tag, run release preflight by hand with the version to release:
 `gh workflow run release-preflight.yaml --ref main -f version=v0.8.2`. Besides full CI and CodeQL,
 it builds rio from the candidate, makes this SBOM, gates it, and attests both the SBOM and the
 receipt for the candidate commit (subject `git+https://github.com/rebaze/rio@<commit>`, receipt
-predicate type `https://rebaze.com/attestation/rio-run-receipt/v1`). A release gate such as
-Clear to Ship verifies them for that exact commit. The release makes the same SBOM for its tag.
+predicate type `https://rebaze.com/attestation/rio-run-receipt/v1`), so anyone can verify both for
+that exact commit with `gh attestation verify`. The release makes the same SBOM for its tag.
 
 `installer-tests.yaml` builds the candidate as the release does on Linux, macOS and Windows, checks
 the version and commit it reports, runs the client-record demo, and on Linux and macOS the offline

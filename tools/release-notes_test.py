@@ -28,17 +28,29 @@ class NotesTests(unittest.TestCase):
             else:
                 self.assertEqual(hashlib.sha256(actual).digest(), hashlib.sha256(content).digest())
 
-    def test_required_notes_missing_empty_mismatched_valid(self):
-        for content, code in [(None, 1), (b" \n", 1), (b"# Rio v0.5.0\n\nWrong release\n", 1),
+    def test_authored_notes_missing_empty_mismatched_valid(self):
+        for content, code in [(None, 0), (b" \n", 1), (b"# Rio v0.5.0\n\nWrong release\n", 1),
                               (b"# Rio v0.6.0\r\n\r\nExplain your SBOM delivery.\r\n", 0)]:
             with self.subTest(content=content):
                 self.run_case("v0.6.0", content, code)
 
-    def test_historical_fallback_is_explicit(self):
+    def test_missing_notes_fall_back_to_generated_notes(self):
+        # A tag pushed by hand still releases; an authored file that exists
+        # but is wrong still stops the release.
         self.run_case("v0.5.0", None, 0)
+        self.run_case("v1.0.0", None, 0)
+        self.run_case("v0.6.0-rc.1", None, 0)
         self.run_case("v0.5.0", b"", 1)
-        self.run_case("v1.0.0", None, 1)
-        self.run_case("v0.6.0-rc.1", None, 1)
+
+    def test_fallback_refuses_empty_generated_notes(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            (root / "notes").mkdir(); (root / "dist").mkdir()
+            (root / "dist" / "CHANGELOG.md").write_bytes(b"\n")
+            result = subprocess.run([sys.executable, str(SCRIPT), "--tag", "v1.0.0",
+                                     "--notes-dir", str(root / "notes"), "--dist", str(root / "dist")],
+                                    capture_output=True)
+            self.assertEqual(result.returncode, 1)
 
     def test_mismatched_prefix_and_empty_body_refuse(self):
         self.run_case("v0.6.0", b"# Rio v0.6.00\n\nMismatch\n", 1)

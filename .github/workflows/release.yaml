@@ -30,7 +30,7 @@ jobs:
 
   # Builds, signs and attests the release and leaves it as a verified draft.
   # The Apple signing and notary credentials are secrets of release-build, which
-  # only v* tags may deploy to and which no gate holds.
+  # only v* tags may deploy to.
   build:
     needs: [validate, analyze]
     runs-on: ubuntu-latest
@@ -40,7 +40,7 @@ jobs:
       id-token: write
       attestations: write
     # The inventory and draft record go to publish as job outputs: they are
-    # small, and outputs do not expire during a long wait at the gate.
+    # small, and outputs do not expire if publish is re-run later.
     outputs:
       inventory: ${{ steps.draft.outputs.inventory }}
       record: ${{ steps.draft.outputs.record }}
@@ -124,8 +124,8 @@ jobs:
             --tag "$TAG" --repo "$GITHUB_REPOSITORY"
 
       # Every asset that can carry provenance does, so each digest is signed
-      # where it was built (cleartoship decision 0024). The checksum signature
-      # and the attestation bundle are made after it.
+      # where it was built. The checksum signature and the attestation bundle
+      # are made after it.
       - name: Attest build provenance for the release assets
         id: attest-provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -164,102 +164,6 @@ jobs:
           mkdir release-bundle
           awk 1 "$PROVENANCE_BUNDLE" "$SBOM_BUNDLE" > "release-bundle/rio-${TAG}.intoto.jsonl"
 
-      # Every release file also becomes its own unzipped run artifact, whose
-      # digest is the file's SHA-256. Clear to Ship's App reads them while
-      # publish waits (rebaze/cleartoship#79), and publish requires the draft
-      # to equal them. One file per upload: archive: false takes a single file.
-      # Uploaded before the draft exists, so a failed upload is a plain re-run.
-
-      - name: Upload the darwin amd64 archive as a release artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          path: release-assets/rio_*_darwin_amd64.tar.gz
-          archive: false
-          if-no-files-found: error
-          overwrite: true
-          retention-days: 30
-
-      - name: Upload the darwin arm64 archive as a release artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          path: release-assets/rio_*_darwin_arm64.tar.gz
-          archive: false
-          if-no-files-found: error
-          overwrite: true
-          retention-days: 30
-
-      - name: Upload the linux amd64 archive as a release artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          path: release-assets/rio_*_linux_amd64.tar.gz
-          archive: false
-          if-no-files-found: error
-          overwrite: true
-          retention-days: 30
-
-      - name: Upload the linux arm64 archive as a release artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          path: release-assets/rio_*_linux_arm64.tar.gz
-          archive: false
-          if-no-files-found: error
-          overwrite: true
-          retention-days: 30
-
-      - name: Upload the windows amd64 archive as a release artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          path: release-assets/rio_*_windows_amd64.zip
-          archive: false
-          if-no-files-found: error
-          overwrite: true
-          retention-days: 30
-
-      - name: Upload the windows arm64 archive as a release artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          path: release-assets/rio_*_windows_arm64.zip
-          archive: false
-          if-no-files-found: error
-          overwrite: true
-          retention-days: 30
-
-      - name: Upload the checksums as a release artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          path: release-assets/checksums.txt
-          archive: false
-          if-no-files-found: error
-          overwrite: true
-          retention-days: 30
-
-      - name: Upload the checksum signature as a release artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          path: release-assets/checksums.txt.sigstore.json
-          archive: false
-          if-no-files-found: error
-          overwrite: true
-          retention-days: 30
-
-      - name: Upload the source SBOM as a release artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          path: release-assets/rio-${{ github.ref_name }}-source.cdx.json
-          archive: false
-          if-no-files-found: error
-          overwrite: true
-          retention-days: 30
-
-      - name: Upload the attestation bundle as a release artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          path: release-bundle/rio-${{ github.ref_name }}.intoto.jsonl
-          archive: false
-          if-no-files-found: error
-          overwrite: true
-          retention-days: 30
-
       - name: Verify staged assets and upload them as a draft
         id: draft
         shell: bash
@@ -275,17 +179,17 @@ jobs:
           printf 'inventory=%s\n' "$(base64 -w0 release-inventory.json)" >> "$GITHUB_OUTPUT"
           printf 'record=%s\n' "$(base64 -w0 release-draft.json)" >> "$GITHUB_OUTPUT"
 
-  # Makes the verified draft public. The Clear to Ship App holds this job in
-  # the release environment until the gate for the commit is clear. The job
-  # uses no signing secret; it checks that the run's release artifacts and the
-  # draft hold the same files and digests, then publishes the draft.
+  # Makes the verified draft public, right after build. The job uses no
+  # signing secret; it checks that the draft still holds exactly the staged
+  # files and digests, then publishes it. The release environment accepts only
+  # v* tags and has no approval rule: pushing the tag, which only admins may
+  # do, is the human decision to release.
   publish:
     needs: build
     runs-on: ubuntu-latest
     environment: release
     permissions:
       contents: write
-      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -304,7 +208,7 @@ jobs:
           printf '%s' "$RECORD" | base64 -d > "$RUNNER_TEMP/release-draft.json"
           python3 tools/release-publish.py publish \
             --inventory "$RUNNER_TEMP/release-inventory.json" --record "$RUNNER_TEMP/release-draft.json" \
-            --run "$GITHUB_RUN_ID" --tag "$TAG" --repo "$GITHUB_REPOSITORY"
+            --tag "$TAG" --repo "$GITHUB_REPOSITORY"
 
   publish-tap:
     needs: publish
