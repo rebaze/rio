@@ -66,17 +66,32 @@ Commits here are signed. If `git commit` hangs or fails on 1Password, load the
 Push, open a PR titled `Release notes for <tag>`, wait for its required checks
 (`gh pr checks <n> --watch --required`), then `gh pr merge <n> --squash --delete-branch`.
 The release commit is that merge commit: `REL=$(gh pr view <n> --json mergeCommit --jq .mergeCommit.oid)`.
-Check `git rev-parse origin/main` after fetching equals `$REL`; if someone merged in between,
-release `$REL` anyway, not the newer commit.
+Release `$REL`, never a newer head of `main`.
 
-Then dispatch release preflight for the record and wait for it and for `Installer tests` at `$REL`:
+The squash merge carries whatever reached `main` while the notes PR waited, and the user approved
+notes for `$SHA`. Check that the notes file is the only difference:
 
 ```bash
-gh workflow run release-preflight.yaml --ref main -f version=<tag>
-gh run list --commit "$REL" --json databaseId,workflowName,status,conclusion
+git fetch origin
+git diff --name-only "$SHA" "$REL"    # must print only docs/releases/<tag>.md
 ```
 
-Both must pass at `$REL` (check the run's `headSha`, since the dispatch runs on main's head).
+If anything else changed, the release scope changed: update the notes for the new changes, show
+the user the difference, and ask again before tagging (land the update the same way and take its
+merge commit as `$REL`).
+
+Then run release preflight on exactly `$REL`. A dispatch runs on the head of the ref it names, so
+pin a temporary branch to `$REL` instead of naming `main`:
+
+```bash
+git push origin "$REL:refs/heads/preflight-<tag>"
+gh workflow run release-preflight.yaml --ref preflight-<tag> -f version=<tag>
+gh run list --workflow release-preflight.yaml --branch preflight-<tag> --json databaseId,headSha,status
+gh run list --commit "$REL" --json databaseId,workflowName,headSha,status,conclusion
+```
+
+Wait for the preflight run and for `Installer tests` at `$REL`; both must pass, and each run's
+`headSha` must be `$REL`. Then delete the branch: `git push origin --delete preflight-<tag>`.
 
 ## 5. Tag
 
@@ -111,7 +126,15 @@ When something fails, read the failed job's log first (`gh run view <id> --log-f
 
 ```bash
 gh release view <tag> --json body,isDraft,isPrerelease,assets --jq '{isDraft,isPrerelease,assets:[.assets[].name]}'
-gh release view <tag> --json body --jq .body | diff - docs/releases/<tag>.md && echo "notes are the release body"
+# Compare bytes: gh's --jq output adds a newline the body does not have.
+gh release view <tag> --json body | python3 -c '
+import json, subprocess, sys
+body = json.load(sys.stdin)["body"].encode("utf-8")
+notes = subprocess.run(["git", "show", sys.argv[1] + ":docs/releases/" + sys.argv[2] + ".md"],
+                       check=True, capture_output=True).stdout
+print("notes are the release body" if body == notes else "release body differs from the notes")
+sys.exit(body != notes)
+' "$REL" <tag>
 ```
 
 For a stable tag, also record the verification evidence, as the last
