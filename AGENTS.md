@@ -91,9 +91,9 @@ gh issue comment <n> --body ... # record progress or findings
 
 ## Release
 
-Before the tag, run release preflight by hand with the version (`gh workflow run release-preflight.yaml -f version=vX.Y.Z`):
-it attests the candidate's source SBOM and rio's receipt for it to the commit. `installer-tests.yaml` runs
-on every push to main; check that the release commit has a passing run. Both are described in `tools/README.md`.
+Before the tag, run CI by hand on the candidate (`gh workflow run ci.yaml --ref main`): only a
+dispatched run validates everything. `installer-tests.yaml` runs on every push to main; check that
+the candidate has a passing run. Both are described in `tools/README.md`.
 
 Releases are cut by pushing a `v*` tag; only repository admins may create one, and pushing it is the
 decision to release: no approval step follows. The release workflow's

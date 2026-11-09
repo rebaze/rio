@@ -10,11 +10,10 @@ on:
   schedule:
     - cron: '15 4 * * 3' # Wednesday 04:15 UTC
 
-# Keep reusable-workflow requirements within the release caller's grant.
+# Read-only by default; the analyze job asks for what it needs, which stays
+# within the grant of the release workflows that call this one.
 permissions:
   contents: read
-  actions: read
-  security-events: write
 
 concurrency:
   group: codeql-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

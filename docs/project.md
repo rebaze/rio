@@ -60,7 +60,7 @@ the standard library included, with the dependency graph, and it declares that i
 `complete`. That claim covers the linked Go modules only: not the Go toolchain, the other files
 in the archives, or the archives themselves. Each module's creator and concluded licence come
 from a reviewed table, and the SBOM passes Rio's own `bsi-tr-03183-2@2.1.0` profile before
-release preflight attests it. [How it is made](../tools/README.md#rios-source-sbom-and-candidate-checks).
+the release attests it. [How it is made](../tools/README.md#rios-source-sbom-and-candidate-checks).
 Releases up to and including v0.9.0-rc1 shipped a directory scan with no dependency graph or
 completeness claim; their SBOMs are unchanged.
 
