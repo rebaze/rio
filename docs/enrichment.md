@@ -74,6 +74,8 @@ exit 2 before writing outputs.
 
 ## Links
 
+Available in Rio v0.10.0 and newer, as are `issueTracker`, `releaseNotes` and `advisories`.
+
 `subject.links` adds labelled links to the subject, for any ecosystem. The main use is a link to
 the application's fact sheet in an enterprise-architecture tool such as LeanIX, which names its
 owner:

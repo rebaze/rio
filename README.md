@@ -434,7 +434,7 @@ Changing only delivery settings after normalization is supported; the index reta
 manifest digest, while each delivery records the current manifest digest.
 
 Dependency-Track reads a project's tags, parent and latest-version flag only from the upload, so set
-them on the target or per artifact under `overrides`:
+them on the target or per artifact under `overrides` (Rio v0.10.0 and newer):
 
 ```yaml
       autoCreate: true

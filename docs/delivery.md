@@ -28,7 +28,7 @@ Credentials must allow the requested BOM upload and, if enabled, project creatio
 
 ### Tags, parent and latest version
 
-Dependency-Track reads a project's tags, parent and "latest version" flag only from the upload request, never from the SBOM. Set them on the target, and override them per artifact like `project`:
+Available in Rio v0.10.0 and newer. Dependency-Track reads a project's tags, parent and "latest version" flag only from the upload request, never from the SBOM. Set them on the target, and override them per artifact like `project`:
 
 ```yaml
 delivery:
