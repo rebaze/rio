@@ -44,3 +44,7 @@ reason = "jackson-databind 2.17.1 appears only as metadata in the synthetic Cart
 [[IgnoredVulns]]
 id = "GHSA-wv8q-qhhj-9h54" # CVE-2026-91776
 reason = "jackson-databind 2.17.1 appears only as metadata in the synthetic Cart API CycloneDX fixture. rio is a Go binary and neither builds nor executes this Java dependency."
+
+[[IgnoredVulns]]
+id = "GHSA-5gvw-p9qm-jgwh" # CVE-2026-59889
+reason = "jackson-databind 2.17.1 appears only as metadata in the synthetic Cart API CycloneDX fixture. rio is a Go binary and neither builds nor executes this Java dependency."

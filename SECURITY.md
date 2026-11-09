@@ -121,8 +121,10 @@ exception to nested SBOMs. These are preserved input/output bytes bound to publi
 receipts, not installed Java libraries. No receipt, SBOM or digest is rewritten to silence a scan.
 
 The handoff-checks demo SBOM `tools/demo-handoff-checks/fixtures/cart-api.cdx.json` carries synthetic
-jackson-databind 2.17.1 metadata. Its directory has its own `osv-scanner.toml` listing the eleven
-advisories by ID; osv-scanner v2.7.0 reported them without that file and none with it on 2026-10-18.
+jackson-databind 2.17.1 metadata. Its directory has its own `osv-scanner.toml` listing the
+advisories by ID; osv-scanner v2.7.0 reported eleven without that file and none with it on
+2026-10-18, and Scorecard v5.6.0 reported a twelfth, GHSA-5gvw-p9qm-jgwh, which was added on
+2026-11-09.
 
 Verified on 2026-10-12 with Scorecard v5.5.0: after patching Go/x/text, scanning the repository
 reported this one Commons Lang advisory; adding the two example-local dispositions produced

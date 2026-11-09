@@ -17,15 +17,31 @@ never re-create a release on an existing tag, and never mention Claude or AI in 
 ```bash
 git fetch origin --tags --prune
 SHA=$(git rev-parse origin/main)
-gh run list --commit "$SHA" --json workflowName,status,conclusion
+gh run list --commit "$SHA" --json workflowName,event,status,conclusion
+gh workflow run ci.yaml --ref main    # full validation, while you write the notes
 ```
 
-`CI`, `CodeQL` and `Installer tests` must have passed at `$SHA`. If one is still running, wait for
-it (`gh run watch <id> --exit-status`). If one failed, stop and report it; do not release around it.
+CI on a push to `main` runs only what the changed files touch, so a green push run is not a full
+check: a docs-only commit skips the Go tests. A dispatched run validates everything. Start it now,
+check that its `headSha` is `$SHA` (if `main` moved, start again from the top), and let it run while
+you do steps 2 and 3.
+
+Before you tag, the dispatched `CI` run and the push runs of `CodeQL` and `Installer tests` must
+have passed at `$SHA`. If one failed, stop and report it; do not release around it. A tag cannot be
+deleted, so a failure found after tagging costs the version.
+
+To wait for a run, poll its status rather than trusting `gh run watch`, which can exit non-zero
+while the run is still going; then read the conclusion:
+
+```bash
+until [ "$(gh run view <id> --json status --jq .status)" = completed ]; do sleep 30; done
+gh run view <id> --json conclusion,headSha
+```
 
 ## 2. Propose the version
 
-- Last tag: `git tag -l 'v*' --sort=-v:refname | head -1`; last stable tag: the first without `-`.
+- Last tag: `git -c versionsort.suffix=- tag -l 'v*' --sort=-v:refname | head -1`; last stable tag:
+  the first without `-`. Without `versionsort.suffix`, `v0.9.0-rc1` sorts above `v0.9.0`.
 - Changes: `git log --first-parent --format='%h %s' <last-stable>..origin/main`, then
   `gh pr view <n>` for each PR, and the issues they fix, to understand what users get.
 - rio is 0.x: a new user-visible capability or a behaviour change is a **minor** bump; only fixes,
@@ -41,7 +57,9 @@ Match the most recent file in `docs/releases/` in voice and shape:
 - A bold one-line lead with the most important change for users.
 - Then, per AGENTS.md "Time to Wow", a concrete example of what users get, before anything else:
   real output of a binary built from the candidate (`make build`, then the matching demo under
-  `tools/`), trimmed, and labelled as synthetic data where it is. Never invent output.
+  `tools/`), trimmed, and labelled as synthetic data where it is. Never invent output. Trimming
+  may drop fields but must keep the output's own structure and field names; say what was left
+  out. Don't flatten or rename with `jq` and present the result as Rio's output.
 - `## What changed`: one bullet per user-visible change, bold summary first, linking its issue.
   Pin repository links to the tag (`https://github.com/rebaze/rio/blob/<tag>/...`).
 - Dependency, CI and release-tooling changes go in a short last section or are left out; they
@@ -76,22 +94,16 @@ git fetch origin
 git diff --name-only "$SHA" "$REL"    # must print only docs/releases/<tag>.md
 ```
 
-If anything else changed, the release scope changed: update the notes for the new changes, show
-the user the difference, and ask again before tagging (land the update the same way and take its
-merge commit as `$REL`).
+If anything else changed, the release scope changed, and step 1's validation no longer covers it.
+Start again at step 1 with the new head of `main` as `$SHA`: dispatch full CI on it, update the
+notes for the new changes, show the user the difference and ask again, then land the update and
+repeat this check against the new `$SHA`. Never tag a commit whose code differs from the
+validated `$SHA`.
 
-Then run release preflight on exactly `$REL`. A dispatch runs on the head of the ref it names, so
-pin a temporary branch to `$REL` instead of naming `main`:
-
-```bash
-git push origin "$REL:refs/heads/preflight-<tag>"
-gh workflow run release-preflight.yaml --ref preflight-<tag> -f version=<tag>
-gh run list --workflow release-preflight.yaml --branch preflight-<tag> --json databaseId,headSha,status
-gh run list --commit "$REL" --json databaseId,workflowName,headSha,status,conclusion
-```
-
-Wait for the preflight run and for `Installer tests` at `$REL`; both must pass, and each run's
-`headSha` must be `$REL`. Then delete the branch: `git push origin --delete preflight-<tag>`.
+Tag only when step 1's checks have all passed at `$SHA` and `$REL` differs from it by the notes
+file alone. Then the release commit adds only the notes to a validated commit, so tag it right away;
+the release's own `validate` job runs the full CI on the tagged commit again. Release preflight is
+not part of a release.
 
 ## 5. Tag
 
@@ -106,11 +118,11 @@ gh api repos/rebaze/rio/git/refs -f ref=refs/tags/<tag> -f sha="$REL"
 
 ```bash
 gh run list --workflow release.yaml --branch <tag> --json databaseId,status
-gh run watch <id> --exit-status
 ```
 
 It takes about 20 minutes: full CI and CodeQL, `build` (sign, notarize, attest, draft),
-`publish`, and for stable tags `publish-tap` and `verify`. Run the watch in the background.
+`publish`, and for stable tags `publish-tap` and `verify`. Wait for it in the background, by
+polling its status as in step 1.
 
 When something fails, read the failed job's log first (`gh run view <id> --log-failed`):
 
@@ -148,7 +160,7 @@ gh run download <id> --dir "$SCRATCH/evidence"   # published-ubuntu-latest, -mac
   `published-<os>/verification.json`.
 - `homebrew-version.txt` and `homebrew-gatekeeper.txt`: from `homebrew-install`.
 - `docs/release-verification/<tag>.md`: a short summary in the shape of the last one — the release
-  commit and its PR, a table of the preflight, installer-tests and release runs with links, which
+  commit and its PR, a table of the full CI, CodeQL, installer-tests and release runs with links, which
   platforms executed natively, that the summaries agree on the asset hashes and the notes hash,
   and anything that needed a re-run and why. Facts from the runs only.
 

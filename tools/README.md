@@ -24,7 +24,7 @@ inputs and remain separate from its runtime.
 | [`demo-normalization-evidence/`](demo-normalization-evidence/) | explains repair sources, exact changes and offline retention | with an installed release containing normalization evidence |
 | [`demo-repair/`](#first-repair-sample) | shows optional p2 repair with an unchanged input and an audit record | when evaluating Eclipse/OSGi coordinate repair |
 | [`demo-agent-integration/`](#agent-integration-examples) | tests project onboarding configurations and a one-command CI receipt step | with Rio 0.7.0+ and Python 3.9+ |
-| [`source-sbom.sh`](#rios-source-sbom-and-candidate-checks) | makes rio's own CycloneDX SBOM, with its dependency graph and a complete inventory, and checks it against BSI TR-03183-2 with rio's strict gate | in CI, release preflight and the release |
+| [`source-sbom.sh`](#rios-source-sbom-and-candidate-checks) | makes rio's own CycloneDX SBOM, with its dependency graph and a complete inventory, and checks it against BSI TR-03183-2 with rio's strict gate | in CI and the release |
 | [`rio-context.py`](#rio-contextpy) | emits one explicit build-context entry bound to original SBOM bytes | in a producing CI job |
 
 ---
@@ -1056,12 +1056,13 @@ tools/source-sbom.sh 0.9.0 rio-source.cdx.json ./rio receipt.json
 Releases up to and including v0.9.0-rc1 shipped syft's directory scan instead: the modules
 `go.mod` requires, with no dependency graph and no completeness claim. Their SBOMs are unchanged.
 
-Before a tag, run release preflight by hand with the version to release:
-`gh workflow run release-preflight.yaml --ref main -f version=v0.8.2`. Besides full CI and CodeQL,
-it builds rio from the candidate, makes this SBOM, gates it, and attests both the SBOM and the
-receipt for the candidate commit (subject `git+https://github.com/rebaze/rio@<commit>`, receipt
-predicate type `https://rebaze.com/attestation/rio-run-receipt/v1`), so anyone can verify both for
-that exact commit with `gh attestation verify`. The release makes the same SBOM for its tag.
+Before a tag, run CI by hand on the candidate (`gh workflow run ci.yaml --ref main`): a dispatched
+run validates everything, while a push to main runs only what the changed files touch. The
+`/release` skill does this while it writes the notes. The release makes this SBOM for its tag,
+gates it, and attests it against every archive. Release preflight now only runs CI and CodeQL the
+way the release calls them, on pull requests that change a workflow. Up to v0.9.1-rc1 it also
+attested the SBOM and rio's receipt to the candidate commit (subject
+`git+https://github.com/rebaze/rio@<commit>`); those attestations stay verifiable.
 
 `installer-tests.yaml` builds the candidate as the release does on Linux, macOS and Windows, checks
 the version and commit it reports, runs the client-record demo, and on Linux and macOS the offline

@@ -100,8 +100,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Made as release preflight made the SBOM it gated, named for the
-          # tag. rio checks it, run as the linux/amd64 binary just built.
+          # Made as CI makes it, named for the tag. rio checks it, run as the
+          # linux/amd64 binary just built.
           mapfile -t rio < <(find dist -path '*linux_amd64*' -type f -name rio)
           if [[ ${#rio[@]} -ne 1 ]]; then
             echo "expected one linux/amd64 rio binary in dist, found ${#rio[@]}" >&2
