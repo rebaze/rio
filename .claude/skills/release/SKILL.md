@@ -94,11 +94,14 @@ git fetch origin
 git diff --name-only "$SHA" "$REL"    # must print only docs/releases/<tag>.md
 ```
 
-If anything else changed, the release scope changed: update the notes for the new changes, show
-the user the difference, and ask again before tagging (land the update the same way and take its
-merge commit as `$REL`).
+If anything else changed, the release scope changed, and step 1's validation no longer covers it.
+Start again at step 1 with the new head of `main` as `$SHA`: dispatch full CI on it, update the
+notes for the new changes, show the user the difference and ask again, then land the update and
+repeat this check against the new `$SHA`. Never tag a commit whose code differs from the
+validated `$SHA`.
 
-The release commit adds only the notes to `$SHA`, which step 1 validated, so tag it right away;
+Tag only when step 1's checks have all passed at `$SHA` and `$REL` differs from it by the notes
+file alone. Then the release commit adds only the notes to a validated commit, so tag it right away;
 the release's own `validate` job runs the full CI on the tagged commit again. Release preflight is
 not part of a release.
 
