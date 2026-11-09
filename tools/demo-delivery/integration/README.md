@@ -3,8 +3,12 @@
 `dependency-track-5.1.1.json` was recorded by `TestIntegrationDependencyTrack` against a
 new, disposable Docker API server `dependencytrack/apiserver:5.1.1` and PostgreSQL 18,
 with a dedicated test project/team and a separate team lacking upload permission. The user
-requested 5.1 instead of the original issue's 4.14.0 target. **5.1.1 is the tested adapter
-contract; no claim is made for untested 4.x or other 5.x versions.**
+requested 5.1 instead of the original issue's 4.14.0 target. The same harness was later run against
+`dependencytrack/apiserver:5.2.1`, the version the hosted demo runs:
+[`dependency-track-5.2.1.json`](dependency-track-5.2.1.json) and
+[`dependency-track-5.2.1-https.json`](dependency-track-5.2.1-https.json). **5.1.1 and 5.2.1 are the
+tested adapter contracts; no claim is made for untested 4.x or other 5.x versions.** Project tags,
+parent and latest version are tested against 5.2.1 only, [below](#project-tags-parent-and-latest-version-on-521).
 
 Evidence includes actual server version, scenario, sanitized request method/path/form,
 verified payload digest, HTTP status, allowlisted response fields, Rio interpretation, and
@@ -66,9 +70,43 @@ production identifiers. The endpoint, database, teams and projects were dedicate
 infrastructure. The [installed-binary HTTPS demo](../../demo-dtrack-tls/README.md) reproduces the
 verification-policy behavior and v0.7 compact receipts with a clearly labeled local synthetic receiver.
 
+## Project tags, parent and latest version on 5.2.1
+
+[`dependency-track-5.2.1-project-fields.json`](dependency-track-5.2.1-project-fields.json) was recorded
+by `project_fields.py` against a new, disposable `dependencytrack/apiserver:5.2.1` with Rio built
+from this branch. Each case runs the root `rio --json` pipeline with a key holding one permission set,
+then compares Rio's receipt with the harness's own read-back by a portfolio-management key:
+
+| Case | Key permissions | Server | Rio's receipt |
+|---|---|---|---|
+| New version with tags, parent and `isLatest` | `BOM_UPLOAD`, `PROJECT_CREATION_UPLOAD` | All three set on creation | `readBack: forbidden`; every value `unknown` |
+| The same, next version | plus `VIEW_PORTFOLIO` | Set; the previous version loses `isLatest` | All `observed` |
+| Existing version, changed tags | `BOM_UPLOAD` | 200, tags unchanged | `unknown` |
+| The same | `BOM_UPLOAD`, `VIEW_PORTFOLIO` | 200, tags unchanged | tags `different`, with the observed tags |
+| The same | plus `PORTFOLIO_MANAGEMENT_UPDATE` | Tag set replaced | `observed` |
+| A parent that does not exist | `BOM_UPLOAD`, `PROJECT_CREATION_UPLOAD`, `VIEW_PORTFOLIO` | 404, no project created | `rejected`, `parent_not_found`, exit 5 |
+| Subject links from enrichment (#202) | the same | The project's external references show type, URL and label (`comment`) | accepted |
+| The same version again without the links | the same | The links are cleared | accepted |
+
+The lookup by name and version omits the parent, so Rio reads a requested parent from the project by
+UUID. Server UUIDs are placeholders in the evidence; keys, passwords, session tokens and response
+bodies are never retained. Projects, teams and tags are synthetic, on infrastructure created for the run.
+
+```sh
+python3 tools/demo-delivery/integration/setup.py create --server-version 5.2.1 /absolute/private/rio-dtrack-521
+python3 tools/demo-delivery/integration/setup.py start /absolute/private/rio-dtrack-521
+python3 tools/demo-delivery/integration/project_fields.py /absolute/private/rio-dtrack-521 /absolute/path/to/rio \
+  --evidence /absolute/private/rio-dtrack-521/project-fields-evidence.json
+python3 tools/demo-delivery/integration/setup.py stop /absolute/private/rio-dtrack-521
+```
+
+It needs Rio v0.10.0 or newer. It creates one team and key per permission set in the fixture and
+does not stop it, so `exercise.py` can follow. CI runs it on every change, after the 5.1.1 harness.
+
 ## Repeatable owned setup and client handoff
 
-The setup harness uses pinned `dependencytrack/apiserver:5.1.1` and PostgreSQL 18 images, an
+The setup harness uses pinned `dependencytrack/apiserver:5.1.1` (default) or, with
+`create --server-version 5.2.1`, `dependencytrack/apiserver:5.2.1`, and PostgreSQL 18 images, an
 exclusive Compose project, owned volumes/network, loopback-only API binding and generated ephemeral
 secrets. It follows the [5.1 quickstart datasource configuration](https://dependencytrack.org/docker-compose.yml)
 and the [versioned API implementation](https://github.com/DependencyTrack/dependency-track/tree/5.1.1/apiserver/src/main/java/org/dependencytrack/resources/v1).
@@ -85,7 +123,7 @@ python3 tools/demo-delivery/integration/exercise.py /absolute/private/rio-dtrack
 python3 tools/demo-delivery/integration/setup.py stop /absolute/private/rio-dtrack
 ```
 
-Requires a local Docker socket, Docker Compose, Python 3.9+ and installed Rio v0.7.0 or newer. `--adapter-tests`
+Requires a local Docker socket, Docker Compose, Python 3.9+ and installed Rio v0.7.0 or newer (v0.10.0 or newer for `project_fields.py`). `--adapter-tests`
 also requires Go and runs the existing real adapter suite over both HTTP and the local HTTPS gateway.
 Omit that flag to exercise only the installed binary, including published-release verification.
 The fixture directory is mode 0700, secret files are mode 0600, and private credentials are never
@@ -111,7 +149,7 @@ Dependency-Track content-verification capability.
 Only `exercise-*/verification.json`, `adapter-*-observations.json`, sanitized adapter logs,
 `record-before.json` (the pipeline receipt), `record-untrusted.json`, `record-bypass.json`,
 `record-reconcile-*.json` and `report.html` are suitable for retention/sharing.
-The committed 5.1.1 captures above remain historical; this harness update does not assert a new
-real-server verification until the harness is run successfully.
+The committed 5.1.1 captures above remain historical. The 5.2.1 captures come from a successful
+run of this harness, `exercise.py --adapter-tests`, against a disposable 5.2.1 fixture.
 Never publish `private.json` or `test-env.json`. CI uploads only the allowlisted evidence files and
 runs teardown even after failure. Source-free HTML/JSON inspection needs no Go or Docker runtime.

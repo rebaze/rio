@@ -120,8 +120,10 @@ References of other types or labels, including those the generator wrote, are ne
 Repeat application adds nothing.
 
 Dependency-Track copies `metadata.component.externalReferences` to the project on every upload
-and replaces what was there, so the SBOM is the lasting place for these links. A link set in
-Dependency-Track's UI or API disappears with the next upload to that version.
+and replaces what was there, so the SBOM is the lasting place for these links. The project's
+external references show each link's type, URL and label. A link set in Dependency-Track's UI or
+API disappears with the next upload to that version, and so does a link removed from `rio.yaml`.
+Both were [verified against Dependency-Track 5.2.1](../tools/demo-delivery/integration/README.md#project-tags-parent-and-latest-version-on-521).
 
 ### Ownership, reporting and routing
 
@@ -133,7 +135,7 @@ internal owner. Keep the three apart:
 |---|---|---|
 | Who is responsible for the product? | A `Fact sheet` link to the enterprise-architecture tool | The tool stays the source of truth. When the owner changes, published SBOMs still lead to the current name, and none needs rebuilding. SBOMs that leave the organization, to customers or authorities, carry no personal names |
 | Where are vulnerabilities reported? | `subject.securityContact` | The public reporting channel, which recipients and the CRA expect |
-| Who is notified of findings? | A Dependency-Track project tag such as `owner:<team>` | A link cannot route anything; a notification rule matches a tag, which lives on the project, not in the SBOM |
+| Who is notified of findings? | A Dependency-Track project tag such as `owner:<team>` | A link cannot route anything; a notification rule such as `"owner:<team>" in subject.project.tags` matches a tag on the project, not in the SBOM. Set it with the delivery target's [`tags`](delivery.md#tags-parent-and-latest-version) |
 
 ## Existing values and explicit replacement
 

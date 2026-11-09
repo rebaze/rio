@@ -1,0 +1,382 @@
+{
+  "serverVersion": "5.2.1",
+  "images": {
+    "database": {
+      "reference": "postgres:18@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
+      "imageID": "sha256:d8a40176c29aa0c7a20a19f85ddddc47f72d8d6789a7a86a21f3713e71fb4ad6"
+    },
+    "apiserver": {
+      "reference": "dependencytrack/apiserver:5.2.1@sha256:a7ce7a42928c6c03e94e8255e2ee871f5268f55b638a69729cae7afc47ef43b8",
+      "imageID": "sha256:af78c641d18e34367f5e71a636d1491678da6f4b41913052fc7c9660a9757e09"
+    }
+  },
+  "syntheticProjectsOnly": true,
+  "note": "Recorded by tools/demo-delivery/integration/project_fields.py against a disposable fixture. Keys, passwords, session tokens and raw bodies are never retained; server UUIDs are placeholders.",
+  "rio": "rio v0.9.1-rc1-7-gef3b535 (commit: ef3b535, built: 2026-11-09T20:44:43Z)",
+  "cases": [
+    {
+      "case": "create-without-view",
+      "keyPermissions": [
+        "BOM_UPLOAD",
+        "PROJECT_CREATION_UPLOAD"
+      ],
+      "project": {
+        "name": "rio-it-product-2c16d94d60d2",
+        "version": "1.0.0"
+      },
+      "rio": {
+        "state": "accepted",
+        "errorCode": null,
+        "responses": [
+          {
+            "kind": "acknowledgment",
+            "value": "accepted",
+            "httpStatus": 200,
+            "code": "accepted"
+          }
+        ],
+        "projectFields": {
+          "readBack": "forbidden",
+          "tags": {
+            "requested": [
+              "owner:rio-feature-test",
+              "rio-it"
+            ],
+            "state": "unknown"
+          },
+          "parent": {
+            "requested": {
+              "name": "rio-it-parent-2c16d94d60d2",
+              "version": "all"
+            },
+            "state": "unknown"
+          },
+          "isLatest": {
+            "requested": true,
+            "state": "unknown"
+          }
+        }
+      },
+      "expected": "tags, parent and isLatest set on creation; read-back forbidden, so all unknown",
+      "harnessObservation": {
+        "exists": true,
+        "tags": [
+          "owner:rio-feature-test",
+          "rio-it"
+        ],
+        "isLatest": true,
+        "parent": {
+          "name": "rio-it-parent-2c16d94d60d2",
+          "version": "all",
+          "uuid": "<project-uuid-1>"
+        }
+      }
+    },
+    {
+      "case": "create-with-view",
+      "keyPermissions": [
+        "BOM_UPLOAD",
+        "PROJECT_CREATION_UPLOAD",
+        "VIEW_PORTFOLIO"
+      ],
+      "project": {
+        "name": "rio-it-product-2c16d94d60d2",
+        "version": "1.1.0"
+      },
+      "rio": {
+        "state": "accepted",
+        "errorCode": null,
+        "responses": [
+          {
+            "kind": "acknowledgment",
+            "value": "accepted",
+            "httpStatus": 200,
+            "code": "accepted"
+          }
+        ],
+        "projectFields": {
+          "readBack": "read",
+          "tags": {
+            "requested": [
+              "owner:rio-feature-test",
+              "rio-it"
+            ],
+            "state": "observed"
+          },
+          "parent": {
+            "requested": {
+              "name": "rio-it-parent-2c16d94d60d2",
+              "version": "all"
+            },
+            "state": "observed"
+          },
+          "isLatest": {
+            "requested": true,
+            "state": "observed"
+          }
+        }
+      },
+      "expected": "observed; 1.0.0 is no longer latest",
+      "harnessObservation": {
+        "exists": true,
+        "tags": [
+          "owner:rio-feature-test",
+          "rio-it"
+        ],
+        "isLatest": true,
+        "parent": {
+          "name": "rio-it-parent-2c16d94d60d2",
+          "version": "all",
+          "uuid": "<project-uuid-1>"
+        }
+      }
+    },
+    {
+      "case": "existing-upload-only",
+      "keyPermissions": [
+        "BOM_UPLOAD"
+      ],
+      "project": {
+        "name": "rio-it-product-2c16d94d60d2",
+        "version": "1.1.0"
+      },
+      "rio": {
+        "state": "accepted",
+        "errorCode": null,
+        "responses": [
+          {
+            "kind": "acknowledgment",
+            "value": "accepted",
+            "httpStatus": 200,
+            "code": "accepted"
+          }
+        ],
+        "projectFields": {
+          "readBack": "forbidden",
+          "tags": {
+            "requested": [
+              "owner:rio-feature-test-changed"
+            ],
+            "state": "unknown"
+          }
+        }
+      },
+      "expected": "200; tags unchanged; unknown without VIEW_PORTFOLIO",
+      "harnessObservation": {
+        "exists": true,
+        "tags": [
+          "owner:rio-feature-test",
+          "rio-it"
+        ],
+        "isLatest": true,
+        "parent": {
+          "name": "rio-it-parent-2c16d94d60d2",
+          "version": "all",
+          "uuid": "<project-uuid-1>"
+        }
+      }
+    },
+    {
+      "case": "existing-upload-view",
+      "keyPermissions": [
+        "BOM_UPLOAD",
+        "VIEW_PORTFOLIO"
+      ],
+      "project": {
+        "name": "rio-it-product-2c16d94d60d2",
+        "version": "1.1.0"
+      },
+      "rio": {
+        "state": "accepted",
+        "errorCode": null,
+        "responses": [
+          {
+            "kind": "acknowledgment",
+            "value": "accepted",
+            "httpStatus": 200,
+            "code": "accepted"
+          }
+        ],
+        "projectFields": {
+          "readBack": "read",
+          "tags": {
+            "requested": [
+              "owner:rio-feature-test-changed"
+            ],
+            "state": "different",
+            "observed": [
+              "owner:rio-feature-test",
+              "rio-it"
+            ]
+          }
+        }
+      },
+      "expected": "200; tags unchanged; recorded as different",
+      "harnessObservation": {
+        "exists": true,
+        "tags": [
+          "owner:rio-feature-test",
+          "rio-it"
+        ],
+        "isLatest": true,
+        "parent": {
+          "name": "rio-it-parent-2c16d94d60d2",
+          "version": "all",
+          "uuid": "<project-uuid-1>"
+        }
+      }
+    },
+    {
+      "case": "existing-portfolio-update",
+      "keyPermissions": [
+        "BOM_UPLOAD",
+        "VIEW_PORTFOLIO",
+        "PORTFOLIO_MANAGEMENT_UPDATE"
+      ],
+      "project": {
+        "name": "rio-it-product-2c16d94d60d2",
+        "version": "1.1.0"
+      },
+      "rio": {
+        "state": "accepted",
+        "errorCode": null,
+        "responses": [
+          {
+            "kind": "acknowledgment",
+            "value": "accepted",
+            "httpStatus": 200,
+            "code": "accepted"
+          }
+        ],
+        "projectFields": {
+          "readBack": "read",
+          "tags": {
+            "requested": [
+              "owner:rio-feature-test-changed"
+            ],
+            "state": "observed"
+          }
+        }
+      },
+      "expected": "tag set replaced; observed",
+      "harnessObservation": {
+        "exists": true,
+        "tags": [
+          "owner:rio-feature-test-changed"
+        ],
+        "isLatest": true,
+        "parent": {
+          "name": "rio-it-parent-2c16d94d60d2",
+          "version": "all",
+          "uuid": "<project-uuid-1>"
+        }
+      }
+    },
+    {
+      "case": "missing-parent",
+      "keyPermissions": [
+        "BOM_UPLOAD",
+        "PROJECT_CREATION_UPLOAD",
+        "VIEW_PORTFOLIO"
+      ],
+      "project": {
+        "name": "rio-it-missing-parent-2c16d94d60d2",
+        "version": "1.0.0"
+      },
+      "rio": {
+        "state": "rejected",
+        "errorCode": "parent_not_found",
+        "responses": [
+          {
+            "kind": "acknowledgment",
+            "value": "rejected",
+            "httpStatus": 404,
+            "code": "parent_not_found"
+          }
+        ],
+        "projectFields": {
+          "readBack": "not-attempted",
+          "parent": {
+            "requested": {
+              "name": "rio-it-no-such-parent-2c16d94d60d2",
+              "version": "all"
+            },
+            "state": "unknown"
+          }
+        }
+      },
+      "expected": "upload fails with 404, parent_not_found, no project created",
+      "harnessObservation": {
+        "exists": false
+      }
+    },
+    {
+      "case": "links",
+      "keyPermissions": [
+        "BOM_UPLOAD",
+        "PROJECT_CREATION_UPLOAD",
+        "VIEW_PORTFOLIO"
+      ],
+      "project": {
+        "name": "rio-it-links-2c16d94d60d2",
+        "version": "1.0.0"
+      },
+      "rio": {
+        "state": "accepted",
+        "errorCode": null,
+        "responses": [
+          {
+            "kind": "acknowledgment",
+            "value": "accepted",
+            "httpStatus": 200,
+            "code": "accepted"
+          }
+        ],
+        "projectFields": null
+      },
+      "expected": "project external references carry type, URL and label (comment)",
+      "harnessObservation": {
+        "externalReferences": [
+          {
+            "type": "issue-tracker",
+            "url": "https://rio-it.example.com/issues"
+          },
+          {
+            "type": "other",
+            "url": "https://ea.example.com/factsheet/Application/rio-it",
+            "comment": "Fact sheet"
+          }
+        ]
+      }
+    },
+    {
+      "case": "links-cleared",
+      "keyPermissions": [
+        "BOM_UPLOAD",
+        "PROJECT_CREATION_UPLOAD",
+        "VIEW_PORTFOLIO"
+      ],
+      "project": {
+        "name": "rio-it-links-2c16d94d60d2",
+        "version": "1.0.0"
+      },
+      "rio": {
+        "state": "accepted",
+        "errorCode": null,
+        "responses": [
+          {
+            "kind": "acknowledgment",
+            "value": "accepted",
+            "httpStatus": 200,
+            "code": "accepted"
+          }
+        ],
+        "projectFields": null
+      },
+      "expected": "an upload without the link clears it",
+      "harnessObservation": {
+        "externalReferences": []
+      }
+    }
+  ]
+}
