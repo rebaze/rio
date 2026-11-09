@@ -502,29 +502,33 @@ func (d *Document) enrichLink(f enrichment.Field, label string, link enrichment.
 	parent := d.metadataComponent(true)
 	before := parent["externalReferences"]
 	refs, _ := before.([]any)
-	labelled := false
+	// Scan everything first: the requested URL may already be present while a
+	// stale reference with the same label still points elsewhere.
+	present, stale := false, false
 	for _, r := range refs {
 		ref, _ := r.(map[string]any)
 		if ref["type"] != link.Type {
 			continue
 		}
 		if ref["url"] == link.URL {
-			return target, before, before, false, nil
-		}
-		if ref["comment"] == label {
-			labelled = true
+			present = true
+		} else if ref["comment"] == label {
+			stale = true
 		}
 	}
-	if labelled && !f.Replace {
+	if stale && !f.Replace {
 		return "", nil, nil, false, fmt.Errorf("conflicts with the existing %s external reference labelled %q; explicitly list %s in enrichment.replace to replace it", link.Type, label, f.Field)
+	}
+	if !stale && present {
+		return target, before, before, false, nil
 	}
 	entry := map[string]any{"type": link.Type, "url": link.URL, "comment": label}
 	next := make([]any, 0, len(refs)+1)
-	placed := false
+	placed := present
 	for _, r := range refs {
 		ref, _ := r.(map[string]any)
-		if ref["type"] == link.Type && ref["comment"] == label {
-			// Hashes on the old entry describe the old URL, so it is not kept.
+		if ref["type"] == link.Type && ref["comment"] == label && ref["url"] != link.URL {
+			// Retire the stale URL. Hashes on it describe that URL, so they go too.
 			if !placed {
 				next = append(next, entry)
 				placed = true

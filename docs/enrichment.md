@@ -112,9 +112,9 @@ cannot be removed for one artifact; leave it out of the shared list instead.
 
 | The SBOM subject already has | Result |
 |---|---|
-| A reference with the same type and URL | Left alone, no change record. Its existing `comment`, if any, stays, so the label is not shown for it |
+| A reference with the same type and URL, and none with the label pointing elsewhere | Left alone, no change record. Its existing `comment`, if any, stays, so the label is not shown for it |
 | No reference with this type and label | Added |
-| A reference with the same type and label (`comment`) but another URL | Conflict, exit 2, unless the label is listed under `replace` |
+| A reference with the same type and label (`comment`) but another URL | Conflict, exit 2, unless the label is listed under `replace`. Replacement retires that reference, even when another one already has the requested URL |
 
 References of other types or labels, including those the generator wrote, are never touched.
 Repeat application adds nothing.

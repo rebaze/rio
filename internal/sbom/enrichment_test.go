@@ -311,3 +311,27 @@ func TestValidateEnrichmentConfigLinkTypes(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func TestEnrichmentLinksRetireStaleLabelWhenURLAlreadyPresent(t *testing.T) {
+	refs := `{"type":"other","url":"https://ea.example/factsheet/old","comment":"Fact sheet"},{"type":"other","url":"https://ea.example/factsheet/1","comment":"Generator note"},{"type":"vcs","url":"https://example.com/repo"}`
+	d := linkDoc(t, "1.6", refs)
+	cfg := enrichmentFields(map[string]string{"subject.links[Fact sheet]": factSheet})
+	if _, err := d.Enrich(cfg, "rio.yaml", "digest"); err == nil || !strings.Contains(err.Error(), "subject.links[Fact sheet] in enrichment.replace") {
+		t.Fatalf("stale label hidden by the present URL: %v", err)
+	}
+	cfg.Fields[0].Replace = true
+	rec, err := d.Enrich(cfg, "rio.yaml", "digest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []any{
+		map[string]any{"type": "other", "url": "https://ea.example/factsheet/1", "comment": "Generator note"},
+		map[string]any{"type": "vcs", "url": "https://example.com/repo"},
+	}
+	if diff := cmp.Diff(want, subjectRefs(t, d)); diff != "" {
+		t.Fatal(diff)
+	}
+	if len(rec.Changes) != 1 || len(rec.Changes[0].Before.([]any)) != 3 {
+		t.Fatalf("retirement not recorded: %+v", rec)
+	}
+}
