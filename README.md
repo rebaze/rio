@@ -433,6 +433,21 @@ replacing `RUN_ID` with the run printed by normalization.
 Changing only delivery settings after normalization is supported; the index retains its original
 manifest digest, while each delivery records the current manifest digest.
 
+Dependency-Track reads a project's tags, parent and latest-version flag only from the upload, so set
+them on the target or per artifact under `overrides`:
+
+```yaml
+      autoCreate: true
+      tags: [owner:payments]               # the project's complete tag set
+      parent: {name: Payments, version: all}
+      isLatest: true
+```
+
+Parent and latest apply when the upload creates the project version; changing tags later needs a key
+with `PORTFOLIO_MANAGEMENT_UPDATE`. A 200 does not say whether they applied, so Rio reads the project
+back and records each requested value as `observed`, `different` or `unknown` in the receipt, never
+as applied unseen. [Per-case server behaviour and permissions](docs/delivery.md#tags-parent-and-latest-version).
+
 Use the reported journal path with `rio delivery inspect --record PATH` or
 `rio delivery reconcile --record PATH` to query saved receipt activity without resubmitting.
 See [delivery configuration and the runnable demo](tools/README.md#native-verified-delivery)
@@ -522,8 +537,9 @@ artifacts:
 ```
 
 This minimal manifest uses the default 1.6 spec floor and checks the input. Add
-[enrichment](docs/enrichment.md) for supplied product metadata and [context](docs/context.md) for
-producer-provided source/build assertions. Their source and change records travel with the outputs.
+[enrichment](docs/enrichment.md) for supplied product metadata, such as the issue tracker, release
+notes or a [labelled link to the application's fact sheet](docs/enrichment.md#links), and
+[context](docs/context.md) for producer-provided source/build assertions. Their source and change records travel with the outputs.
 
 Preview the selection, then normalize into a fresh directory:
 
