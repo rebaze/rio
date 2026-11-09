@@ -281,7 +281,7 @@ def main():
         for path in run_root.rglob("*"):
             if path.is_file():
                 safe_bytes(path.read_bytes())
-        summary = {"serverVersion": "5.1.1", "images": state["images"], "syntheticProjectsOnly": True,
+        summary = {"serverVersion": state["serverVersion"], "images": state["images"], "syntheticProjectsOnly": True,
                    "tlsTermination": "local test gateway; backend loopback HTTP", "defaultTrustReachedUpload": False,
                    "verifiedCAAcceptedPairs": 3, "explicitBypassAcceptedPairs": 1,
                    "nativeContentVerificationClaim": False, "harnessInventoryObservations": inventory,

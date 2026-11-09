@@ -16,6 +16,10 @@ import (
 
 const responseLimit int64 = 64 << 10
 
+// projectLimit bounds a project read-back, which carries more fields than the
+// upload and event responses.
+const projectLimit int64 = 1 << 20
+
 type bodyWriteKey struct{}
 
 type client struct {
@@ -87,19 +91,30 @@ func (c *client) request(ctx context.Context, method, path, ct string, body io.R
 	return resp, observed.Load(), nil
 }
 func responseJSON(resp *http.Response, out any) error {
-	typ, _, e := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-	if e != nil || (typ != "application/json" && !(strings.HasPrefix(typ, "application/") && strings.HasSuffix(typ, "+json"))) {
-		return delivery.Fail("invalid_response", "JSON content type required")
-	}
-	b, e := io.ReadAll(io.LimitReader(resp.Body, responseLimit+1))
-	if e != nil || int64(len(b)) > responseLimit {
-		return delivery.Fail("invalid_response", "response size or read failure")
+	b, e := responseBytes(resp, responseLimit)
+	if e != nil {
+		return e
 	}
 	if delivery.DecodeJSON(b, out, false) != nil {
 		return delivery.Fail("invalid_response", "response schema")
 	}
 	return nil
 }
+
+// responseBytes reads a bounded JSON response body. Callers decode only the
+// fields they need and never retain the body.
+func responseBytes(resp *http.Response, limit int64) ([]byte, error) {
+	typ, _, e := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if e != nil || (typ != "application/json" && !(strings.HasPrefix(typ, "application/") && strings.HasSuffix(typ, "+json"))) {
+		return nil, delivery.Fail("invalid_response", "JSON content type required")
+	}
+	b, e := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if e != nil || int64(len(b)) > limit {
+		return nil, delivery.Fail("invalid_response", "response size or read failure")
+	}
+	return b, nil
+}
+
 func observation(kind, value, origin, code string, status int) delivery.Observation {
 	return delivery.Observation{Kind: kind, Value: value, Origin: origin, Code: code, HTTPStatus: status, References: []delivery.Reference{}}
 }
@@ -114,6 +129,11 @@ func ValidateEvidence(refs []delivery.Reference, observations []delivery.Observa
 	for _, o := range observations {
 		if _, e := ReadTLS(o); e != nil {
 			return e
+		}
+		if project, e := ReadProject(o); e != nil {
+			return e
+		} else if project != nil && !(o.Kind == "acknowledgment" && o.Value == "accepted" || o.Kind == "activity") {
+			return delivery.Fail("invalid_record", "Dependency-Track project facts on an observation without a read-back")
 		}
 		if o.Kind == "activity" && (o.Origin != "receiver" || o.HTTPStatus != 200 || o.Code != "activity_observed" || (o.Value != "processing" && o.Value != "not-observed") || len(o.References) != 0) {
 			return delivery.Fail("invalid_record", "Dependency-Track activity")
@@ -160,7 +180,7 @@ func ValidateSubmission(sub delivery.Submission) error {
 			return bad()
 		}
 	case "rejected":
-		if len(sub.References) != 0 || o.Kind != "acknowledgment" || o.Value != "rejected" || o.Origin != "receiver" || o.Code != "upload_rejected" || len(o.References) != 0 {
+		if len(sub.References) != 0 || o.Kind != "acknowledgment" || o.Value != "rejected" || o.Origin != "receiver" || (o.Code != "upload_rejected" && !(o.Code == "parent_not_found" && o.HTTPStatus == 404)) || len(o.References) != 0 {
 			return bad()
 		}
 		switch o.HTTPStatus {

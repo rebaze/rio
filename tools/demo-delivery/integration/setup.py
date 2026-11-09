@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create/start/stop a private, owned Dependency-Track 5.1.1 + PostgreSQL 18 fixture."""
+"""Create/start/stop a private, owned Dependency-Track 5.1.1 or 5.2.1 + PostgreSQL 18 fixture."""
 import argparse
 import json
 import http.client
@@ -16,6 +16,12 @@ import urllib.request
 
 HERE = Path(__file__).resolve().parent
 OWNER = "io.rebaze.rio.test-owner"
+# Pinned API server images, one per tested server version.
+IMAGES = {
+    "5.1.1": "dependencytrack/apiserver:5.1.1@sha256:764dee822521e43d50ad7d0ca5bc35f48968b6b098ef97945e2ecac8c55d52e5",
+    "5.2.1": "dependencytrack/apiserver:5.2.1@sha256:a7ce7a42928c6c03e94e8255e2ee871f5268f55b638a69729cae7afc47ef43b8",
+}
+DEFAULT_VERSION = "5.1.1"
 
 
 class SetupError(ValueError):
@@ -31,13 +37,15 @@ def write_private(path, value):
     os.replace(temporary, path)
 
 
-def create(root):
+def create(root, server_version=DEFAULT_VERSION):
     root = Path(root).resolve()
+    if server_version not in IMAGES:
+        raise SetupError("unsupported server version; choose one of " + ", ".join(sorted(IMAGES)))
     if root.exists():
         raise SetupError("fixture path exists; use a new directory")
     root.mkdir(mode=0o700)
     state = {"version": 1, "project": "rio-dtrack-" + secrets.token_hex(6),
-             "owner": secrets.token_hex(16), "phase": "created"}
+             "owner": secrets.token_hex(16), "phase": "created", "serverVersion": server_version}
     write_private(root / "state.json", state)
     write_private(root / "private.json", {"databasePassword": secrets.token_hex(24),
                                          "adminPassword": secrets.token_hex(24)})
@@ -49,6 +57,10 @@ def load(root):
     state = json.loads((root / "state.json").read_text())
     if state.get("version") != 1 or not re.fullmatch(r"rio-dtrack-[a-f0-9]{12}", state.get("project", "")) or not re.fullmatch(r"[a-f0-9]{32}", state.get("owner", "")):
         raise SetupError("invalid fixture ownership record")
+    # Fixtures created before the version choice ran 5.1.1.
+    state.setdefault("serverVersion", DEFAULT_VERSION)
+    if state["serverVersion"] not in IMAGES:
+        raise SetupError("invalid fixture server version")
     return state, json.loads((root / "private.json").read_text())
 
 
@@ -72,7 +84,8 @@ def command(args, env=None):
 
 
 def environment(state, private):
-    return dict(os.environ, RIO_TEST_DB_PASSWORD=private["databasePassword"], RIO_DTRACK_TEST_OWNER=state["owner"])
+    return dict(os.environ, RIO_TEST_DB_PASSWORD=private["databasePassword"], RIO_DTRACK_TEST_OWNER=state["owner"],
+                RIO_DTRACK_IMAGE=IMAGES[state["serverVersion"]])
 
 
 def compose(state, private, *args):
@@ -162,7 +175,6 @@ def bootstrap(root, state, private):
         "RIO_DTRACK_TEST_ALLOW_HTTP": "1", "RIO_DTRACK_TEST_API_KEY": keys["upload"],
         "RIO_DTRACK_TEST_DENIED_KEY": keys["denied"], "RIO_DTRACK_TEST_PROJECT_UUID": bootstrap_state["projectUUID"]})
     state["phase"] = "ready"
-    state["serverVersion"] = "5.1.1"
     write_private(root / "state.json", state)
 
 
@@ -197,12 +209,12 @@ def start(root, timeout):
         status, raw = request(state["url"], "GET", "/api/version")
         if status == 200:
             value = json.loads(raw)
-            if value.get("version") != "5.1.1":
-                raise SetupError("unexpected server version; expected 5.1.1")
+            if value.get("version") != state["serverVersion"]:
+                raise SetupError("unexpected server version; expected " + state["serverVersion"])
             bootstrap(root, state, private)
             state["phase"] = "ready"
             write_private(root / "state.json", state)
-            print("READY: disposable Dependency-Track 5.1.1; private test-env.json written", flush=True)
+            print("READY: disposable Dependency-Track " + state["serverVersion"] + "; private test-env.json written", flush=True)
             return
         if time.monotonic() - last_notice > 15:
             print("Waiting for owned API server readiness; status " + str(status), flush=True)
@@ -232,11 +244,13 @@ def main():
     parser.add_argument("operation", choices=("create", "start", "stop"))
     parser.add_argument("root", type=Path)
     parser.add_argument("--timeout", type=int, default=300)
+    parser.add_argument("--server-version", choices=sorted(IMAGES), default=DEFAULT_VERSION,
+                        help="Dependency-Track API server version for create (default %(default)s)")
     args = parser.parse_args()
     try:
         if args.operation == "create":
-            state = create(args.root)
-            print("CREATED: private fixture " + state["project"])
+            state = create(args.root, args.server_version)
+            print("CREATED: private fixture " + state["project"] + " for Dependency-Track " + state["serverVersion"])
         elif args.operation == "start":
             start(args.root, args.timeout)
         else:

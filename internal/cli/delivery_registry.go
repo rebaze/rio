@@ -8,6 +8,7 @@ import (
 	"github.com/rebaze/rio/internal/delivery/oci"
 	"github.com/rebaze/rio/internal/delivery/record"
 	"github.com/rebaze/rio/internal/receipt"
+	"reflect"
 	"strings"
 )
 
@@ -52,11 +53,14 @@ var deliveryAdapters = func(dir string) map[string]adapterEntry {
 		HumanIdentityLabel:   "project",
 		HumanTransportPolicy: dtrackTransportPolicy,
 		HumanObservation: func(o delivery.Observation) string {
-			facts, e := dtrack.ReadTLS(o)
-			if e != nil || facts == nil {
-				return ""
+			var parts []string
+			if facts, e := dtrack.ReadTLS(o); e == nil && facts != nil {
+				parts = append(parts, fmt.Sprintf("certificateVerification=%s TLSObserved=%t", facts.CertificateVerification, facts.Observed))
 			}
-			return fmt.Sprintf("certificateVerification=%s TLSObserved=%t", facts.CertificateVerification, facts.Observed)
+			if fields, e := observedProjectFields(o); e == nil && fields != nil {
+				parts = append(parts, describeProjectFields(fields))
+			}
+			return strings.Join(parts, " ")
 		},
 		HumanDescription: func(d delivery.Description) string {
 			o, id, e := dtrack.ValidateDescription(d)
@@ -166,6 +170,11 @@ func sameDTrackPolicy(a, b delivery.Description, reconcile bool) bool {
 		return false
 	}
 	if ao.AllowHTTP != bo.AllowHTTP || ao.InsecureSkipVerify != bo.InsecureSkipVerify {
+		return false
+	}
+	// A retry sends the requested project fields again, and a reconciliation
+	// reads them back against the recorded request, so both need them unchanged.
+	if !reflect.DeepEqual([]any{ao.Tags, ao.Parent, ao.IsLatest}, []any{bo.Tags, bo.Parent, bo.IsLatest}) {
 		return false
 	}
 	return true

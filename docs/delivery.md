@@ -26,6 +26,56 @@ The adapter sends a multipart SBOM and records a validated event token from HTTP
 
 Credentials must allow the requested BOM upload and, if enabled, project creation. Provision a scoped receiver account appropriate for the projects. Rio does not create the account or manage its access policy.
 
+### Tags, parent and latest version
+
+Dependency-Track reads a project's tags, parent and "latest version" flag only from the upload request, never from the SBOM. Set them on the target, and override them per artifact like `project`:
+
+```yaml
+delivery:
+  targets:
+    security:
+      type: dependency-track
+      url: https://dtrack.example.org
+      autoCreate: true
+      tags: [owner:payments, team:checkout]
+      parent: {name: Payments, version: all}
+      isLatest: true
+      overrides:
+        agent:
+          tags: [owner:platform]
+          parent: {uuid: 6b49ae15-eded-4780-a7c0-2bc1b9001cd5}
+```
+
+- `tags` is the project's **complete tag set**: the server replaces all tags with it. An omitted `tags` sends nothing and leaves the tags alone. An upload cannot clear tags, so `tags: []` is refused. Tags are literal, lowercase strings without commas or edge whitespace, at most 255 characters each, and unique; Dependency-Track lowercases tag names and splits the request on commas.
+- `parent` is exactly one of `{uuid}` or `{name, version}` of an existing project.
+- `isLatest: true` marks this version as the project's latest; the previous latest version loses the flag.
+- `parent` and `isLatest` need a name/version or default subject project with `autoCreate: true`. With `project: {uuid}` or without `autoCreate` they could never apply, so they are refused before any request (`rio plan` refuses them too). `tags` work with every selector.
+
+The adapter sends `projectTags`, `parentUUID` or `parentName`/`parentVersion`, and `isLatest` only when configured. A target without them sends exactly what it sent before.
+
+What Dependency-Track 5.2.1 does with them, per case (verified against a real 5.2.1 server, see the [integration evidence](../tools/demo-delivery/integration/README.md#project-tags-parent-and-latest-version-on-521)):
+
+| Upload | Tags | Parent and isLatest |
+|---|---|---|
+| Creates the project: a new name/version with `autoCreate: true` and a key with `PROJECT_CREATION_UPLOAD`, `PORTFOLIO_MANAGEMENT_CREATE` or `PORTFOLIO_MANAGEMENT` | Set | Set |
+| Existing project, key with `PORTFOLIO_MANAGEMENT` or `PORTFOLIO_MANAGEMENT_UPDATE` | Replaced by the request's set | Ignored, 200 |
+| Existing project, key without either, for example `BOM_UPLOAD` only | **Unchanged**; the server logs a warning and still answers 200 | Ignored, 200 |
+| `parent` names a project that does not exist | Upload fails with 404 | |
+
+Each version is its own Dependency-Track project. With a typical CI key (`BOM_UPLOAD` and `PROJECT_CREATION_UPLOAD`), tags, parent and latest therefore land on the **first upload of each new version**. Changing tags on an existing version needs `PORTFOLIO_MANAGEMENT_UPDATE`; parent and latest cannot be changed by an upload at all. A missing parent is its own non-retryable failure, `parent_not_found`, naming the parent selector; create the parent first.
+
+Because a 200 does not say whether the fields were applied, Rio reads the project back after an accepted upload, and again on `delivery reconcile`. The receipt's `projectFields` lists each requested value and its state:
+
+| State | Meaning |
+|---|---|
+| `observed` | The read-back shows the requested value |
+| `different` | The read-back shows another value, recorded as `observed`, for example tags a key without `PORTFOLIO_MANAGEMENT_UPDATE` could not change |
+| `unknown` | The project was not read. `readBack` says why: `not-attempted` (no accepted upload), `forbidden` (the key lacks `VIEW_PORTFOLIO`), `not-found`, `transient`, `unavailable` or `invalid-response` |
+
+A requested value is never recorded as applied without being seen. The read-back needs `VIEW_PORTFOLIO`; without it every value stays `unknown`. Only the compared fields are kept, never the response body. `rio plan` and `rio delivery plan` show the effective tags, parent and `isLatest` per artifact offline, all `unknown`. A retry or reconciliation refuses with `destination_drift` if they changed since the recorded attempt.
+
+Tags route findings: a notification rule's filter such as `"owner:payments" in subject.project.tags` sends them to the owning team. Keep the three apart per application: a `Fact sheet` link in the SBOM for who is responsible ([enrichment](enrichment.md#ownership-reporting-and-routing)), an `owner:` tag for who is notified, and `securityContact` for the public reporting channel. Rio does not set project properties, team access or collection logic; these need separate API calls.
+
 ## TLS and HTTP
 
 HTTPS performs certificate and hostname verification by default. `caFile: certs/receiver-ca.pem` adds a public CA certificate using a manifest-relative path. Read-only plan describes the file without opening it; only requested native network work resolves transport files and credentials.

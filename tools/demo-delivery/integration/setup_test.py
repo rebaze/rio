@@ -49,6 +49,25 @@ class SetupTests(unittest.TestCase):
                     setup.bootstrap(root, state, private)
                 self.assertFalse(any(call.args[2].endswith("forceChangePassword") for call in request.call_args_list))
 
+    def test_server_version_selects_a_pinned_image(self):
+        with tempfile.TemporaryDirectory() as parent:
+            default = setup.create(Path(parent) / "default")
+            self.assertEqual(default["serverVersion"], "5.1.1")
+            chosen = setup.create(Path(parent) / "chosen", "5.2.1")
+            state, private = setup.load(Path(parent) / "chosen")
+            self.assertEqual(state["serverVersion"], "5.2.1")
+            image = setup.environment(state, private)["RIO_DTRACK_IMAGE"]
+            self.assertRegex(image, r"^dependencytrack/apiserver:5\.2\.1@sha256:[a-f0-9]{64}$")
+            with self.assertRaises(setup.SetupError):
+                setup.create(Path(parent) / "unknown", "4.14.0")
+            self.assertFalse((Path(parent) / "unknown").exists())
+            # Fixtures recorded before the choice existed ran 5.1.1.
+            legacy = json.loads((Path(parent) / "default" / "state.json").read_text())
+            del legacy["serverVersion"]
+            (Path(parent) / "default" / "state.json").write_text(json.dumps(legacy))
+            self.assertEqual(setup.load(Path(parent) / "default")[0]["serverVersion"], "5.1.1")
+            self.assertEqual(chosen["serverVersion"], "5.2.1")
+
 
 if __name__ == "__main__":
     unittest.main()

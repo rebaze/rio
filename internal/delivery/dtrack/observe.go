@@ -57,5 +57,8 @@ func (c *client) Observe(ctx context.Context, refs []delivery.Reference) (o deli
 	if result.Processing {
 		o.Value = "processing"
 	}
+	if c.options.requestsProjectFields() {
+		attachProject(&o, c.readProject(ctx))
+	}
 	return o, nil
 }

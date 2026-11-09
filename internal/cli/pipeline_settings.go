@@ -27,6 +27,9 @@ type planPair struct {
 	Project       map[string]string `json:"project,omitempty"`
 	ProjectSource string            `json:"projectSource,omitempty"`
 	Transport     receipt.Transport `json:"transport"`
+	// ProjectFields are the requested Dependency-Track tags, parent and
+	// isLatest, all unknown until a delivery reads the project back.
+	ProjectFields *receipt.ProjectFields `json:"projectFields,omitempty"`
 }
 
 func effectiveOutput(cmd *cobra.Command, g *globalOptions, m *manifest.Manifest) string {
@@ -138,7 +141,11 @@ func describeRouting(c delivery.Config, inputs []resolvedArtifact, o pipelineOpt
 			if e != nil {
 				return r, nil, e
 			}
-			pair := planPair{ArtifactID: input.Spec.ID, Target: label, Project: project, Transport: transport}
+			fields, e := requestedProjectFields(d)
+			if e != nil {
+				return r, nil, e
+			}
+			pair := planPair{ArtifactID: input.Spec.ID, Target: label, Project: project, Transport: transport, ProjectFields: fields}
 			if d.Type == "dependency-track" {
 				opts, _, e := dtrack.ValidateDescription(d)
 				if e != nil {
@@ -172,7 +179,7 @@ func (r *invocation) applyRouting(routing planRouting, exclusions []receipt.Excl
 	r.doc.Targets = routing.Targets
 	r.doc.Exclusions = append(r.doc.Exclusions, exclusions...)
 	for _, p := range routing.Pairs {
-		r.doc.Deliveries = append(r.doc.Deliveries, receipt.Delivery{ArtifactID: p.ArtifactID, Target: p.Target, Project: p.Project, ProjectSource: p.ProjectSource, State: "unattempted", Transport: p.Transport})
+		r.doc.Deliveries = append(r.doc.Deliveries, receipt.Delivery{ArtifactID: p.ArtifactID, Target: p.Target, Project: p.Project, ProjectSource: p.ProjectSource, State: "unattempted", Transport: p.Transport, ProjectFields: p.ProjectFields})
 	}
 }
 func declaredExclusions(m *manifest.Manifest) []receipt.Exclusion {

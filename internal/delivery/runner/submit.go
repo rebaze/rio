@@ -175,6 +175,12 @@ func submitWithJournal(ctx context.Context, p Prepared, path string, create func
 	case "accepted":
 		return r, nil
 	case "rejected":
+		// A missing Dependency-Track parent is its own failure: it names the
+		// parent selector, and resubmitting cannot help until the parent exists.
+		var adapterErr *delivery.Error
+		if errors.As(submitErr, &adapterErr) && adapterErr.Code == "parent_not_found" {
+			return Failure(r, submitErr, 5)
+		}
 		return Failure(r, delivery.Fail("upload_rejected", "receiver rejected upload"), 5)
 	default:
 		if submitErr == nil {

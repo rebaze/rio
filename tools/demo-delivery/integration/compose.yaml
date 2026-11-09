@@ -15,7 +15,8 @@ services:
     labels:
       io.rebaze.rio.test-owner: ${RIO_DTRACK_TEST_OWNER:?}
   apiserver:
-    image: dependencytrack/apiserver:5.1.1@sha256:764dee822521e43d50ad7d0ca5bc35f48968b6b098ef97945e2ecac8c55d52e5
+    # setup.py selects a pinned image per server version (5.1.1 or 5.2.1).
+    image: ${RIO_DTRACK_IMAGE:?}
     depends_on:
       database:
         condition: service_healthy

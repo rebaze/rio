@@ -1,7 +1,6 @@
 package dtrack
 
 import (
-	"encoding/json"
 	"strings"
 
 	"github.com/rebaze/rio/internal/delivery"
@@ -14,9 +13,6 @@ type TLSFacts struct {
 	CertificateVerification string `json:"certificateVerification"`
 	Observed                bool   `json:"observed"`
 }
-type transportDetails struct {
-	TLS *TLSFacts `json:"tls,omitempty"`
-}
 
 func (c *client) addTLS(o *delivery.Observation, observed bool) {
 	if !strings.HasPrefix(c.options.URL, "https://") {
@@ -26,17 +22,16 @@ func (c *client) addTLS(o *delivery.Observation, observed bool) {
 	if c.options.InsecureSkipVerify {
 		verification = "disabled"
 	}
-	o.Details, _ = json.Marshal(transportDetails{TLS: &TLSFacts{verification, observed}})
+	d, _ := readDetails(*o)
+	d.TLS = &TLSFacts{verification, observed}
+	setDetails(o, d)
 }
 
 // ReadTLS validates the complete adapter-owned detail without interpreting old
 // absent details as observed transport evidence.
 func ReadTLS(o delivery.Observation) (*TLSFacts, error) {
-	if o.Details == nil {
-		return nil, nil
-	}
-	var d transportDetails
-	if delivery.DecodeJSON(o.Details, &d, true) != nil {
+	d, e := readDetails(o)
+	if e != nil {
 		return nil, delivery.Fail("invalid_record", "Dependency-Track TLS details")
 	}
 	if d.TLS != nil && d.TLS.CertificateVerification != "enforced" && d.TLS.CertificateVerification != "disabled" {
@@ -58,6 +53,15 @@ func ValidateTransport(d delivery.Description, observations []delivery.Observati
 		verification = "disabled"
 	}
 	for _, o := range observations {
+		project, err := ReadProject(o)
+		if err != nil {
+			return err
+		}
+		// Project facts follow an accepted upload or an activity query, and
+		// their requested values are exactly the intent's.
+		if project != nil && (!options.requestsProjectFields() || !project.matchesIntent(options) || !(o.Kind == "acknowledgment" && o.Value == "accepted" || o.Kind == "activity")) {
+			return delivery.Fail("invalid_record", "Dependency-Track project facts contradict intent or observation")
+		}
 		facts, err := ReadTLS(o)
 		if err != nil {
 			return err
