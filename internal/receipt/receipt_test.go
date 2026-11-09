@@ -122,3 +122,10 @@ func TestProjectFieldsRejectContradictoryDifferences(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestProjectFieldsAcceptVersionlessParentName(t *testing.T) {
+	f := &ProjectFields{ReadBack: "not-attempted", Parent: &ProjectParentField{Requested: ProjectParent{Name: "Payments"}, State: "unknown"}}
+	if e := validProjectFields(f, "dependency-track"); e != nil {
+		t.Fatal(e)
+	}
+}

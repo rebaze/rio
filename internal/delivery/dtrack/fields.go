@@ -61,7 +61,9 @@ func (o Options) writeProjectFields(mw *multipart.Writer) {
 			mw.WriteField("parentUUID", p.UUID)
 		} else {
 			mw.WriteField("parentName", p.Name)
-			mw.WriteField("parentVersion", p.Version)
+			if p.Version != "" {
+				mw.WriteField("parentVersion", p.Version)
+			}
 		}
 	}
 	if o.IsLatest != nil {
@@ -82,6 +84,9 @@ func (p Parent) matches(got Parent) bool {
 func (p Parent) selector() string {
 	if p.UUID != "" {
 		return "parent uuid=" + p.UUID
+	}
+	if p.Version == "" {
+		return "parent name=" + p.Name + " (no version)"
 	}
 	return "parent name=" + p.Name + " version=" + p.Version
 }

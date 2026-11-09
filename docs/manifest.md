@@ -365,7 +365,7 @@ Dependency-Track targets, and their per-artifact `overrides`, also accept the pr
 | Key | Value | Refused before any request (`rio plan` too) |
 |---|---|---|
 | `tags` | A list of tag strings, the project's complete tag set | An empty list; a blank, duplicate or uppercase tag; one with a comma, edge whitespace or a control character; one longer than 255 characters |
-| `parent` | `{uuid}` or `{name, version}` of an existing project | Both forms, a name without a version, an invalid UUID, any other key; with `project: {uuid}` or without `autoCreate: true` |
+| `parent` | `{uuid}`, or `{name}` with an optional `version`, of an existing project; without `version` it names a version-less project | Both forms, a blank version, an invalid UUID, any other key; with `project: {uuid}` or without `autoCreate: true` |
 | `isLatest` | `true` or `false` | A non-boolean; with `project: {uuid}` or without `autoCreate: true` |
 
 `rio plan` previews the same effective settings and routing offline without building transforms or opening context/SBOM contents. A project selected from the normalized subject stays explicitly unresolved until execution. Optional stage commands remain available, each with its own scoped receipt.

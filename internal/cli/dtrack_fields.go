@@ -93,6 +93,8 @@ func parentLabel(p receipt.ProjectParent) string {
 	switch {
 	case p.UUID != "":
 		return p.UUID
+	case p.Name != "" && p.Version == "":
+		return p.Name
 	case p.Name != "":
 		return p.Name + "@" + p.Version
 	}

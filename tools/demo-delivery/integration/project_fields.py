@@ -89,6 +89,16 @@ class Reader:
         check(status == 200, "harness project read failed")
         return project
 
+    def create(self, name):
+        """Create a version-less grouping project, as parents usually are."""
+        import urllib.request
+        body = json.dumps({"name": name, "classifier": "APPLICATION", "active": True}).encode()
+        request = urllib.request.Request(self.base + "/api/v1/project", data=body, method="PUT",
+                                         headers={"X-Api-Key": self.key, "Accept": "application/json", "Content-Type": "application/json"})
+        with urllib.request.build_opener(setup.NoRedirect()).open(request, timeout=30) as response:
+            check(response.status == 201, "harness could not create the version-less parent")
+            return json.loads(response.read())["uuid"]
+
     def wait(self, event_token, deadline=120):
         end = time.monotonic() + deadline
         while time.monotonic() < end:
@@ -173,7 +183,7 @@ def main():
             return {"exists": False}
         parent = project.get("parent")
         return {"exists": True, "tags": sorted(t["name"] for t in project.get("tags", [])), "isLatest": project.get("isLatest"),
-                "parent": {"name": parent["name"], "version": parent["version"], "uuid": placeholder(parent["uuid"])} if parent else None}
+                "parent": {"name": parent["name"], "version": parent.get("version"), "uuid": placeholder(parent["uuid"])} if parent else None}
 
     parent_name, parent_version = "rio-it-parent-" + run_id, "all"
     product = "rio-it-product-" + run_id
@@ -225,6 +235,15 @@ def main():
         seen = observe(missing, "1.0.0")
         check(d["state"] == "rejected" and d["errorCode"] == "parent_not_found" and d["responses"][0]["httpStatus"] == 404 and not seen["exists"], "missing-parent: not a distinct 404 failure")
         record("missing-parent", "ci-view", missing, "1.0.0", d, "upload fails with 404, parent_not_found, no project created", seen)
+
+        # 5b. A version-less parent named without a version (#213).
+        group = "rio-it-group-" + run_id
+        placeholder(reader.create(group))
+        grouped = "rio-it-grouped-" + run_id
+        d = run("parent-without-version", "ci-view", grouped, "1.0.0", "      parent: {name: " + group + "}\n")
+        seen = observe(grouped, "1.0.0")
+        check(d["projectFields"]["parent"]["state"] == "observed" and seen["parent"]["name"] == group and "version" not in d["projectFields"]["parent"]["requested"], "parent-without-version: not observed")
+        record("parent-without-version", "ci-view", grouped, "1.0.0", d, "a version-less parent named without a version is set and observed", seen)
 
         # 6. #202 subject links on the project, cleared by an upload without them.
         linked = "rio-it-links-" + run_id

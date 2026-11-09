@@ -4,13 +4,10 @@
   "scenarios": [
     {
       "name": "name-version",
-      "payloadSHA256": "b8dd7f1eeb94c7af4abbdb04ed19a3fda4b0d76db0dd8a3e31585e35e1ed139f",
+      "payloadSHA256": "b4423b1c853329252b24b2a935e9530770faddf1c89d39fb3f8d475144be1834",
       "interpretation": "accepted",
       "inventoryVerified": true,
       "activities": [
-        "processing",
-        "processing",
-        "processing",
         "processing",
         "processing",
         "processing",
@@ -45,32 +42,6 @@
           "httpStatus": 200,
           "response": {
             "processing": true
-          }
-        },
-        {
-          "method": "GET",
-          "path": "/api/v1/event/token/\u003cevent-token\u003e",
-          "httpStatus": 200,
-          "response": {
-            "processing": true
-          }
-        },
-        {
-          "method": "GET",
-          "path": "/api/v1/event/token/\u003cevent-token\u003e",
-          "httpStatus": 200,
-          "response": {
-            "processing": true,
-            "status": "RUNNING"
-          }
-        },
-        {
-          "method": "GET",
-          "path": "/api/v1/event/token/\u003cevent-token\u003e",
-          "httpStatus": 200,
-          "response": {
-            "processing": true,
-            "status": "RUNNING"
           }
         },
         {
@@ -176,11 +147,10 @@
     },
     {
       "name": "uuid",
-      "payloadSHA256": "a406fb3dc43026e183cee8751b0a010ead7a5f68874d36f2c41b283352072d20",
+      "payloadSHA256": "51f537d236c3abdb52aa8866832363672e27180307f3e768e3f8c9ad3613dcfa",
       "interpretation": "accepted",
       "inventoryVerified": true,
       "activities": [
-        "processing",
         "processing",
         "processing",
         "processing",
@@ -328,15 +298,6 @@
           "path": "/api/v1/event/token/\u003cevent-token\u003e",
           "httpStatus": 200,
           "response": {
-            "processing": true,
-            "status": "RUNNING"
-          }
-        },
-        {
-          "method": "GET",
-          "path": "/api/v1/event/token/\u003cevent-token\u003e",
-          "httpStatus": 200,
-          "response": {
             "processing": false,
             "status": "COMPLETED"
           }
@@ -345,7 +306,7 @@
     },
     {
       "name": "absent-creation-disabled",
-      "payloadSHA256": "ad5eeae75abc94e11b53c0a49b1543f367aed3cb95fa9f9ccc7cd26c1f403387",
+      "payloadSHA256": "2344b1e547940888dfc60f182d14f0b40983299f46617b6611fcb5951c8713d3",
       "interpretation": "rejected",
       "requests": [
         {
@@ -364,7 +325,7 @@
     },
     {
       "name": "absent-creation-enabled",
-      "payloadSHA256": "ad5eeae75abc94e11b53c0a49b1543f367aed3cb95fa9f9ccc7cd26c1f403387",
+      "payloadSHA256": "2344b1e547940888dfc60f182d14f0b40983299f46617b6611fcb5951c8713d3",
       "interpretation": "accepted",
       "inventoryVerified": true,
       "requests": [
@@ -386,7 +347,7 @@
     },
     {
       "name": "denied-permissions",
-      "payloadSHA256": "ad5eeae75abc94e11b53c0a49b1543f367aed3cb95fa9f9ccc7cd26c1f403387",
+      "payloadSHA256": "2344b1e547940888dfc60f182d14f0b40983299f46617b6611fcb5951c8713d3",
       "interpretation": "rejected",
       "requests": [
         {
@@ -403,7 +364,7 @@
     },
     {
       "name": "invalid-credential",
-      "payloadSHA256": "ad5eeae75abc94e11b53c0a49b1543f367aed3cb95fa9f9ccc7cd26c1f403387",
+      "payloadSHA256": "2344b1e547940888dfc60f182d14f0b40983299f46617b6611fcb5951c8713d3",
       "interpretation": "rejected",
       "requests": [
         {

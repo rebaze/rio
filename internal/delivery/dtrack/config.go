@@ -40,7 +40,8 @@ type Options struct {
 	IsLatest *bool     `json:"isLatest,omitempty"`
 }
 
-// Parent selects an existing parent project by UUID or by name and version.
+// Parent selects an existing parent project by UUID, or by name and an
+// optional version; an empty Version selects a version-less project.
 type Parent struct {
 	UUID    string `json:"uuid,omitempty"`
 	Name    string `json:"name,omitempty"`
@@ -81,7 +82,7 @@ func describeTags(n yaml.Node) ([]string, error) {
 func describeParent(n yaml.Node) (*Parent, error) {
 	pm, e := delivery.YAMLMap(n, "uuid", "name", "version")
 	if e != nil {
-		return nil, delivery.Fail("invalid_config", "parent must be {uuid} or {name, version}")
+		return nil, delivery.Fail("invalid_config", "parent must be {uuid} or {name} with an optional version")
 	}
 	_, uuid := pm["uuid"]
 	_, name := pm["name"]
@@ -93,15 +94,19 @@ func describeParent(n yaml.Node) (*Parent, error) {
 			return nil, delivery.Fail("invalid_config", "parent.uuid")
 		}
 		p.UUID = strings.ToLower(p.UUID)
-	case !uuid && name && version:
+	case !uuid && name:
 		if p.Name, e = delivery.YAMLString(pm["name"], "parent.name"); e != nil {
 			return nil, e
 		}
-		if p.Version, e = delivery.YAMLString(pm["version"], "parent.version"); e != nil {
-			return nil, e
+		// Without version the parent is a version-less project, as grouping
+		// parents usually are; Dependency-Track looks it up with a null version.
+		if version {
+			if p.Version, e = delivery.YAMLString(pm["version"], "parent.version"); e != nil {
+				return nil, e
+			}
 		}
 	default:
-		return nil, delivery.Fail("invalid_config", "parent must be exactly one of {uuid} or {name, version}")
+		return nil, delivery.Fail("invalid_config", "parent must be exactly one of {uuid} or {name} with an optional version")
 	}
 	return &p, nil
 }
