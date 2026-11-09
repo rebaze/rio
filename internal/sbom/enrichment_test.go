@@ -3,12 +3,14 @@ package sbom_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/rebaze/rio/internal/enrichment"
+	"github.com/rebaze/rio/internal/sbom"
 )
 
 func enrichmentFields(values map[string]string, replace ...string) *enrichment.Resolved {
@@ -180,5 +182,156 @@ func TestEnrichmentRetiresOldContactWhenNewContactAlreadyExists(t *testing.T) {
 	want := []any{map[string]any{"type": "security-contact", "url": "mailto:new@example.com", "comment": "Keep evidence"}, map[string]any{"type": "vcs", "url": "https://example.com/repo"}}
 	if diff := cmp.Diff(want, rec.Changes[0].After); diff != "" {
 		t.Fatal(diff)
+	}
+}
+
+const linkDocument = `{"bomFormat":"CycloneDX","specVersion":"%s","metadata":{"component":{"type":"application","name":"widget","externalReferences":[%s]}}}`
+
+func linkDoc(t *testing.T, spec, refs string) *sbom.Document {
+	t.Helper()
+	return load(t, []byte(fmt.Sprintf(linkDocument, spec, refs)))
+}
+
+func subjectRefs(t *testing.T, d *sbom.Document) []any {
+	t.Helper()
+	b, _ := d.Bytes()
+	refs, _ := tree(t, b).(map[string]any)["metadata"].(map[string]any)["component"].(map[string]any)["externalReferences"].([]any)
+	return refs
+}
+
+const factSheet = `{"url":"https://ea.example/factsheet/1","type":"other"}`
+
+func TestEnrichmentLinksAddsLabelledAndTypedReferences(t *testing.T) {
+	d := linkDoc(t, "1.6", `{"type":"vcs","url":"https://example.com/repo"}`)
+	cfg := enrichmentFields(map[string]string{
+		"subject.links[Fact sheet]": factSheet,
+		"subject.issueTracker":      `"https://example.com/issues"`,
+		"subject.releaseNotes":      `"https://example.com/releases"`,
+		"subject.advisories":        `"https://example.com/advisories"`,
+	})
+	rec, err := d.Enrich(cfg, "rio.yaml", "digest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []any{
+		map[string]any{"type": "vcs", "url": "https://example.com/repo"},
+		map[string]any{"type": "advisories", "url": "https://example.com/advisories"},
+		map[string]any{"type": "issue-tracker", "url": "https://example.com/issues"},
+		map[string]any{"type": "other", "url": "https://ea.example/factsheet/1", "comment": "Fact sheet"},
+		map[string]any{"type": "release-notes", "url": "https://example.com/releases"},
+	}
+	if diff := cmp.Diff(want, subjectRefs(t, d)); diff != "" {
+		t.Fatal(diff)
+	}
+	if len(rec.Changes) != 4 {
+		t.Fatalf("want one change per leaf: %+v", rec.Changes)
+	}
+	link := rec.Changes[2]
+	if link.Field != "subject.links[Fact sheet]" || link.Target != "/metadata/component/externalReferences" || link.Assertion != "producer" ||
+		link.Source != (sbom.EnrichmentSource{Kind: "manifest", Path: "rio.yaml", SHA256: "digest", Selector: "enrichment.subject.links[Fact sheet]"}) {
+		t.Fatalf("link change = %+v", link)
+	}
+	// Repeat application adds nothing.
+	again, err := d.Enrich(cfg, "rio.yaml", "digest")
+	if err != nil || len(again.Changes) != 0 {
+		t.Fatalf("repeat: %+v, %v", again, err)
+	}
+}
+
+func TestEnrichmentLinksLeavesEquivalentReferenceAlone(t *testing.T) {
+	// Same type and URL counts as present whatever its comment says.
+	for _, existing := range []string{
+		`{"type":"other","url":"https://ea.example/factsheet/1"}`,
+		`{"type":"other","url":"https://ea.example/factsheet/1","comment":"Generator note"}`,
+		`{"type":"other","url":"https://ea.example/factsheet/1","comment":"Fact sheet"}`,
+	} {
+		d := linkDoc(t, "1.6", existing)
+		before, _ := d.Bytes()
+		rec, err := d.Enrich(enrichmentFields(map[string]string{"subject.links[Fact sheet]": factSheet}), "rio.yaml", "digest")
+		if err != nil || len(rec.Changes) != 0 {
+			t.Fatalf("%s: %+v, %v", existing, rec, err)
+		}
+		after, _ := d.Bytes()
+		if !bytes.Equal(before, after) {
+			t.Fatalf("changed equivalent reference: %s", after)
+		}
+	}
+}
+
+func TestEnrichmentLinksConflictAndExplicitReplacement(t *testing.T) {
+	refs := `{"type":"other","url":"https://ea.example/factsheet/old","comment":"Fact sheet"},{"type":"other","url":"https://ea.example/unrelated","comment":"Wiki"},{"type":"vcs","url":"https://example.com/repo","comment":"Fact sheet"}`
+	d := linkDoc(t, "1.6", refs)
+	cfg := enrichmentFields(map[string]string{"subject.links[Fact sheet]": factSheet})
+	_, err := d.Enrich(cfg, "rio.yaml", "digest")
+	if err == nil || !strings.Contains(err.Error(), "subject.links[Fact sheet] in enrichment.replace") {
+		t.Fatalf("conflict accepted or unhelpful: %v", err)
+	}
+	cfg.Fields[0].Replace = true
+	rec, err := d.Enrich(cfg, "rio.yaml", "digest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []any{
+		map[string]any{"type": "other", "url": "https://ea.example/factsheet/1", "comment": "Fact sheet"},
+		map[string]any{"type": "other", "url": "https://ea.example/unrelated", "comment": "Wiki"},
+		map[string]any{"type": "vcs", "url": "https://example.com/repo", "comment": "Fact sheet"},
+	}
+	if diff := cmp.Diff(want, subjectRefs(t, d)); diff != "" {
+		t.Fatal(diff)
+	}
+	if len(rec.Changes) != 1 || len(rec.Changes[0].Before.([]any)) != 3 {
+		t.Fatalf("replacement record = %+v", rec)
+	}
+}
+
+func TestEnrichmentLinksOnCycloneDX15(t *testing.T) {
+	d := linkDoc(t, "1.5", "")
+	if _, err := d.Enrich(enrichmentFields(map[string]string{
+		"subject.links[Fact sheet]": factSheet,
+		"subject.releaseNotes":      `"https://example.com/releases"`,
+	}), "rio.yaml", "digest"); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(subjectRefs(t, d)); got != 2 {
+		t.Fatalf("refs = %d", got)
+	}
+	d = linkDoc(t, "1.5", "")
+	_, err := d.Enrich(enrichmentFields(map[string]string{"subject.links[Disclosure]": `{"url":"https://example.com/.well-known/security.txt","type":"rfc-9116"}`}), "rio.yaml", "digest")
+	if err == nil || !strings.Contains(err.Error(), "rfc-9116 requires CycloneDX 1.6 or newer; set output.specVersionFloor to 1.6") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestValidateEnrichmentConfigLinkTypes(t *testing.T) {
+	if err := sbom.ValidateEnrichmentConfig(enrichmentFields(map[string]string{"subject.links[Threat model]": `{"url":"https://example.com/tm","type":"threat-model"}`})); err != nil {
+		t.Fatal(err)
+	}
+	err := sbom.ValidateEnrichmentConfig(enrichmentFields(map[string]string{"subject.links[Fact sheet]": `{"url":"https://example.com/fs","type":"factsheet"}`}))
+	if err == nil || !strings.Contains(err.Error(), `enrichment.subject.links[Fact sheet]: type "factsheet" is not a CycloneDX 1.6 external reference type`) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestEnrichmentLinksRetireStaleLabelWhenURLAlreadyPresent(t *testing.T) {
+	refs := `{"type":"other","url":"https://ea.example/factsheet/old","comment":"Fact sheet"},{"type":"other","url":"https://ea.example/factsheet/1","comment":"Generator note"},{"type":"vcs","url":"https://example.com/repo"}`
+	d := linkDoc(t, "1.6", refs)
+	cfg := enrichmentFields(map[string]string{"subject.links[Fact sheet]": factSheet})
+	if _, err := d.Enrich(cfg, "rio.yaml", "digest"); err == nil || !strings.Contains(err.Error(), "subject.links[Fact sheet] in enrichment.replace") {
+		t.Fatalf("stale label hidden by the present URL: %v", err)
+	}
+	cfg.Fields[0].Replace = true
+	rec, err := d.Enrich(cfg, "rio.yaml", "digest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []any{
+		map[string]any{"type": "other", "url": "https://ea.example/factsheet/1", "comment": "Generator note"},
+		map[string]any{"type": "vcs", "url": "https://example.com/repo"},
+	}
+	if diff := cmp.Diff(want, subjectRefs(t, d)); diff != "" {
+		t.Fatal(diff)
+	}
+	if len(rec.Changes) != 1 || len(rec.Changes[0].Before.([]any)) != 3 {
+		t.Fatalf("retirement not recorded: %+v", rec)
 	}
 }

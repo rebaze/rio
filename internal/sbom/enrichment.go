@@ -100,13 +100,113 @@ func KnownSPDXException(id string) bool {
 	return err == nil && exceptions[id]
 }
 
-// ValidateEnrichmentConfig uses Rio's embedded SPDX vocabulary. The manifest
-// loader also calls it so plan and normalize reject the same invalid ID.
+var (
+	refTypesOnce sync.Once
+	refTypes     map[string]map[string]bool
+	refTypesErr  error
+)
+
+// referenceTypes reads the external reference type enumeration of every
+// embedded BOM schema, keyed by spec version.
+func referenceTypes() (map[string]map[string]bool, error) {
+	refTypesOnce.Do(func() {
+		entries, err := schemaFS.ReadDir("schemas")
+		if err != nil {
+			refTypesErr = err
+			return
+		}
+		refTypes = map[string]map[string]bool{}
+		for _, entry := range entries {
+			name := entry.Name()
+			if !strings.HasPrefix(name, "bom-") {
+				continue
+			}
+			var schema struct {
+				Definitions struct {
+					ExternalReference struct {
+						Properties struct {
+							Type struct {
+								Enum []string `json:"enum"`
+							} `json:"type"`
+						} `json:"properties"`
+					} `json:"externalReference"`
+				} `json:"definitions"`
+			}
+			data, err := schemaFS.ReadFile("schemas/" + name)
+			if err == nil {
+				err = json.Unmarshal(data, &schema)
+			}
+			if err != nil {
+				refTypesErr = fmt.Errorf("reading embedded schema %s: %w", name, err)
+				return
+			}
+			version := strings.TrimSuffix(strings.TrimPrefix(name, "bom-"), ".schema.json")
+			types := map[string]bool{}
+			for _, t := range schema.Definitions.ExternalReference.Properties.Type.Enum {
+				types[t] = true
+			}
+			refTypes[version] = types
+		}
+		if len(refTypes["1.6"]) == 0 {
+			refTypesErr = errors.New("the embedded CycloneDX 1.6 schema lists no external reference types")
+		}
+	})
+	return refTypes, refTypesErr
+}
+
+// checkReferenceType refuses a reference type the document's spec version
+// does not define, naming the oldest version that does. A version without an
+// embedded schema is not checked here; schema validation reports it.
+func (d *Document) checkReferenceType(kind string) error {
+	types, err := referenceTypes()
+	if err != nil {
+		return err
+	}
+	known, ok := types[d.specVersion]
+	if !ok || known[kind] {
+		return nil
+	}
+	oldest := ""
+	for version, set := range types {
+		if set[kind] && (oldest == "" || compareSpecVersions(version, oldest) < 0) {
+			oldest = version
+		}
+	}
+	if oldest == "" {
+		return fmt.Errorf("external reference type %s is not defined by CycloneDX", kind)
+	}
+	return fmt.Errorf("external reference type %s requires CycloneDX %s or newer; set output.specVersionFloor to %s", kind, oldest, maxVersion(oldest, "1.5"))
+}
+
+func maxVersion(a, b string) string {
+	if compareSpecVersions(a, b) < 0 {
+		return b
+	}
+	return a
+}
+
+// ValidateEnrichmentConfig uses Rio's embedded SPDX and CycloneDX
+// vocabularies. The manifest loader also calls it so plan and normalize
+// reject the same invalid value.
 func ValidateEnrichmentConfig(cfg *enrichment.Resolved) error {
 	if cfg == nil {
 		return nil
 	}
 	for _, f := range cfg.Fields {
+		if _, ok := enrichment.LinkLabel(f.Field); ok {
+			var link enrichment.LinkValue
+			if err := json.Unmarshal(f.Value, &link); err != nil {
+				return fmt.Errorf("%s: invalid link: %w", f.Source, err)
+			}
+			types, err := referenceTypes()
+			if err != nil {
+				return fmt.Errorf("reading embedded CycloneDX reference types: %w", err)
+			}
+			if !types["1.6"][link.Type] {
+				return fmt.Errorf("%s: type %q is not a CycloneDX 1.6 external reference type", f.Source, link.Type)
+			}
+			continue
+		}
 		if f.Field != "dataLicense" {
 			continue
 		}
@@ -202,10 +302,17 @@ func (d *Document) Enrich(cfg *enrichment.Resolved, manifestPath, manifestSHA st
 }
 
 func (d *Document) enrichField(f enrichment.Field, value any) (target string, before, after any, changed bool, err error) {
+	if kind, ok := enrichment.ReferenceTypes[f.Field]; ok {
+		return d.enrichReference(f, value.(string), kind)
+	}
+	if label, ok := enrichment.LinkLabel(f.Field); ok {
+		var link enrichment.LinkValue
+		if err := json.Unmarshal(f.Value, &link); err != nil {
+			return "", nil, nil, false, fmt.Errorf("invalid link: %w", err)
+		}
+		return d.enrichLink(f, label, link)
+	}
 	switch f.Field {
-	case "subject.securityContact", "subject.website", "subject.documentation", "subject.support":
-		kinds := map[string]string{"subject.securityContact": "security-contact", "subject.website": "website", "subject.documentation": "documentation", "subject.support": "support"}
-		return d.enrichReference(f, value.(string), kinds[f.Field])
 	case "dataLicense":
 		parent := d.metadata(true)
 		before = parent["licenses"]
@@ -315,6 +422,9 @@ func sameDataLicense(existing any, id string) bool {
 }
 
 func (d *Document) enrichReference(f enrichment.Field, uri, kind string) (string, any, any, bool, error) {
+	if err := d.checkReferenceType(kind); err != nil {
+		return "", nil, nil, false, err
+	}
 	parent := d.metadataComponent(true)
 	before, after, changed, err := mergeReference(parent, kind, uri, f.Replace)
 	if err != nil {
@@ -378,6 +488,60 @@ func mergeReference(parent map[string]any, kind, uri string, replace bool) (befo
 	}
 	parent["externalReferences"] = next
 	return before, next, true, nil
+}
+
+// enrichLink reconciles one labelled reference. A reference with the same type
+// and URL is the link, whatever its comment says, and stays untouched. One with
+// the same type and label but another URL conflicts unless the label is
+// replaced. References of other types or labels are never touched.
+func (d *Document) enrichLink(f enrichment.Field, label string, link enrichment.LinkValue) (string, any, any, bool, error) {
+	const target = "/metadata/component/externalReferences"
+	if err := d.checkReferenceType(link.Type); err != nil {
+		return "", nil, nil, false, err
+	}
+	parent := d.metadataComponent(true)
+	before := parent["externalReferences"]
+	refs, _ := before.([]any)
+	// Scan everything first: the requested URL may already be present while a
+	// stale reference with the same label still points elsewhere.
+	present, stale := false, false
+	for _, r := range refs {
+		ref, _ := r.(map[string]any)
+		if ref["type"] != link.Type {
+			continue
+		}
+		if ref["url"] == link.URL {
+			present = true
+		} else if ref["comment"] == label {
+			stale = true
+		}
+	}
+	if stale && !f.Replace {
+		return "", nil, nil, false, fmt.Errorf("conflicts with the existing %s external reference labelled %q; explicitly list %s in enrichment.replace to replace it", link.Type, label, f.Field)
+	}
+	if !stale && present {
+		return target, before, before, false, nil
+	}
+	entry := map[string]any{"type": link.Type, "url": link.URL, "comment": label}
+	next := make([]any, 0, len(refs)+1)
+	placed := present
+	for _, r := range refs {
+		ref, _ := r.(map[string]any)
+		if ref["type"] == link.Type && ref["comment"] == label && ref["url"] != link.URL {
+			// Retire the stale URL. Hashes on it describe that URL, so they go too.
+			if !placed {
+				next = append(next, entry)
+				placed = true
+			}
+			continue
+		}
+		next = append(next, r)
+	}
+	if !placed {
+		next = append(next, entry)
+	}
+	parent["externalReferences"] = next
+	return target, before, next, true, nil
 }
 
 func (d *Document) checkEnrichedIdentity() error {

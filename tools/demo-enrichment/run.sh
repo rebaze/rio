@@ -8,7 +8,7 @@ if [ "$#" -gt 1 ]; then
 fi
 rio_command=${1:-${RIO_BIN:-rio}}
 if ! rio_bin=$(command -v "$rio_command"); then
-  printf 'Cannot find rio: %s. Install a release v0.7.0 or newer or set RIO_BIN.\n' "$rio_command" >&2
+  printf 'Cannot find rio: %s. Install a release v0.10.0 or newer or set RIO_BIN.\n' "$rio_command" >&2
   exit 2
 fi
 case "$rio_bin" in
@@ -61,7 +61,7 @@ enriched_dir=$(result_dir enriched-result.json)
 inspect_result enriched-result.json
 show_subject "$enriched_dir/console.cdx.json"
 show_subject "$enriched_dir/agent.cdx.json"
-printf '\nBoth products inherit the organizations, group and version. Their names, purls\nand documentation URLs come from their artifact entries.\n'
+printf '\nBoth products inherit the organizations, group, version and the issue-tracker,\nrelease-notes and advisories links. Their names, purls, documentation URLs and\n"Fact sheet" links come from their artifact entries. The label is the reference comment.\n'
 printf 'Inspect the runDirectory index.json, receipt and *.intoto.json for enrichment sources and changes.\n'
 
 printf '\n2. Refuse conflicting existing product identity\n'

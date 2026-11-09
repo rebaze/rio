@@ -29,6 +29,11 @@ func Resolve(defaults, local *Config, artifactSelector string) (*Resolved, error
 		if layer.config == nil {
 			continue
 		}
+		if s := layer.config.Subject; s != nil && s.Links != nil {
+			if err := validateLinks(layer.source+".subject.links", *s.Links); err != nil {
+				return nil, err
+			}
+		}
 		values := flatten(layer.config)
 		keys := sortedKeys(values)
 		for _, key := range keys {
@@ -55,6 +60,9 @@ func Resolve(defaults, local *Config, artifactSelector string) (*Resolved, error
 			}
 			replace, replaceSource = layer.config.Replace, layer.source
 		}
+	}
+	if err := checkDistinctLinks(fields); err != nil {
+		return nil, err
 	}
 	if replace != nil {
 		for _, key := range *replace {
@@ -111,6 +119,18 @@ func flatten(config *Config) map[string]any {
 		add("subject.website", s.Website)
 		add("subject.documentation", s.Documentation)
 		add("subject.support", s.Support)
+		add("subject.issueTracker", s.IssueTracker)
+		add("subject.releaseNotes", s.ReleaseNotes)
+		add("subject.advisories", s.Advisories)
+		if s.Links != nil {
+			for _, l := range *s.Links {
+				kind := DefaultLinkType
+				if l.Type != nil {
+					kind = *l.Type
+				}
+				out[LinkField(*l.Label)] = LinkValue{URL: *l.URL, Type: kind}
+			}
+		}
 		org("subject.manufacturer", s.Manufacturer)
 		org("subject.supplier", s.Supplier)
 	}
@@ -121,7 +141,10 @@ func flatten(config *Config) map[string]any {
 
 func knownField(key string) bool {
 	switch key {
-	case "subject.name", "subject.group", "subject.version", "subject.type", "subject.purl", "subject.securityContact", "subject.website", "subject.documentation", "subject.support", "dataLicense":
+	case "subject.name", "subject.group", "subject.version", "subject.type", "subject.purl", "subject.securityContact", "subject.website", "subject.documentation", "subject.support", "subject.issueTracker", "subject.releaseNotes", "subject.advisories", "dataLicense":
+		return true
+	}
+	if _, ok := LinkLabel(key); ok {
 		return true
 	}
 	for _, prefix := range []string{"subject.manufacturer", "subject.supplier", "producer"} {
@@ -151,7 +174,7 @@ func validateValue(key string, value any) error {
 			if _, err := packageurl.FromString(v); err != nil {
 				return fmt.Errorf("must be a valid package URL: %w", err)
 			}
-		case "subject.website", "subject.documentation", "subject.support":
+		case "subject.website", "subject.documentation", "subject.support", "subject.issueTracker", "subject.releaseNotes", "subject.advisories":
 			return validateURL(v, false)
 		case "subject.securityContact":
 			return validateURL(v, true)
@@ -186,6 +209,97 @@ func validateValue(key string, value any) error {
 				}
 			}
 		}
+	}
+	return nil
+}
+
+// DefaultLinkType is the CycloneDX reference type of a link without one.
+const DefaultLinkType = "other"
+
+// ReferenceTypes maps each single-valued subject reference leaf to its
+// CycloneDX external reference type.
+var ReferenceTypes = map[string]string{
+	"subject.securityContact": "security-contact",
+	"subject.website":         "website",
+	"subject.documentation":   "documentation",
+	"subject.support":         "support",
+	"subject.issueTracker":    "issue-tracker",
+	"subject.releaseNotes":    "release-notes",
+	"subject.advisories":      "advisories",
+}
+
+const linkPrefix = "subject.links["
+
+// LinkField is the field, and replace selector, of the link with label.
+func LinkField(label string) string { return linkPrefix + label + "]" }
+
+// LinkLabel returns the label of a subject.links[<label>] field.
+func LinkLabel(field string) (string, bool) {
+	if !strings.HasPrefix(field, linkPrefix) || !strings.HasSuffix(field, "]") {
+		return "", false
+	}
+	label := field[len(linkPrefix) : len(field)-1]
+	if label == "" || strings.Contains(label, "]") {
+		return "", false
+	}
+	return label, true
+}
+
+// validateLinks checks one layer's list. CycloneDX type vocabulary lives with
+// the embedded schemas and is checked by sbom.ValidateEnrichmentConfig.
+func validateLinks(path string, links []Link) error {
+	modeled := map[string]string{}
+	for field, kind := range ReferenceTypes {
+		modeled[kind] = "enrichment." + field
+	}
+	seen := map[string]bool{}
+	for i, l := range links {
+		at := fmt.Sprintf("%s[%d]", path, i)
+		switch {
+		case l.Label == nil:
+			return fmt.Errorf("%s.label: is required", at)
+		case strings.TrimSpace(*l.Label) == "":
+			return fmt.Errorf("%s.label: must be a nonblank string", at)
+		case strings.Contains(*l.Label, "]"):
+			return fmt.Errorf("%s.label: must not contain \"]\"", at)
+		case seen[*l.Label]:
+			return fmt.Errorf("%s.label: %q is listed more than once", at, *l.Label)
+		}
+		seen[*l.Label] = true
+		if l.URL == nil {
+			return fmt.Errorf("%s.url: is required", at)
+		}
+		if err := validateURL(*l.URL, false); err != nil {
+			return fmt.Errorf("%s.url: %w", at, err)
+		}
+		if l.Type != nil {
+			if strings.TrimSpace(*l.Type) == "" {
+				return fmt.Errorf("%s.type: must be a nonblank string", at)
+			}
+			if field, ok := modeled[*l.Type]; ok {
+				return fmt.Errorf("%s.type: %s is modeled by %s; set that field instead", at, *l.Type, field)
+			}
+		}
+	}
+	return nil
+}
+
+// checkDistinctLinks refuses two labels for one reference: the subject can
+// carry it once, so the second label would never show.
+func checkDistinctLinks(fields map[string]Field) error {
+	first := map[LinkValue]string{}
+	for _, key := range sortedKeys(fields) {
+		if _, ok := LinkLabel(key); !ok {
+			continue
+		}
+		var value LinkValue
+		if err := json.Unmarshal(fields[key].Value, &value); err != nil {
+			return fmt.Errorf("%s: %w", fields[key].Source, err)
+		}
+		if other, ok := first[value]; ok {
+			return fmt.Errorf("%s: %s and %s declare the same type and URL; keep one label", fields[key].Source, key, other)
+		}
+		first[value] = key
 	}
 	return nil
 }

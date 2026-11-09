@@ -1,6 +1,6 @@
 # Manifest enrichment demo
 
-Run three small, offline examples with an **installed Rio v0.7.0+ release**. You need a
+Run three small, offline examples with an **installed Rio v0.10.0+ release**. You need a
 POSIX shell and standard command-line tools (`cp`, `sed`, `find`, `mktemp`) and Python 3.9+ (standard library only); no Go, source build,
 jq, credentials or network access is required. The organizations, products and dependency
 are synthetic. The `.example.com` URLs illustrate metadata and are never fetched.
@@ -28,7 +28,7 @@ specific directory when you have finished inspecting it.
 
 | Case | Manifest and input | Expected result |
 |---|---|---|
-| Shared defaults | `rio.yaml`; `inputs/console.cdx.json` and `inputs/agent.cdx.json` | Exit 0. Both subjects gain the shared group, version, manufacturer, supplier and contact URLs. Each artifact supplies its own name, purl and documentation URL. |
+| Shared defaults | `rio.yaml`; `inputs/console.cdx.json` and `inputs/agent.cdx.json` | Exit 0. Both subjects gain the shared group, version, manufacturer, supplier, contact URLs and the issue-tracker, release-notes and advisories links. Each artifact supplies its own name, purl, documentation URL and a `Fact sheet` link, written as an `other` reference whose `comment` is the label. |
 | Conflict | `conflict.yaml`; `inputs/legacy-console.cdx.json` | Exit 2. Existing name, version and purl disagree with the requested identity. A failed receipt is written under `refused/runs/<run-id>/`; no SBOM, index or statement is generated. |
 | Explicit replacement | `replace.yaml`; the same legacy input | Exit 0. `replace: [subject.name, subject.version, subject.purl]` authorizes just those replacements. Changes retain their old values and manifest sources. |
 
@@ -52,6 +52,10 @@ invocations have distinct receipts, which are never assembled into a combined hi
   `metadata.manufacturer` identifies **Example Build Services**, the SBOM producer;
   `metadata.component.manufacturer` identifies **Example Products**, the product manufacturer;
   `metadata.component.supplier` identifies **Example Distribution**, the supplier.
+- `metadata.component.externalReferences` carries the typed links and the labelled
+  `Fact sheet` link: `{"type": "other", "url": "https://ea.example.com/factsheet/Application/console", "comment": "Fact sheet"}`.
+  The fact sheet names the owner; the SBOM carries only the link, so it leaks no personal names
+  and stays right when the owner changes.
 - `metadata.licenses` declares `CC0-1.0` for the **SBOM data**. The third-party component's existing
   `MIT` license does not change.
 - `<enriched-run>/index.json` and `<replaced-run>/index.json` carry enrichment changes with field, target,
