@@ -22,8 +22,8 @@
 # the SBOM a release attests, and RECEIPT rio's run receipt, written even when
 # the gate fails; a failing gate fails the script.
 #
-# Release preflight, the release and CI all make the SBOM here, so what a
-# release gate saw is what ships.
+# Release preflight, the release and CI all make the SBOM here, so the SBOM
+# checked before the tag is made the same way as the one that ships.
 
 set -eu
 

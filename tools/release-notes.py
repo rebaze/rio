@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Select exact-tag authored notes before the publisher freezes its inventory.
+"""Select the release notes before the publisher freezes its inventory.
 
-Tags before v0.6.0 may retain GoReleaser's generated notes when no authored file
-exists. v0.6.0 and newer, including prereleases, require authored notes.
+docs/releases/<tag>.md, when it exists, becomes the release body byte for byte;
+a file that exists but has no exact '# Rio <tag>' heading or no body stops the
+release. Without one, for example when a tag is pushed by hand, GoReleaser's
+generated notes stay, so a missing file never blocks a release.
 """
 import argparse
 import os
@@ -24,12 +26,10 @@ def select(tag, notes_dir, dist):
     output = dist / "CHANGELOG.md"
     if output.is_symlink():
         raise ValueError("generated notes path must not be a symlink")
-    if not source.exists():
-        if tuple(int(match[i]) for i in (1, 2, 3)) >= (0, 6, 0):
-            raise ValueError("authored notes required for " + tag)
+    if not source.exists() and not source.is_symlink():
         if not output.is_file() or not output.read_bytes().strip():
-            raise ValueError("historical generated notes missing or empty")
-        print("NOTES: historical generated-note policy for " + tag)
+            raise ValueError("no authored notes for " + tag + ", and GoReleaser's generated notes are missing or empty")
+        print("NOTES: no " + str(source) + "; using GoReleaser's generated notes for " + tag)
         return
     if source.is_symlink() or not source.is_file():
         raise ValueError("authored notes must be a regular file")

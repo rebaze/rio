@@ -2,8 +2,8 @@ name: Installer tests
 
 # The candidate's own build, installed and run on each system a release
 # supports, before any tag: the version and commit it reports, the native
-# client demo, and on Linux and macOS the offline installer test. A release
-# gate can take a run of this workflow at a commit as its installer tests.
+# client demo, and on Linux and macOS the offline installer test. Check that
+# the release commit has a passing run before pushing its tag.
 # What needs a published release (signatures, notarization, the Homebrew
 # cask) is verify-release.yaml's, after the release.
 on:

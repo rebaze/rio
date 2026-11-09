@@ -41,7 +41,7 @@ def main():
     summary, plain = [], []
     stage = "python3 release-publish.py stage \\\n  --dist dist --stage stage \\\n  --inventory inventory.json \\\n  --tag v1.2.3 --repo rebaze/rio"
     publish = ("python3 release-publish.py draft \\\n  --stage stage --inventory inventory.json \\\n  --bundle bundle.jsonl --record draft.json \\\n  --tag v1.2.3 --repo rebaze/rio &&\n"
-               "python3 release-publish.py publish \\\n  --inventory inventory.json --record draft.json --run 1 \\\n  --tag v1.2.3 --repo rebaze/rio")
+               "python3 release-publish.py publish \\\n  --inventory inventory.json --record draft.json \\\n  --tag v1.2.3 --repo rebaze/rio")
     scenarios = [
         ("unchanged", "The unchanged candidate", "All required files are present. The archive stays unchanged.",
          "PUBLISH", "The verified bytes are the bytes uploaded.",
@@ -130,10 +130,10 @@ def main():
             narration = "Watch the variable at the beginning. It tells our offline service to reject the check. The real guard must stop when verification fails."
         else:
             command = publish
-            explanation = {"unchanged": "All checks succeed. draft uploads the verified bytes and checks them again; publish, the gated step, checks the draft's digests and bytes once more and only then publishes through the offline service.",
+            explanation = {"unchanged": "All checks succeed. draft uploads the verified bytes and checks them again; publish checks the draft's digests and bytes once more and only then publishes through the offline service.",
                            "replaced": "The guard detects changed bytes before upload. Exit 1 means this candidate is blocked.",
                            "missing": "The bundle cannot be read. The guard stops before creating a draft. Missing evidence does not count as a pass."}[name]
-            narration = {"unchanged": "Now draft and publish. The guard verifies the staged bytes and evidence and uploads a draft. The gated publish step checks that draft again and only then makes it public.",
+            narration = {"unchanged": "Now draft and publish. The guard verifies the staged bytes and evidence and uploads a draft. The publish step checks that draft again and only then makes it public.",
                          "replaced": "We run the same publish command. The guard detects the changed archive and blocks it before upload.",
                          "missing": "The same publish command now stops because the required bundle is missing. There is no successful verification to rely on."}[name]
         execute("Run the publication gate", command, explanation, narration, expected=0 if name == "unchanged" else 1)

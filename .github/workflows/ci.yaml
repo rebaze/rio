@@ -180,7 +180,9 @@ jobs:
             and .compositions == [{aggregate: "complete", assemblies: [$root], dependencies: ([$root] + [.components[]."bom-ref"])}]
             and (.dependencies | length) == (.components | length) + 1 and $std != null
             and all(.dependencies[] | select(.ref != $std); .dependsOn | index($std))' "$RUNNER_TEMP/rio-source.cdx.json"
-          # What Clear to Ship's rio-receipt checkpoint requires of the receipt.
+          # rio's own SBOM passes rio's strict gate against BSI TR-03183-2 2.1.0
+          # with no findings, every component evaluated, and name, version and
+          # purl still required: what the release notes claim of it.
           jq -e '.artifacts[0].checks | . as $c
             | .gate == "pass" and .mode == "fail" and .schema == "pass" and .findings == 0
             and .componentEvaluation == "evaluated" and .profile.name == "bsi-tr-03183-2@2.1.0"
