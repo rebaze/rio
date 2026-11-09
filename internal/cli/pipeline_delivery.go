@@ -35,6 +35,9 @@ func (r *invocation) describeDeliveries(plan delivery.BatchPlan) error {
 		r.doc.Targets[j.Target] = target
 		v.Project = project
 		v.Transport = transport
+		if v.ProjectFields, e = requestedProjectFields(j.Description); e != nil {
+			return e
+		}
 		bodies := []delivery.PayloadRef{}
 		for _, p := range j.Verified.Payloads() {
 			bodies = append(bodies, p.Ref())

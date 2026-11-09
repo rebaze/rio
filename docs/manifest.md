@@ -8,7 +8,7 @@
 - [Module discovery](#discovering-module-artifacts)
 - [Transforms and supplied metadata](#processing-options)
 
-This reference describes Rio 0.7.0. `rio.yaml` defines input wiring, normalization/enrichment/context, effective gate policy and native targets for one root execution. Unknown keys are refused; manifest `version: 1` alone does not imply older binaries support every optional field. [Complete delivery-first configuration](quick-start.md).
+This reference describes Rio 0.10.0. `rio.yaml` defines input wiring, normalization/enrichment/context, effective gate policy and native targets for one root execution. Unknown keys are refused; manifest `version: 1` alone does not imply older binaries support every optional field. [Complete delivery-first configuration](quick-start.md).
 
 ## Explicit artifacts and defaults
 
@@ -359,5 +359,13 @@ An explicit empty `require: []` means component checks were not evaluated. See
 `delivery.targets` configures Dependency-Track or OCI receivers in this same manifest. Each target has a type, destination settings and optional `exclude` artifact IDs / per-artifact `overrides`. [Complete native schemas and examples](delivery.md). Credentials are named environment references, not embedded values; CA paths are manifest-relative.
 
 Root runs configured targets after successful local stages. `--artifact` and `--target` narrow scope; omitted selectors mean all eligible members/targets. Excluded SBOM globs are not resolved by an artifact filter. Target exclusions and artifact-set exclusion rules remain visible in the receipt. `--skip-delivery` performs local work only. No targets means delivery is not configured, rather than a failed upload.
+
+Dependency-Track targets, and their per-artifact `overrides`, also accept the project fields below. An override replaces the target's value for that key. [What the server does with them and what the receipt records](delivery.md#tags-parent-and-latest-version).
+
+| Key | Value | Refused before any request (`rio plan` too) |
+|---|---|---|
+| `tags` | A list of tag strings, the project's complete tag set | An empty list; a blank, duplicate or uppercase tag; one with a comma, edge whitespace or a control character; one longer than 255 characters |
+| `parent` | `{uuid}` or `{name, version}` of an existing project | Both forms, a name without a version, an invalid UUID, any other key; with `project: {uuid}` or without `autoCreate: true` |
+| `isLatest` | `true` or `false` | A non-boolean; with `project: {uuid}` or without `autoCreate: true` |
 
 `rio plan` previews the same effective settings and routing offline without building transforms or opening context/SBOM contents. A project selected from the normalized subject stays explicitly unresolved until execution. Optional stage commands remain available, each with its own scoped receipt.

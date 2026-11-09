@@ -40,6 +40,7 @@ func (c *client) Submit(ctx context.Context, payloads []delivery.Payload) (sub d
 		mw.WriteField("projectVersion", p.Version)
 		mw.WriteField("autoCreate", strconv.FormatBool(*c.options.AutoCreate))
 	}
+	c.options.writeProjectFields(mw)
 	headers := textproto.MIMEHeader{}
 	headers.Set("Content-Disposition", `form-data; name="bom"; filename="bom.json"`)
 	headers.Set("Content-Type", payloads[0].Ref().MediaType)
@@ -77,7 +78,21 @@ func (c *client) Submit(ctx context.Context, payloads []delivery.Payload) (sub d
 		o.Value = "accepted"
 		o.Code = "accepted"
 		o.References = append([]delivery.Reference(nil), sub.References...)
-	case 400, 401, 403, 404, 413, 415, 422:
+		if c.options.requestsProjectFields() {
+			attachProject(&o, c.readProject(ctx))
+		}
+	case 404:
+		sub.Disposition = "rejected"
+		o.Value = "rejected"
+		o.Code = "upload_rejected"
+		// With parent set, autoCreate is on, so the project itself cannot be
+		// missing: Dependency-Track answers 404 only for the parent.
+		if c.options.Parent != nil {
+			o.Code = "parent_not_found"
+			sub.Observations = append(sub.Observations, o)
+			return sub, delivery.Fail("parent_not_found", c.options.Parent.selector()+" does not exist on the receiver; create it or fix the parent selector")
+		}
+	case 400, 401, 403, 413, 415, 422:
 		sub.Disposition = "rejected"
 		o.Value = "rejected"
 		o.Code = "upload_rejected"

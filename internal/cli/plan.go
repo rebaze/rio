@@ -399,6 +399,9 @@ func writePlanText(p plan, man *manifest.Manifest, opts *globalOptions, stdout i
 				b, _ := json.Marshal(pair.Project)
 				fmt.Fprintf(stdout, " project %s", b)
 			}
+			if pair.ProjectFields != nil {
+				fmt.Fprintf(stdout, " %s", describeProjectFields(pair.ProjectFields))
+			}
 			fmt.Fprintln(stdout)
 		}
 	}

@@ -29,7 +29,11 @@ func (r *invocation) prepareReconcile(s record.Snapshot, journal string) error {
 	if _, e = rand.Read(id); e != nil {
 		return e
 	}
-	r.doc.Deliveries = []receipt.Delivery{{ArtifactID: s.Intent.Source.ArtifactID, Target: s.Intent.Binding, Project: project, AttemptID: fmt.Sprintf("%x", id), Prior: prior, State: "unattempted", Transport: transport}}
+	fields, e := requestedProjectFields(s.Intent.Destination)
+	if e != nil {
+		return e
+	}
+	r.doc.Deliveries = []receipt.Delivery{{ArtifactID: s.Intent.Source.ArtifactID, Target: s.Intent.Binding, Project: project, AttemptID: fmt.Sprintf("%x", id), Prior: prior, State: "unattempted", Transport: transport, ProjectFields: fields}}
 	raw, e := json.Marshal(struct {
 		Journal     string `json:"journal"`
 		PriorSHA256 string `json:"priorSHA256"`

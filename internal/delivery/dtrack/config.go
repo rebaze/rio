@@ -32,6 +32,78 @@ type Options struct {
 	InsecureSkipVerify bool    `json:"insecureSkipVerify,omitempty"`
 	Project            Project `json:"project"`
 	AutoCreate         *bool   `json:"autoCreate,omitempty"`
+	// Tags, Parent and IsLatest are sent with the upload only when configured.
+	// Tags replace the project's whole tag set; Parent and IsLatest apply only
+	// when the upload creates the project.
+	Tags     *[]string `json:"tags,omitempty"`
+	Parent   *Parent   `json:"parent,omitempty"`
+	IsLatest *bool     `json:"isLatest,omitempty"`
+}
+
+// Parent selects an existing parent project by UUID or by name and version.
+type Parent struct {
+	UUID    string `json:"uuid,omitempty"`
+	Name    string `json:"name,omitempty"`
+	Version string `json:"version,omitempty"`
+}
+
+// projectFieldKeys may be set on the target and replaced per artifact.
+var projectFieldKeys = []string{"tags", "parent", "isLatest"}
+
+// maxTag is Dependency-Track's tag name limit.
+const maxTag = 255
+
+// describeTags enforces what Dependency-Track 5.2.1 stores unchanged: it splits
+// projectTags on commas, trims and lowercases each name, and allows 255
+// printable characters. An empty list is refused because a blank projectTags
+// changes nothing, so it could never clear the tags it seems to promise to.
+func describeTags(n yaml.Node) ([]string, error) {
+	bad := delivery.Fail("invalid_config", "tags must be a nonempty list of unique lowercase strings without commas, edge whitespace or control characters, at most 255 characters each")
+	if n.Kind != yaml.SequenceNode || n.Tag != "!!seq" || len(n.Content) == 0 {
+		return nil, bad
+	}
+	tags := make([]string, 0, len(n.Content))
+	seen := map[string]bool{}
+	for _, v := range n.Content {
+		tag, e := delivery.YAMLString(*v, "tags")
+		if e != nil || seen[tag] || len(tag) > maxTag || strings.Contains(tag, ",") || strings.IndexFunc(tag, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+			return nil, bad
+		}
+		if strings.ToLower(tag) != tag {
+			return nil, delivery.Fail("invalid_config", "tags must be lowercase; Dependency-Track stores tag names in lowercase")
+		}
+		seen[tag] = true
+		tags = append(tags, tag)
+	}
+	return tags, nil
+}
+
+func describeParent(n yaml.Node) (*Parent, error) {
+	pm, e := delivery.YAMLMap(n, "uuid", "name", "version")
+	if e != nil {
+		return nil, delivery.Fail("invalid_config", "parent must be {uuid} or {name, version}")
+	}
+	_, uuid := pm["uuid"]
+	_, name := pm["name"]
+	_, version := pm["version"]
+	var p Parent
+	switch {
+	case uuid && !name && !version:
+		if p.UUID, e = delivery.YAMLString(pm["uuid"], "parent.uuid"); e != nil || !ValidUUID(p.UUID) {
+			return nil, delivery.Fail("invalid_config", "parent.uuid")
+		}
+		p.UUID = strings.ToLower(p.UUID)
+	case !uuid && name && version:
+		if p.Name, e = delivery.YAMLString(pm["name"], "parent.name"); e != nil {
+			return nil, e
+		}
+		if p.Version, e = delivery.YAMLString(pm["version"], "parent.version"); e != nil {
+			return nil, e
+		}
+	default:
+		return nil, delivery.Fail("invalid_config", "parent must be exactly one of {uuid} or {name, version}")
+	}
+	return &p, nil
 }
 
 var uuidRE = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -92,16 +164,16 @@ func (p Provider) Describe(destination, binding yaml.Node, subject delivery.Subj
 // Only current-manifest Describe supplies a host-specific CA resolver.
 func describe(destination, binding yaml.Node, subject delivery.Subject, resolveCA func(string) string) (delivery.Description, error) {
 	var desc delivery.Description
-	dm, e := delivery.YAMLMap(destination, "url", "apiKeyEnv", "caFile", "allowHTTP", "insecureSkipVerify", "project", "autoCreate")
+	dm, e := delivery.YAMLMap(destination, append([]string{"url", "apiKeyEnv", "caFile", "allowHTTP", "insecureSkipVerify", "project", "autoCreate"}, projectFieldKeys...)...)
 	if e != nil {
 		return desc, e
 	}
-	bm, e := delivery.YAMLMap(binding, "project", "autoCreate")
+	bm, e := delivery.YAMLMap(binding, append([]string{"project", "autoCreate"}, projectFieldKeys...)...)
 	if e != nil {
 		return desc, e
 	}
 	// Presence survives inheritance: an explicit false is still forbidden for UUID.
-	for _, key := range []string{"project", "autoCreate"} {
+	for _, key := range append([]string{"project", "autoCreate"}, projectFieldKeys...) {
 		if _, ok := bm[key]; !ok {
 			if n, present := dm[key]; present {
 				bm[key] = n
@@ -209,6 +281,30 @@ func describe(destination, binding yaml.Node, subject delivery.Subject, resolveC
 			}
 		}
 	}
+	if n, ok := bm["tags"]; ok {
+		tags, e := describeTags(n)
+		if e != nil {
+			return desc, e
+		}
+		o.Tags = &tags
+	}
+	if n, ok := bm["parent"]; ok {
+		if o.Parent, e = describeParent(n); e != nil {
+			return desc, e
+		}
+	}
+	if n, ok := bm["isLatest"]; ok {
+		b, e := delivery.YAMLBool(n, "isLatest")
+		if e != nil {
+			return desc, e
+		}
+		o.IsLatest = &b
+	}
+	// Dependency-Track applies parent and isLatest only while an upload creates
+	// the project, which a UUID upload or one without autoCreate never does.
+	if (o.Parent != nil || o.IsLatest != nil) && (o.AutoCreate == nil || !*o.AutoCreate) {
+		return desc, delivery.Fail("invalid_config", "parent and isLatest require a name/version or fromSubject project with autoCreate: true; Dependency-Track applies them only when the upload creates the project")
+	}
 	resolved := o.Project
 	if sub {
 		if subject.Name == "" || subject.Version == "" || strings.TrimSpace(subject.Name) != subject.Name || strings.TrimSpace(subject.Version) != subject.Version {
@@ -258,6 +354,21 @@ func ValidateDescription(d delivery.Description) (Options, Identity, error) {
 	bm := map[string]any{"project": project}
 	if o.AutoCreate != nil {
 		bm["autoCreate"] = *o.AutoCreate
+	}
+	if o.Tags != nil {
+		bm["tags"] = *o.Tags
+	}
+	if o.Parent != nil {
+		parent := map[string]any{}
+		for k, v := range map[string]string{"uuid": o.Parent.UUID, "name": o.Parent.Name, "version": o.Parent.Version} {
+			if v != "" {
+				parent[k] = v
+			}
+		}
+		bm["parent"] = parent
+	}
+	if o.IsLatest != nil {
+		bm["isLatest"] = *o.IsLatest
 	}
 	var dn, bn yaml.Node
 	dn.Encode(dm)

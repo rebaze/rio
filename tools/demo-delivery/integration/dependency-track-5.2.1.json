@@ -1,0 +1,436 @@
+{
+  "serverVersion": "5.2.1",
+  "sanitized": true,
+  "scenarios": [
+    {
+      "name": "name-version",
+      "payloadSHA256": "b8dd7f1eeb94c7af4abbdb04ed19a3fda4b0d76db0dd8a3e31585e35e1ed139f",
+      "interpretation": "accepted",
+      "inventoryVerified": true,
+      "activities": [
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "not-observed"
+      ],
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/api/v1/bom",
+          "form": {
+            "autoCreate": "false",
+            "bom": "\u003cverified-snapshot\u003e",
+            "projectName": "\u003cdisposable-project-name\u003e",
+            "projectVersion": "\u003ctest-version\u003e"
+          },
+          "httpStatus": 200,
+          "response": {
+            "token": "\u003cevent-token\u003e"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": false,
+            "status": "COMPLETED"
+          }
+        }
+      ]
+    },
+    {
+      "name": "uuid",
+      "payloadSHA256": "a406fb3dc43026e183cee8751b0a010ead7a5f68874d36f2c41b283352072d20",
+      "interpretation": "accepted",
+      "inventoryVerified": true,
+      "activities": [
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "not-observed"
+      ],
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/api/v1/bom",
+          "form": {
+            "bom": "\u003cverified-snapshot\u003e",
+            "project": "\u003cdedicated-project-uuid\u003e"
+          },
+          "httpStatus": 200,
+          "response": {
+            "token": "\u003cevent-token\u003e"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": true,
+            "status": "RUNNING"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": false,
+            "status": "COMPLETED"
+          }
+        }
+      ]
+    },
+    {
+      "name": "absent-creation-disabled",
+      "payloadSHA256": "ad5eeae75abc94e11b53c0a49b1543f367aed3cb95fa9f9ccc7cd26c1f403387",
+      "interpretation": "rejected",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/api/v1/bom",
+          "form": {
+            "autoCreate": "false",
+            "bom": "\u003cverified-snapshot\u003e",
+            "projectName": "\u003cdisposable-project-name\u003e",
+            "projectVersion": "\u003ctest-version\u003e"
+          },
+          "httpStatus": 404,
+          "response": {}
+        }
+      ]
+    },
+    {
+      "name": "absent-creation-enabled",
+      "payloadSHA256": "ad5eeae75abc94e11b53c0a49b1543f367aed3cb95fa9f9ccc7cd26c1f403387",
+      "interpretation": "accepted",
+      "inventoryVerified": true,
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/api/v1/bom",
+          "form": {
+            "autoCreate": "true",
+            "bom": "\u003cverified-snapshot\u003e",
+            "projectName": "\u003cdisposable-project-name\u003e",
+            "projectVersion": "\u003ctest-version\u003e"
+          },
+          "httpStatus": 200,
+          "response": {
+            "token": "\u003cevent-token\u003e"
+          }
+        }
+      ]
+    },
+    {
+      "name": "denied-permissions",
+      "payloadSHA256": "ad5eeae75abc94e11b53c0a49b1543f367aed3cb95fa9f9ccc7cd26c1f403387",
+      "interpretation": "rejected",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/api/v1/bom",
+          "form": {
+            "bom": "\u003cverified-snapshot\u003e",
+            "project": "\u003cdedicated-project-uuid\u003e"
+          },
+          "httpStatus": 403,
+          "response": {}
+        }
+      ]
+    },
+    {
+      "name": "invalid-credential",
+      "payloadSHA256": "ad5eeae75abc94e11b53c0a49b1543f367aed3cb95fa9f9ccc7cd26c1f403387",
+      "interpretation": "rejected",
+      "requests": [
+        {
+          "method": "POST",
+          "path": "/api/v1/bom",
+          "form": {
+            "bom": "\u003cverified-snapshot\u003e",
+            "project": "\u003cdedicated-project-uuid\u003e"
+          },
+          "httpStatus": 401,
+          "response": {}
+        }
+      ]
+    },
+    {
+      "name": "unknown-token",
+      "interpretation": "not-observed",
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/api/v1/event/token/\u003cevent-token\u003e",
+          "httpStatus": 200,
+          "response": {
+            "processing": false
+          }
+        }
+      ]
+    }
+  ]
+}

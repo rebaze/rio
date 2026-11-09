@@ -195,6 +195,14 @@ func appendObservation(v *receipt.Delivery, kind string, o delivery.Observation,
 		if facts != nil {
 			observed = &facts.Observed
 		}
+		// The latest read-back of the project replaces the earlier states.
+		fields, e := observedProjectFields(o)
+		if e != nil {
+			return e
+		}
+		if fields != nil {
+			v.ProjectFields = fields
+		}
 	}
 	response.TLSObserved = observed
 	if observed != nil {

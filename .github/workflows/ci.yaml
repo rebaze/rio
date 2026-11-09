@@ -278,6 +278,7 @@ jobs:
           go env GOOS GOARCH
           go build -trimpath -o rio-demo.exe ./cmd/rio
           python tools/demo-delivery/run.py "$PWD/rio-demo.exe"
+          python tools/demo-delivery/project-fields.py "$PWD/rio-demo.exe"
           python tools/demo-dtrack-tls/run.py "$PWD/rio-demo.exe"
           python tools/demo-normalization-evidence/run.py "$PWD/rio-demo.exe"
           python tools/demo-recovery/run.py "$PWD/rio-demo.exe"
@@ -349,7 +350,7 @@ jobs:
 
   dependency-track:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -370,12 +371,21 @@ jobs:
           set -euo pipefail
           CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/rio-integration" ./cmd/rio
           python tools/demo-delivery/integration/exercise.py "$RUNNER_TEMP/rio-dtrack" "$RUNNER_TEMP/rio-integration" --adapter-tests
+      - name: Dependency-Track 5.2.1 project fields and subject links
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/demo-delivery/integration/setup.py create --server-version 5.2.1 "$RUNNER_TEMP/rio-dtrack-521"
+          python tools/demo-delivery/integration/setup.py start "$RUNNER_TEMP/rio-dtrack-521"
+          python tools/demo-delivery/integration/project_fields.py "$RUNNER_TEMP/rio-dtrack-521" "$RUNNER_TEMP/rio-integration" \
+            --evidence "$RUNNER_TEMP/rio-dtrack-521/project-fields-evidence.json"
       - name: Retain only sanitized real-server evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dependency-track-evidence
           path: |
+            ${{ runner.temp }}/rio-dtrack-521/project-fields-evidence.json
             ${{ runner.temp }}/rio-dtrack/exercise-*/verification.json
             ${{ runner.temp }}/rio-dtrack/exercise-*/adapter-*-observations.json
             ${{ runner.temp }}/rio-dtrack/exercise-*/adapter-*.log
@@ -388,6 +398,9 @@ jobs:
         run: |
           if [ -f "$RUNNER_TEMP/rio-dtrack/state.json" ]; then
             python tools/demo-delivery/integration/setup.py stop "$RUNNER_TEMP/rio-dtrack"
+          fi
+          if [ -f "$RUNNER_TEMP/rio-dtrack-521/state.json" ]; then
+            python tools/demo-delivery/integration/setup.py stop "$RUNNER_TEMP/rio-dtrack-521"
           fi
 
   complete:

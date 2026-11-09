@@ -182,6 +182,41 @@ type Delivery struct {
 	Transport              Transport         `json:"transport"`
 	Responses              []Response        `json:"responses,omitempty"`
 	ErrorCode              string            `json:"errorCode,omitempty"`
+	// ProjectFields are the Dependency-Track tags, parent and isLatest the
+	// delivery requested and what a read-back observed. Absent when none of
+	// them is configured; receipts written before they existed omit them.
+	ProjectFields *ProjectFields `json:"projectFields,omitempty"`
+}
+
+// ProjectFields record each requested value with a state: "observed" when a
+// read-back showed it, "different" when it showed another value (kept as
+// observed), and "unknown" when the project was not read. ReadBack is "read",
+// "not-attempted" before an accepted upload, or why the read failed.
+type ProjectFields struct {
+	ReadBack string              `json:"readBack"`
+	Tags     *ProjectTagsField   `json:"tags,omitempty"`
+	Parent   *ProjectParentField `json:"parent,omitempty"`
+	IsLatest *ProjectLatestField `json:"isLatest,omitempty"`
+}
+type ProjectTagsField struct {
+	Requested []string  `json:"requested"`
+	State     string    `json:"state"`
+	Observed  *[]string `json:"observed,omitempty"`
+}
+type ProjectParent struct {
+	UUID    string `json:"uuid,omitempty"`
+	Name    string `json:"name,omitempty"`
+	Version string `json:"version,omitempty"`
+}
+type ProjectParentField struct {
+	Requested ProjectParent  `json:"requested"`
+	State     string         `json:"state"`
+	Observed  *ProjectParent `json:"observed,omitempty"`
+}
+type ProjectLatestField struct {
+	Requested bool   `json:"requested"`
+	State     string `json:"state"`
+	Observed  *bool  `json:"observed,omitempty"`
 }
 type Transport struct {
 	Scheme                  string `json:"scheme"`

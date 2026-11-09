@@ -104,3 +104,21 @@ func TestStandardReceiptSizeBudget(t *testing.T) {
 		t.Fatalf("%d exceeds budget", len(raw))
 	}
 }
+
+func TestProjectFieldsRejectContradictoryDifferences(t *testing.T) {
+	for _, f := range []*ProjectFields{
+		{ReadBack: "read", Tags: &ProjectTagsField{Requested: []string{"a", "b"}, State: "different", Observed: &[]string{"b", "a"}}},
+		{ReadBack: "read", Parent: &ProjectParentField{Requested: ProjectParent{UUID: "f90934f5-cb88-47ce-81cb-db06fc67d4b4"}, State: "different", Observed: &ProjectParent{UUID: "F90934F5-CB88-47CE-81CB-DB06FC67D4B4", Name: "p", Version: "1"}}},
+		{ReadBack: "read", Parent: &ProjectParentField{Requested: ProjectParent{Name: "p", Version: "1"}, State: "different", Observed: &ProjectParent{UUID: "f90934f5-cb88-47ce-81cb-db06fc67d4b4", Name: "p", Version: "1"}}},
+		{ReadBack: "forbidden", Tags: &ProjectTagsField{Requested: []string{"a"}, State: "observed"}},
+	} {
+		if validProjectFields(f, "dependency-track") == nil {
+			t.Errorf("accepted %+v", f)
+		}
+	}
+	ok := &ProjectFields{ReadBack: "read", Tags: &ProjectTagsField{Requested: []string{"a"}, State: "different", Observed: &[]string{"b"}},
+		Parent: &ProjectParentField{Requested: ProjectParent{Name: "p", Version: "1"}, State: "different", Observed: &ProjectParent{}}}
+	if e := validProjectFields(ok, "dependency-track"); e != nil {
+		t.Fatal(e)
+	}
+}

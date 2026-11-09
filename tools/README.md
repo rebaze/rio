@@ -13,7 +13,7 @@ inputs and remain separate from its runtime.
 | [Test binary workflow](#temporary-linux-test-binaries) | builds a selected revision as a temporary Linux download | when reproducing a problem or testing a fix |
 | [`rio-attest-sign.sh`](#signing-and-verifying-normalization-attestations) | signs and verifies normalization statements with a local key | after `rio normalize --attest` |
 | [`build-p2-table.py`](#build-p2-tablepy) | builds the bundle-symbolic-name → Maven coordinate table rio repairs purls with | occasionally, on a workstation |
-| [`demo-delivery/`](demo-delivery/) | demonstrates native Dependency-Track delivery and batch evidence | with Rio 0.7.0+ and Python 3.9+ |
+| [`demo-delivery/`](demo-delivery/) | demonstrates native Dependency-Track delivery and batch evidence; `project-fields.py` shows tags, parent and latest version with what the receipt observed | with Rio 0.7.0+ (`project-fields.py`: 0.10.0+) and Python 3.9+ |
 | [`demo-dtrack-tls/`](demo-dtrack-tls/) | demonstrates verified TLS and explicit certificate bypass with recorded policy | with Rio 0.7.0+ and Python 3.9+ |
 | [`demo-oci/`](demo-oci/) | demonstrates native standalone and attached OCI delivery | with Rio 0.7.0+ and Python 3.9+ |
 | [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, labelled fact-sheet links, conflict refusal and explicit field replacement | with Rio 0.10.0+ and Python 3.9+ |
@@ -835,12 +835,13 @@ Synthetic installed-binary demonstrations require Python 3.9+:
 
 ```sh
 python3 tools/demo-delivery/run.py /path/to/rio
+python3 tools/demo-delivery/project-fields.py /path/to/rio   # Rio 0.10.0+
 python3 tools/demo-dtrack-tls/run.py /path/to/rio
 ```
 
-The first exercises one root pipeline, exact bytes, indexed membership, fan-out/exclusions, preflight refusal, partial delivery, lost responses, explicit retry, gate override and unsupported-schema reporting. The TLS demo checks verified custom CA, explicit bypass, policy drift refusal and source-free receipt rendering. Runtime secret canaries must not appear in retained output.
+The first exercises one root pipeline, exact bytes, indexed membership, fan-out/exclusions, preflight refusal, partial delivery, lost responses, explicit retry, gate override and unsupported-schema reporting. `project-fields.py` sets Dependency-Track tags, a parent by name and by UUID (an artifact override) and `isLatest`, then shows each value's receipt state: applied tags observed, tags a key without `PORTFOLIO_MANAGEMENT_UPDATE` could not change recorded as `different` (200 without the permission), everything `unknown` without `VIEW_PORTFOLIO`, and a missing parent failing with 404 as `parent_not_found`. Its receiver imitates Dependency-Track 5.2.1's upload rules and is labelled synthetic. The TLS demo checks verified custom CA, explicit bypass, policy drift refusal and source-free receipt rendering. Runtime secret canaries must not appear in retained output.
 
-These local receiver simulations are not real-server compatibility claims. The existing [Dependency-Track integration harness](demo-delivery/integration/README.md) provisions pinned disposable services with scoped synthetic credentials and verifies uploaded bytes/projects/tokens. Existing CI runs this separately from synthetic demos. Do not treat a skipped integration as a pass.
+These local receiver simulations are not real-server compatibility claims. The existing [Dependency-Track integration harness](demo-delivery/integration/README.md) provisions pinned disposable services (Dependency-Track 5.1.1 or 5.2.1) with scoped synthetic credentials and verifies uploaded bytes/projects/tokens. Its `project_fields.py` runs the tags, parent and latest-version permission matrix and the subject-link check against 5.2.1. Existing CI runs this separately from synthetic demos. Do not treat a skipped integration as a pass.
 
 ## Failure and recovery demo
 

@@ -263,6 +263,9 @@ func Validate(d Document) error {
 		} else if !oneOf(v.Transport.CertificateVerification, "enforced", "disabled", "unknown") {
 			return invalid("TLS policy")
 		}
+		if e := validProjectFields(v.ProjectFields, target.Type); e != nil {
+			return e
+		}
 		if len(v.Responses) > MaxItems {
 			return invalid("response count")
 		}
@@ -399,4 +402,80 @@ func contains(list []string, value string) bool {
 		}
 	}
 	return false
+}
+
+// validProjectFields refuses states the read-back contradicts and claims beyond
+// observed, different or unknown; nothing is ever recorded as applied.
+func validProjectFields(f *ProjectFields, targetType string) error {
+	if f == nil {
+		return nil
+	}
+	bad := invalid("project fields")
+	if targetType != "dependency-track" || f.Tags == nil && f.Parent == nil && f.IsLatest == nil {
+		return bad
+	}
+	if !oneOf(f.ReadBack, "read", "not-attempted", "forbidden", "not-found", "transient", "unexpected-status", "unavailable", "invalid-response") {
+		return bad
+	}
+	read := f.ReadBack == "read"
+	state := func(s string, observed bool) bool {
+		switch s {
+		case "observed":
+			return read && !observed
+		case "different":
+			return read && observed
+		case "unknown":
+			return !read && !observed
+		}
+		return false
+	}
+	if t := f.Tags; t != nil {
+		if len(t.Requested) == 0 || len(t.Requested) > MaxItems || !state(t.State, t.Observed != nil) || t.Observed != nil && len(*t.Observed) > MaxItems {
+			return bad
+		}
+		for _, tag := range t.Requested {
+			if tag == "" || len(tag) > MaxValueBytes {
+				return bad
+			}
+		}
+		if t.Observed != nil && sameTags(t.Requested, *t.Observed) {
+			return bad
+		}
+	}
+	if p := f.Parent; p != nil {
+		if (p.Requested.UUID == "") == (p.Requested.Name == "") || p.Requested.Name != "" && p.Requested.Version == "" || !state(p.State, p.Observed != nil) {
+			return bad
+		}
+		// A "different" parent must differ by the requested selector.
+		if o := p.Observed; o != nil && (p.Requested.UUID != "" && strings.EqualFold(o.UUID, p.Requested.UUID) || p.Requested.UUID == "" && o.Name == p.Requested.Name && o.Version == p.Requested.Version) {
+			return bad
+		}
+	}
+	if l := f.IsLatest; l != nil {
+		if !state(l.State, l.Observed != nil) || l.Observed != nil && *l.Observed == l.Requested {
+			return bad
+		}
+	}
+	return nil
+}
+
+// sameTags compares tag lists as sets.
+func sameTags(a, b []string) bool {
+	set := func(xs []string) map[string]bool {
+		m := map[string]bool{}
+		for _, x := range xs {
+			m[x] = true
+		}
+		return m
+	}
+	x, y := set(a), set(b)
+	if len(x) != len(y) {
+		return false
+	}
+	for k := range x {
+		if !y[k] {
+			return false
+		}
+	}
+	return true
 }
