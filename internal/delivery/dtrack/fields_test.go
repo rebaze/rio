@@ -272,7 +272,7 @@ func TestSubmitReadBackUnknownWithoutViewPermission(t *testing.T) {
 		status int
 		body   string
 		code   string
-	}{{403, "", "forbidden"}, {401, "", "forbidden"}, {404, "", "not-found"}, {503, "", "transient"}, {200, "not json", "invalid-response"}, {200, `{"uuid":"` + token + `","tags":"x"}`, "invalid-response"}} {
+	}{{403, "", "forbidden"}, {401, "", "forbidden"}, {404, "", "not-found"}, {503, "", "transient"}, {200, "not json", "invalid-response"}, {200, `{"uuid":"` + token + `","tags":"x"}`, "invalid-response"}, {200, "null", "invalid-response"}, {200, "{}", "invalid-response"}, {200, `{"tags":[]}`, "invalid-response"}} {
 		t.Run(fmt.Sprint(tc.status, tc.code), func(t *testing.T) {
 			f := &fieldsServer{readStatus: tc.status, readProject: tc.body}
 			s := f.start(t)
@@ -351,6 +351,9 @@ func TestValidateEvidenceRejectsContradictoryProjectFacts(t *testing.T) {
 		`{"readBack":"read","httpStatus":200,"tags":{"requested":["a"],"state":"applied"}}`,
 		`{"readBack":"guess","tags":{"requested":["a"],"state":"unknown"}}`,
 		`{"readBack":"read","httpStatus":200}`,
+		`{"readBack":"read","httpStatus":200,"parent":{"requested":{"uuid":"` + token + `"},"state":"different","observed":{"uuid":"` + strings.ToUpper(token) + `","name":"p","version":"1"}}}`,
+		`{"readBack":"read","httpStatus":200,"parent":{"requested":{"name":"p","version":"1"},"state":"different","observed":{"uuid":"` + token + `","name":"p","version":"1"}}}`,
+		`{"readBack":"read","httpStatus":200,"tags":{"requested":["a","b"],"state":"different","observed":["b","a"]}}`,
 	} {
 		o := delivery.Observation{Kind: "activity", Value: "not-observed", Origin: "receiver", Code: "activity_observed", HTTPStatus: 200, References: []delivery.Reference{}, Details: json.RawMessage(`{"project":` + facts + `}`)}
 		if e := ValidateEvidence(nil, []delivery.Observation{o}); e == nil {

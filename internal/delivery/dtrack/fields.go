@@ -69,6 +69,15 @@ func (o Options) writeProjectFields(mw *multipart.Writer) {
 	}
 }
 
+// matches compares an observed parent by the requested selector: its UUID, or
+// its name and version.
+func (p Parent) matches(got Parent) bool {
+	if p.UUID != "" {
+		return strings.EqualFold(got.UUID, p.UUID)
+	}
+	return got.Name == p.Name && got.Version == p.Version
+}
+
 // parentSelector names the configured parent for a failure message.
 func (p Parent) selector() string {
 	if p.UUID != "" {
@@ -126,7 +135,8 @@ func (c *client) getProject(ctx context.Context, path string) (projectDocument, 
 		return project, o.unread("unexpected-status", status)
 	}
 	body, e := responseBytes(resp, projectLimit)
-	if e != nil || json.Unmarshal(body, &project) != nil || (o.IsLatest != nil && project.IsLatest == nil) {
+	// A document without a project UUID, such as null or {}, is not a project.
+	if e != nil || json.Unmarshal(body, &project) != nil || !ValidUUID(project.UUID) || (o.IsLatest != nil && project.IsLatest == nil) {
 		return project, o.unread("invalid-response", 200)
 	}
 	return project, nil
@@ -177,8 +187,7 @@ func (c *client) readProject(ctx context.Context) *ProjectFacts {
 		if project.Parent != nil {
 			got = Parent{UUID: strings.ToLower(project.Parent.UUID), Name: project.Parent.Name, Version: project.Parent.Version}
 		}
-		matches := project.Parent != nil && (o.Parent.UUID != "" && got.UUID == o.Parent.UUID || o.Parent.UUID == "" && got.Name == o.Parent.Name && got.Version == o.Parent.Version)
-		if !matches {
+		if project.Parent == nil || !o.Parent.matches(got) {
 			f.Parent.State, f.Parent.Observed = "different", &got
 		}
 	}
@@ -301,7 +310,7 @@ func (f ProjectFacts) validate() error {
 		}
 	}
 	if p := f.Parent; p != nil {
-		if (p.Requested.UUID == "") == (p.Requested.Name == "") || !state(p.State, p.Observed != nil) {
+		if (p.Requested.UUID == "") == (p.Requested.Name == "") || !state(p.State, p.Observed != nil) || p.Observed != nil && p.Requested.matches(*p.Observed) {
 			return bad
 		}
 	}

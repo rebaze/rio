@@ -438,9 +438,16 @@ func validProjectFields(f *ProjectFields, targetType string) error {
 				return bad
 			}
 		}
+		if t.Observed != nil && sameTags(t.Requested, *t.Observed) {
+			return bad
+		}
 	}
 	if p := f.Parent; p != nil {
 		if (p.Requested.UUID == "") == (p.Requested.Name == "") || p.Requested.Name != "" && p.Requested.Version == "" || !state(p.State, p.Observed != nil) {
+			return bad
+		}
+		// A "different" parent must differ by the requested selector.
+		if o := p.Observed; o != nil && (p.Requested.UUID != "" && strings.EqualFold(o.UUID, p.Requested.UUID) || p.Requested.UUID == "" && o.Name == p.Requested.Name && o.Version == p.Requested.Version) {
 			return bad
 		}
 	}
@@ -450,4 +457,25 @@ func validProjectFields(f *ProjectFields, targetType string) error {
 		}
 	}
 	return nil
+}
+
+// sameTags compares tag lists as sets.
+func sameTags(a, b []string) bool {
+	set := func(xs []string) map[string]bool {
+		m := map[string]bool{}
+		for _, x := range xs {
+			m[x] = true
+		}
+		return m
+	}
+	x, y := set(a), set(b)
+	if len(x) != len(y) {
+		return false
+	}
+	for k := range x {
+		if !y[k] {
+			return false
+		}
+	}
+	return true
 }

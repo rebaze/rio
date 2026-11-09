@@ -81,8 +81,10 @@ class Reader:
 
     def project(self, name, version):
         status, found = self.get("/api/v1/project/lookup?" + urllib.parse.urlencode({"name": name, "version": version}))
-        if status != 200:
+        # Only a 404 shows that the project does not exist; anything else is no observation.
+        if status == 404:
             return None
+        check(status == 200, "harness project lookup failed with status " + str(status))
         status, project = self.get("/api/v1/project/" + found["uuid"])
         check(status == 200, "harness project read failed")
         return project
