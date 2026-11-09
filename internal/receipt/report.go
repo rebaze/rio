@@ -140,6 +140,39 @@ func Text(raw []byte, w io.Writer) error {
 				printf("    %s: %s\n", ref.Kind, ref.Value)
 			}
 		}
+		if f := v.ProjectFields; f != nil {
+			printf("  project fields readBack=%s\n", f.ReadBack)
+			line := func(name string, requested any, state string, seen any) {
+				r, _ := json.Marshal(requested)
+				text := fmt.Sprintf("    %s requested=%s state=%s", name, r, state)
+				if seen != nil {
+					o, _ := json.Marshal(seen)
+					text += " observed=" + string(o)
+				}
+				printf("%s\n", text)
+			}
+			if t := f.Tags; t != nil {
+				var seen any
+				if t.Observed != nil {
+					seen = *t.Observed
+				}
+				line("tags", t.Requested, t.State, seen)
+			}
+			if p := f.Parent; p != nil {
+				var seen any
+				if p.Observed != nil {
+					seen = *p.Observed
+				}
+				line("parent", p.Requested, p.State, seen)
+			}
+			if l := f.IsLatest; l != nil {
+				var seen any
+				if l.Observed != nil {
+					seen = *l.Observed
+				}
+				line("isLatest", l.Requested, l.State, seen)
+			}
+		}
 	}
 	for _, excluded := range d.Exclusions {
 		printf("excluded: artifact=%s target=%s reason=%s scope=%s rule=%s\n", excluded.ArtifactID, excluded.Target, excluded.Reason, excluded.Scope, excluded.Rule)

@@ -68,10 +68,10 @@ var deliveryAdapters = func(dir string) map[string]adapterEntry {
 				return ""
 			}
 			if id.Project.UUID != "" {
-				return " autoCreate=not-applicable" + dtrackTransportPolicy(d)
+				return " autoCreate=not-applicable" + requestedFieldsText(d) + dtrackTransportPolicy(d)
 			}
 			if o.AutoCreate != nil {
-				return fmt.Sprintf(" autoCreate=%t", *o.AutoCreate) + dtrackTransportPolicy(d)
+				return fmt.Sprintf(" autoCreate=%t", *o.AutoCreate) + requestedFieldsText(d) + dtrackTransportPolicy(d)
 			}
 			return ""
 		},

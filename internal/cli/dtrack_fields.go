@@ -98,3 +98,23 @@ func parentLabel(p receipt.ProjectParent) string {
 	}
 	return "none"
 }
+
+// requestedFieldsText renders the requested project fields of a description,
+// without states, for human delivery plans.
+func requestedFieldsText(d delivery.Description) string {
+	f, e := requestedProjectFields(d)
+	if e != nil || f == nil {
+		return ""
+	}
+	var parts []string
+	if f.Tags != nil {
+		parts = append(parts, "tags="+strings.Join(f.Tags.Requested, ","))
+	}
+	if f.Parent != nil {
+		parts = append(parts, "parent="+parentLabel(f.Parent.Requested))
+	}
+	if f.IsLatest != nil {
+		parts = append(parts, fmt.Sprintf("isLatest=%t", f.IsLatest.Requested))
+	}
+	return " " + strings.Join(parts, " ")
+}

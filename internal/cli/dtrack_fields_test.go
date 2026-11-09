@@ -231,3 +231,16 @@ func TestDescribeProjectFieldsText(t *testing.T) {
 		t.Fatal(fmt.Sprintf("%q != %q", got, want))
 	}
 }
+
+func TestHumanDeliveryPlanShowsRequestedProjectFields(t *testing.T) {
+	ip, cfg := deliveryFixture(t, "http://127.0.0.1:1")
+	b, _ := os.ReadFile(cfg)
+	os.WriteFile(cfg, append(b, []byte("      autoCreate: true\n      tags: [rio-it]\n      parent: {name: p, version: all}\n      isLatest: true\n")...), 0600)
+	var out, errout bytes.Buffer
+	if code := Main([]string{"delivery", "plan", "--index", ip, "--manifest", cfg}, &out, &errout); code != 0 {
+		t.Fatalf("%d %s", code, errout.String())
+	}
+	if text := out.String() + errout.String(); !strings.Contains(text, "autoCreate=true tags=rio-it parent=p@all isLatest=true") {
+		t.Fatalf("delivery plan:\n%s", text)
+	}
+}
