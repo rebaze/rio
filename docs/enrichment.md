@@ -27,6 +27,9 @@ enrichment:
     website: https://products.example.com
     documentation: https://products.example.com/docs
     support: https://products.example.com/support
+    issueTracker: https://products.example.com/issues
+    releaseNotes: https://products.example.com/releases
+    advisories: https://products.example.com/security/advisories
   producer:
     name: Example Build Services
   dataLicense: CC0-1.0
@@ -38,6 +41,9 @@ artifacts:
         name: console
         purl: pkg:maven/com.example/console@1.0.0
         documentation: https://products.example.com/console/docs
+        links:
+          - label: Fact sheet
+            url: https://ea.example.com/factsheet/Application/console
 output:
   specVersionFloor: "1.6"
 ```
@@ -46,15 +52,17 @@ The artifact's leaves override the corresponding shared leaves; omitted leaves i
 `name`, `url` and `contact` are separate leaves, while each `url` or `contact` list is one value
 and is replaced as a whole, not merged by position. An organization accepts a name, a list of
 HTTP(S) URLs and a list of contacts with `name`, `email` and/or `phone`. Blank strings and null
-values cannot remove defaults. Website, documentation and support must be absolute HTTP(S) URLs;
-security contact also accepts a `mailto:` address.
+values cannot remove defaults. Website, documentation, support, issue tracker, release notes and
+advisories must be absolute HTTP(S) URLs without credentials; security contact also accepts a
+`mailto:` address. [Links](#links) merge per label.
 
 | Manifest field | CycloneDX target | Meaning |
 |---|---|---|
 | `subject.name`, `.group`, `.version`, `.type`, `.purl` | Corresponding fields under `metadata.component` | The described product's identity and component type |
 | `subject.manufacturer` | `metadata.component.manufacturer` | Organization that made the product; requires 1.6 |
 | `subject.supplier` | `metadata.component.supplier` | Organization supplying the product |
-| `subject.securityContact`, `.website`, `.documentation`, `.support` | Typed entries in `metadata.component.externalReferences` | Product contact and information URLs |
+| `subject.securityContact`, `.website`, `.documentation`, `.support`, `.issueTracker`, `.releaseNotes`, `.advisories` | One typed entry each in `metadata.component.externalReferences`: `security-contact`, `website`, `documentation`, `support`, `issue-tracker`, `release-notes`, `advisories` | Product contact and information URLs |
+| `subject.links` | Labelled entries in `metadata.component.externalReferences`; the label is the reference's `comment` | The organization's own links, such as a fact sheet. See [Links](#links) |
 | `producer` | `metadata.manufacturer` | Organization that created the SBOM; requires 1.6 |
 | `dataLicense` | `metadata.licenses` | One SPDX licence identifier for the SBOM data, such as `CC0-1.0`; an exception identifier such as `LLVM-exception` is refused at manifest load. Does not change component licenses |
 
@@ -63,6 +71,69 @@ CycloneDX 1.5 supports the other modeled fields. A 1.5 output with `producer` or
 configured spec floor applies first, so the default floor of 1.6 permits these fields on older
 inputs after uplift. Unknown fields, malformed values and unsupported output targets fail with
 exit 2 before writing outputs.
+
+## Links
+
+`subject.links` adds labelled links to the subject, for any ecosystem. The main use is a link to
+the application's fact sheet in an enterprise-architecture tool such as LeanIX, which names its
+owner:
+
+```yaml
+enrichment:
+  subject:
+    links:
+      - label: Fact sheet
+        url: https://<tenant>.leanix.net/<workspace>/factsheet/Application/<id>
+```
+
+The SBOM then carries this reference on `metadata.component`:
+
+```json
+{"type": "other", "url": "https://<tenant>.leanix.net/<workspace>/factsheet/Application/<id>", "comment": "Fact sheet"}
+```
+
+Each entry has `label`, `url` and an optional `type`:
+
+- `label` is required and nonblank, must not contain `]`, and is unique within the effective list.
+  It becomes the reference's `comment`.
+- `url` is an absolute HTTP(S) URL without credentials. rio never fetches it.
+- `type` defaults to `other`. It may be any CycloneDX 1.6 external reference type that no
+  dedicated field already models; `website`, `documentation`, `support`, `security-contact`,
+  `issue-tracker`, `release-notes` and `advisories` are refused, so use their fields. A type that
+  only CycloneDX 1.6 defines (`source-distribution`, `electronic-signature`,
+  `digital-signature`, `rfc-9116`) is refused at a 1.5 output with the hint to set
+  `output.specVersionFloor: 1.6`.
+- Two labels with the same type and URL are refused: the subject carries the reference once.
+
+Each label is its own leaf, `subject.links[<label>]`. Shared and artifact lists merge by label,
+and the artifact's entry wins for its label. `replace: ["subject.links[Fact sheet]"]` replaces
+that one label; it is the selector in change records and in `rio plan --json` too. A shared link
+cannot be removed for one artifact; leave it out of the shared list instead.
+
+| The SBOM subject already has | Result |
+|---|---|
+| A reference with the same type and URL | Left alone, no change record. Its existing `comment`, if any, stays, so the label is not shown for it |
+| No reference with this type and label | Added |
+| A reference with the same type and label (`comment`) but another URL | Conflict, exit 2, unless the label is listed under `replace` |
+
+References of other types or labels, including those the generator wrote, are never touched.
+Repeat application adds nothing.
+
+Dependency-Track copies `metadata.component.externalReferences` to the project on every upload
+and replaces what was there, so the SBOM is the lasting place for these links. A link set in
+Dependency-Track's UI or API disappears with the next upload to that version.
+
+### Ownership, reporting and routing
+
+CycloneDX has no field for an internal owner. `authors` is whoever made the product, and
+`securityContact` is the public channel for reporting vulnerabilities; neither should carry the
+internal owner. Keep the three apart:
+
+| Question | Where | Why |
+|---|---|---|
+| Who is responsible for the product? | A `Fact sheet` link to the enterprise-architecture tool | The tool stays the source of truth. When the owner changes, published SBOMs still lead to the current name, and none needs rebuilding. SBOMs that leave the organization, to customers or authorities, carry no personal names |
+| Where are vulnerabilities reported? | `subject.securityContact` | The public reporting channel, which recipients and the CRA expect |
+| Who is notified of findings? | A Dependency-Track project tag such as `owner:<team>` | A link cannot route anything; a notification rule matches a tag, which lives on the project, not in the SBOM |
 
 ## Existing values and explicit replacement
 
@@ -80,7 +151,8 @@ values. To intentionally change an existing value, list each field under `replac
         purl: pkg:maven/com.example/console@1.0.0
 ```
 
-`replace` accepts only modeled leaf names with an effective enrichment value. For example,
+`replace` accepts only modeled leaf names with an effective enrichment value, including
+`subject.links[<label>]` for one link. For example,
 `subject.supplier.name` replaces that name without replacing its URLs or contacts;
 `subject.supplier.contact` replaces its contact list. There is no wildcard or blanket override.
 An artifact's `replace` list replaces the shared list; omitting it inherits the list, and an

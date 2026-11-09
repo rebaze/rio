@@ -158,6 +158,64 @@ artifacts:
 	}
 }
 
+func TestNormalizeEnrichmentSubjectLinks(t *testing.T) {
+	dir := enrichmentProject(t, `version: 1
+enrichment:
+  subject:
+    issueTracker: https://example.com/widget/issues
+    links:
+      - label: Fact sheet
+        url: https://ea.example/factsheet/shared
+artifacts:
+  - id: widget
+    sbom: input.json
+    enrichment:
+      subject:
+        links:
+          - label: Fact sheet
+            url: https://ea.example/factsheet/widget
+`)
+	r := rio(t, dir, "plan", "--json")
+	if r.exit != 0 {
+		t.Fatalf("plan: %s", r.stderr)
+	}
+	var plan struct {
+		Artifacts []struct {
+			Enrichment struct {
+				Fields []map[string]any `json:"fields"`
+			} `json:"enrichment"`
+		} `json:"artifacts"`
+	}
+	if err := json.Unmarshal([]byte(r.stdout), &plan); err != nil {
+		t.Fatal(err)
+	}
+	wantPlan := []map[string]any{
+		{"field": "subject.issueTracker", "value": "https://example.com/widget/issues", "source": "enrichment.subject.issueTracker", "replace": false},
+		{"field": "subject.links[Fact sheet]", "value": map[string]any{"url": "https://ea.example/factsheet/widget", "type": "other"}, "source": "artifacts[0].enrichment.subject.links[Fact sheet]", "replace": false},
+	}
+	if diff := cmp.Diff(wantPlan, plan.Artifacts[0].Enrichment.Fields); diff != "" {
+		t.Fatal(diff)
+	}
+	r = rio(t, dir, "normalize")
+	if r.exit != 0 {
+		t.Fatalf("normalize: exit %d: %s", r.exit, r.stderr)
+	}
+	out := decode(t, readFile(t, latestOutput(t, dir, "target/rio"), "widget.cdx.json"))
+	refs := out["metadata"].(map[string]any)["component"].(map[string]any)["externalReferences"]
+	want := []any{
+		map[string]any{"type": "issue-tracker", "url": "https://example.com/widget/issues"},
+		map[string]any{"type": "other", "url": "https://ea.example/factsheet/widget", "comment": "Fact sheet"},
+	}
+	if diff := cmp.Diff(want, refs); diff != "" {
+		t.Fatal(diff)
+	}
+	changes := indexOf(t, r, "target/rio")["artifacts"].([]any)[0].(map[string]any)["enrichment"].(map[string]any)["changes"].([]any)
+	last := changes[len(changes)-1].(map[string]any)
+	if last["field"] != "subject.links[Fact sheet]" || last["source"].(map[string]any)["selector"] != "artifacts[0].enrichment.subject.links[Fact sheet]" {
+		t.Fatal(last)
+	}
+}
+
 // The public showcase data is an executable product fixture, not a screenshot
 // or a test-only construction. This catches stale examples and scope regressions.
 func TestEnrichmentDemoFixtures(t *testing.T) {
@@ -194,15 +252,25 @@ func TestEnrichmentDemoFixtures(t *testing.T) {
 			t.Fatal(diff)
 		}
 		refs := sub["externalReferences"].([]any)
-		found := false
+		found, factSheet, typed := false, false, 0
 		for _, v := range refs {
 			ref := v.(map[string]any)
 			if ref["type"] == "documentation" && ref["url"] == "https://products.example.com/"+id+"/docs" {
 				found = true
 			}
+			if ref["type"] == "other" && ref["comment"] == "Fact sheet" && ref["url"] == "https://ea.example.com/factsheet/Application/"+id {
+				factSheet = true
+			}
+			switch ref["type"] {
+			case "issue-tracker", "release-notes", "advisories":
+				typed++
+			}
 		}
 		if !found {
 			t.Fatalf("artifact-specific documentation lost: %v", refs)
+		}
+		if !factSheet || typed != 3 {
+			t.Fatalf("demo links missing: %v", refs)
 		}
 	}
 	r = rio(t, dir, "normalize", "--manifest", "conflict.yaml", "--out", "refused")

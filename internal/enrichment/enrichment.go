@@ -24,6 +24,26 @@ type Subject struct {
 	Website         *string       `yaml:"website" json:"website,omitempty"`
 	Documentation   *string       `yaml:"documentation" json:"documentation,omitempty"`
 	Support         *string       `yaml:"support" json:"support,omitempty"`
+	IssueTracker    *string       `yaml:"issueTracker" json:"issueTracker,omitempty"`
+	ReleaseNotes    *string       `yaml:"releaseNotes" json:"releaseNotes,omitempty"`
+	Advisories      *string       `yaml:"advisories" json:"advisories,omitempty"`
+	// Links are labelled external references. Each label is its own leaf,
+	// subject.links[<label>], so shared and artifact lists merge per label.
+	Links *[]Link `yaml:"links" json:"links,omitempty"`
+}
+
+// Link is one labelled subject reference. The label becomes the CycloneDX
+// reference's comment; Type defaults to "other".
+type Link struct {
+	Label *string `yaml:"label" json:"label,omitempty"`
+	URL   *string `yaml:"url" json:"url,omitempty"`
+	Type  *string `yaml:"type" json:"type,omitempty"`
+}
+
+// LinkValue is the effective value of one subject.links[<label>] leaf.
+type LinkValue struct {
+	URL  string `json:"url"`
+	Type string `json:"type"`
 }
 
 type Organization struct {

@@ -2,9 +2,12 @@ package manifest_test
 
 import (
 	"encoding/json"
-	"github.com/rebaze/rio/internal/manifest"
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
+	"github.com/rebaze/rio/internal/manifest"
 )
 
 func TestEnrichmentMergeAndSource(t *testing.T) {
@@ -180,5 +183,82 @@ artifacts:
 		if len(artifact.Enrichment.Fields) != 2 || string(artifact.Enrichment.Fields[0].Value) != `"Publisher"` || string(artifact.Enrichment.Fields[1].Value) != `"1.2"` {
 			t.Fatalf("fields = %+v", artifact.Enrichment.Fields)
 		}
+	}
+}
+
+func TestEnrichmentLinksLoadAndMergePerLabel(t *testing.T) {
+	m, err := manifest.Load(write(t, `version: 1
+enrichment:
+  subject:
+    issueTracker: https://example.com/issues
+    links:
+      - label: Fact sheet
+        url: https://ea.example/factsheet/shared
+      - {label: Wiki, url: https://wiki.example/app, type: documentation-ish}
+artifacts:
+  - id: a
+    sbom: a.json
+    enrichment:
+      subject:
+        links:
+          - {label: Fact sheet, url: https://ea.example/factsheet/a}
+      replace: ["subject.links[Fact sheet]"]
+`))
+	if err == nil || !strings.Contains(err.Error(), `enrichment.subject.links[Wiki]: type "documentation-ish" is not a CycloneDX 1.6 external reference type`) {
+		t.Fatalf("unknown type: %v", err)
+	}
+	m, err = manifest.Load(write(t, `version: 1
+enrichment:
+  subject:
+    issueTracker: https://example.com/issues
+    links:
+      - label: Fact sheet
+        url: https://ea.example/factsheet/shared
+      - {label: Threat model, url: https://security.example/tm, type: threat-model}
+artifacts:
+  - id: a
+    sbom: a.json
+    enrichment:
+      subject:
+        links:
+          - {label: Fact sheet, url: https://ea.example/factsheet/a}
+      replace: ["subject.links[Fact sheet]"]
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, f := range m.Artifacts[0].Enrichment.Fields {
+		got[f.Field] = fmt.Sprintf("%s %s %t", f.Value, f.Source, f.Replace)
+	}
+	want := map[string]string{
+		"subject.issueTracker":        `"https://example.com/issues" enrichment.subject.issueTracker false`,
+		"subject.links[Fact sheet]":   `{"url":"https://ea.example/factsheet/a","type":"other"} artifacts[0].enrichment.subject.links[Fact sheet] true`,
+		"subject.links[Threat model]": `{"url":"https://security.example/tm","type":"threat-model"} enrichment.subject.links[Threat model] false`,
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Fatal(diff)
+	}
+}
+
+func TestEnrichmentLinksRejectInvalidConfiguration(t *testing.T) {
+	for _, tt := range []struct{ name, block, want string }{
+		{"unknown key", "subject: {links: [{label: A, url: 'https://a.example', note: x}]}", "unknown key"},
+		{"not a list", "subject: {links: text}", "enrichment.subject.links"},
+		{"not a mapping", "subject: {links: [text]}", "enrichment.subject.links[0]"},
+		{"label number", "subject: {links: [{label: 7, url: 'https://a.example'}]}", "must be a string"},
+		{"missing label", "subject: {links: [{url: 'https://a.example'}]}", "enrichment.subject.links[0].label: is required"},
+		{"duplicate label", "subject: {links: [{label: A, url: 'https://a.example'}, {label: A, url: 'https://b.example'}]}", "is listed more than once"},
+		{"modeled type", "subject: {links: [{label: A, url: 'https://a.example', type: issue-tracker}]}", "modeled by enrichment.subject.issueTracker"},
+		{"invalid url", "subject: {links: [{label: A, url: 'mailto:a@example.com'}]}", "enrichment.subject.links[0].url"},
+		{"typed leaf url", "subject: {advisories: 'not a url'}", "enrichment.subject.advisories"},
+		{"replace absent label", "subject: {links: [{label: A, url: 'https://a.example'}]}\n  replace: ['subject.links[B]']", "has no effective enrichment value"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := manifest.Load(write(t, "version: 1\nenrichment:\n  "+tt.block+"\nartifacts:\n  - id: a\n    sbom: a.json\n"))
+			if err == nil || !strings.Contains(err.Error(), tt.want) || strings.Contains(err.Error(), "enrichment.Link") {
+				t.Fatalf("error = %v; want %q", err, tt.want)
+			}
+		})
 	}
 }

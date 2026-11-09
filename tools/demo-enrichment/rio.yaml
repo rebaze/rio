@@ -19,6 +19,9 @@ enrichment:
     website: https://products.example.com
     documentation: https://products.example.com/docs
     support: https://products.example.com/support
+    issueTracker: https://products.example.com/issues
+    releaseNotes: https://products.example.com/releases
+    advisories: https://products.example.com/security/advisories
   producer:
     name: Example Build Services
     url: [https://build.example.com]
@@ -32,6 +35,10 @@ artifacts:
         name: console
         purl: pkg:maven/com.example/console@1.0.0
         documentation: https://products.example.com/console/docs
+        # Who owns the product lives in the architecture tool, not in the SBOM.
+        links:
+          - label: Fact sheet
+            url: https://ea.example.com/factsheet/Application/console
   - id: agent
     sbom: inputs/agent.cdx.json
     enrichment:
@@ -39,6 +46,10 @@ artifacts:
         name: agent
         purl: pkg:maven/com.example/agent@1.0.0
         documentation: https://products.example.com/agent/docs
+        # Who owns the product lives in the architecture tool, not in the SBOM.
+        links:
+          - label: Fact sheet
+            url: https://ea.example.com/factsheet/Application/agent
 
 output:
   specVersionFloor: "1.6"

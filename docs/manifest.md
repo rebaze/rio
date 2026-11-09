@@ -330,6 +330,17 @@ unknown `artifactSets` key rather than silently ignoring it.
 | Supply product, organization or SBOM metadata | [Root and per-artifact `enrichment`](enrichment.md) |
 | Bind producer-supplied build/source assertions to an original SBOM digest | [Per-artifact `context`](context.md) |
 
+### Enrichment subject links
+
+These `enrichment.subject` keys are valid at the root, in `artifacts[]` and in `artifactSets[]`.
+The [enrichment reference](enrichment.md#links) describes how they merge with the SBOM.
+
+| Key | Value | Refused at manifest load |
+|---|---|---|
+| `issueTracker`, `releaseNotes`, `advisories` | One absolute HTTP(S) URL | A relative, credential-bearing, blank or non-HTTP(S) URL |
+| `links` | A list of `{label, url, type}` | A missing, blank or duplicate `label`, or one containing `]`; a missing or invalid `url`; a `type` that is not a CycloneDX 1.6 external reference type or that a dedicated field models; two labels with the same type and URL; any other key |
+| `replace: ["subject.links[<label>]"]` | Replaces one link | A label without an effective link |
+
 Sets accept the same transforms, enrichment and context settings for each generated artifact.
 Their auxiliary paths stay manifest-relative. The legacy `subject: {name, version}` override is
 supported only on explicit artifacts. See the [output reference](output.md) for the resulting

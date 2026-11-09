@@ -16,7 +16,7 @@ inputs and remain separate from its runtime.
 | [`demo-delivery/`](demo-delivery/) | demonstrates native Dependency-Track delivery and batch evidence | with Rio 0.7.0+ and Python 3.9+ |
 | [`demo-dtrack-tls/`](demo-dtrack-tls/) | demonstrates verified TLS and explicit certificate bypass with recorded policy | with Rio 0.7.0+ and Python 3.9+ |
 | [`demo-oci/`](demo-oci/) | demonstrates native standalone and attached OCI delivery | with Rio 0.7.0+ and Python 3.9+ |
-| [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, conflict refusal and explicit field replacement | with Rio 0.7.0+ and Python 3.9+ |
+| [`demo-enrichment/run.sh`](#manifest-enrichment-demo) | demonstrates shared defaults, labelled fact-sheet links, conflict refusal and explicit field replacement | with Rio 0.10.0+ and Python 3.9+ |
 | [`demo-context/run.sh`](#ci-build-context-demo) | demonstrates two selected CI context entries, shipped-file digests, refusals and owned-claim replacement | with Rio 0.9.0+ and Python 3.9+ |
 | [`demo-artifact-sets/`](#artifact-sets-demo) | discovers module SBOMs, refuses missing/overlapping inputs and retains offline scope/check evidence | with Rio 0.7.0+ and Python 3.9+ |
 | [`demo-recovery/`](demo-recovery/) | demonstrates partial delivery, explicit retry, reconciliation and offline crash recovery | with Rio 0.7.0+ and Python 3.9+ |
@@ -654,7 +654,7 @@ on screen above their output. Version 2 transcripts require a fresh run of the d
 ## Manifest enrichment demo
 
 The [standalone enrichment demo](demo-enrichment/README.md) includes synthetic CycloneDX 1.6
-SBOMs, three manifests and a shell runner. It uses a real installed rio release containing #61;
+SBOMs, three manifests and a shell runner. It uses a real installed rio release containing #202 (v0.10.0+);
 Python 3.9+ reads structured results; no Go toolchain, source build, jq or network access is needed. Copy `demo-enrichment/`
 with its inputs from the matching tagged source archive, or use it from a checkout:
 
@@ -664,8 +664,9 @@ with its inputs from the matching tagged source archive, or use it from a checko
 RIO_BIN=/absolute/path/to/rio ./tools/demo-enrichment/run.sh
 ```
 
-Two products inherit organization and product defaults while supplying their own identities and
-documentation URLs. A separate case refuses a conflicting existing subject with exit 2 and no new
+Two products inherit organization and product defaults, including issue-tracker, release-notes
+and advisories links, while supplying their own identities, documentation URLs and a labelled
+`Fact sheet` link. A separate case refuses a conflicting existing subject with exit 2 and no new
 output files; an explicit `replace` list then permits just the named fields to change. The runner
 shows plans and subject before/after values and retains the complete inputs, plans, conflict log,
 SBOMs, indexes and unsigned statements in a fresh temporary directory printed at exit. See the
