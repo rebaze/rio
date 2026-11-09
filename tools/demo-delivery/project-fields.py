@@ -176,7 +176,7 @@ def main():
             for name in ("tags", "parent", "isLatest"):
                 if name in fields:
                     f = fields[name]
-                    line = "    %-9s requested %s → %s" % (name, json.dumps(f["requested"]), f["state"])
+                    line = "    %-9s requested %s -> %s" % (name, json.dumps(f["requested"]), f["state"])
                     if "observed" in f:
                         line += ", observed " + json.dumps(f["observed"])
                     print(line)
