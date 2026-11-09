@@ -47,7 +47,7 @@ delivery:
 ```
 
 - `tags` is the project's **complete tag set**: the server replaces all tags with it. An omitted `tags` sends nothing and leaves the tags alone. An upload cannot clear tags, so `tags: []` is refused. Tags are literal, lowercase strings without commas or edge whitespace, at most 255 characters each, and unique; Dependency-Track lowercases tag names and splits the request on commas.
-- `parent` is exactly one of `{uuid}` or `{name, version}` of an existing project.
+- `parent` is exactly one of `{uuid}` or `{name}` with an optional `version`, of an existing project. Without `version` it names a version-less project, as grouping parents usually are: `parent: {name: Payments}`.
 - `isLatest: true` marks this version as the project's latest; the previous latest version loses the flag.
 - `parent` and `isLatest` need a name/version or default subject project with `autoCreate: true`. With `project: {uuid}` or without `autoCreate` they could never apply, so they are refused before any request (`rio plan` refuses them too). `tags` work with every selector.
 

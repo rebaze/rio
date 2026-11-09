@@ -4,7 +4,7 @@
   "scenarios": [
     {
       "name": "name-version",
-      "payloadSHA256": "34a19bfc9454b6c2973eb75a1029e248f940541ee7f69f316481e0fd272772a0",
+      "payloadSHA256": "96b96fcfb3e22f49c4f7d8138c3261d586c86d4944bc1c73229adc06e59e3808",
       "interpretation": "accepted",
       "inventoryVerified": true,
       "activities": [
@@ -166,7 +166,7 @@
     },
     {
       "name": "uuid",
-      "payloadSHA256": "0130065ad992c70a09169c083b266705fa697b2848e42a8e971bb9c370b93d82",
+      "payloadSHA256": "48ac273d9fa759bb30458e92e4d4390133c324a6d8efb31d030d54fdeecc0fc1",
       "interpretation": "accepted",
       "inventoryVerified": true,
       "activities": [
@@ -208,7 +208,8 @@
           "path": "/api/v1/event/token/\u003cevent-token\u003e",
           "httpStatus": 200,
           "response": {
-            "processing": true
+            "processing": true,
+            "status": "RUNNING"
           }
         },
         {
@@ -296,7 +297,7 @@
     },
     {
       "name": "absent-creation-disabled",
-      "payloadSHA256": "6abf511cbe95394c5456825ad1bf78c8590b8b7ff4e655afd1c3075349e867e4",
+      "payloadSHA256": "cd180ed928ca4eb338b43dd136667688e2ccf38312a43cd9f02bd8c9f5c071a8",
       "interpretation": "rejected",
       "requests": [
         {
@@ -315,7 +316,7 @@
     },
     {
       "name": "absent-creation-enabled",
-      "payloadSHA256": "6abf511cbe95394c5456825ad1bf78c8590b8b7ff4e655afd1c3075349e867e4",
+      "payloadSHA256": "cd180ed928ca4eb338b43dd136667688e2ccf38312a43cd9f02bd8c9f5c071a8",
       "interpretation": "accepted",
       "inventoryVerified": true,
       "requests": [
@@ -337,7 +338,7 @@
     },
     {
       "name": "denied-permissions",
-      "payloadSHA256": "6abf511cbe95394c5456825ad1bf78c8590b8b7ff4e655afd1c3075349e867e4",
+      "payloadSHA256": "cd180ed928ca4eb338b43dd136667688e2ccf38312a43cd9f02bd8c9f5c071a8",
       "interpretation": "rejected",
       "requests": [
         {
@@ -354,7 +355,7 @@
     },
     {
       "name": "invalid-credential",
-      "payloadSHA256": "6abf511cbe95394c5456825ad1bf78c8590b8b7ff4e655afd1c3075349e867e4",
+      "payloadSHA256": "cd180ed928ca4eb338b43dd136667688e2ccf38312a43cd9f02bd8c9f5c071a8",
       "interpretation": "rejected",
       "requests": [
         {

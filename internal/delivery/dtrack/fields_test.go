@@ -81,7 +81,7 @@ func TestDescribeRejectsProjectFields(t *testing.T) {
 		{"not a list", "tags: a", pairBinding, "tags"},
 		{"number", "tags: [1]", pairBinding, "tags"},
 		{"parent both", "parent: {uuid: f90934f5-cb88-47ce-81cb-db06fc67d4b4, name: p, version: '1'}", pairBinding, "parent"},
-		{"parent name only", "parent: {name: p}", pairBinding, "parent"},
+		{"parent blank version", "parent: {name: p, version: ''}", pairBinding, "parent.version"},
 		{"parent version only", "parent: {version: '1'}", pairBinding, "parent"},
 		{"parent bad uuid", "parent: {uuid: nope}", pairBinding, "parent.uuid"},
 		{"parent unknown key", "parent: {name: p, version: '1', id: 3}", pairBinding, "parent"},
@@ -359,5 +359,35 @@ func TestValidateEvidenceRejectsContradictoryProjectFacts(t *testing.T) {
 		if e := ValidateEvidence(nil, []delivery.Observation{o}); e == nil {
 			t.Errorf("accepted %s", facts)
 		}
+	}
+}
+
+// Parents are often version-less grouping projects; name alone selects them.
+func TestSubmitParentByNameWithoutVersion(t *testing.T) {
+	o, e := describeOptions(t, "parent: {name: Payments}", pairBinding)
+	if e != nil || *o.Parent != (Parent{Name: "Payments"}) {
+		t.Fatalf("%+v %v", o.Parent, e)
+	}
+	f := &fieldsServer{readProject: `{"uuid":"` + token + `","name":"app","version":"1","parent":{"uuid":"0b7e5c4e-8f0a-4c43-9d4c-3a1d2c1b0a99","name":"Payments"}}`}
+	s := f.start(t)
+	_, facts, e := submitFacts(t, fieldsTarget(t, s, "parent: {name: Payments}", pairBinding))
+	if e != nil || f.form["parentName"] != "Payments" || facts.Parent.State != "observed" {
+		t.Fatalf("form=%v facts=%+v err=%v", f.form, facts, e)
+	}
+	if _, sent := f.form["parentVersion"]; sent {
+		t.Fatal("sent parentVersion for a version-less parent")
+	}
+	// A parent with the same name but a version is another project.
+	f = &fieldsServer{readProject: `{"uuid":"` + token + `","name":"app","version":"1","parent":{"uuid":"0b7e5c4e-8f0a-4c43-9d4c-3a1d2c1b0a99","name":"Payments","version":"all"}}`}
+	s = f.start(t)
+	_, facts, _ = submitFacts(t, fieldsTarget(t, s, "parent: {name: Payments}", pairBinding))
+	if facts.Parent.State != "different" {
+		t.Fatalf("facts=%+v", facts.Parent)
+	}
+	f = &fieldsServer{uploadCode: 404}
+	s = f.start(t)
+	_, _, e = submitFacts(t, fieldsTarget(t, s, "parent: {name: Payments}", pairBinding))
+	if e == nil || !strings.Contains(e.Error(), "parent name=Payments (no version) does not exist") {
+		t.Fatalf("error = %v", e)
 	}
 }

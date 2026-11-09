@@ -84,6 +84,7 @@ then compares Rio's receipt with the harness's own read-back by a portfolio-mana
 | Existing version, changed tags | `BOM_UPLOAD` | 200, tags unchanged | `unknown` |
 | The same | `BOM_UPLOAD`, `VIEW_PORTFOLIO` | 200, tags unchanged | tags `different`, with the observed tags |
 | The same | plus `PORTFOLIO_MANAGEMENT_UPDATE` | Tag set replaced | `observed` |
+| A version-less parent named without a version | `BOM_UPLOAD`, `PROJECT_CREATION_UPLOAD`, `VIEW_PORTFOLIO` | Set | `observed` |
 | A parent that does not exist | `BOM_UPLOAD`, `PROJECT_CREATION_UPLOAD`, `VIEW_PORTFOLIO` | 404, no project created | `rejected`, `parent_not_found`, exit 5 |
 | Subject links from enrichment (#202) | the same | The project's external references show type, URL and label (`comment`) | accepted |
 | The same version again without the links | the same | The links are cleared | accepted |
@@ -101,7 +102,8 @@ python3 tools/demo-delivery/integration/setup.py stop /absolute/private/rio-dtra
 ```
 
 It needs Rio v0.10.0 or newer. It creates one team and key per permission set in the fixture and
-does not stop it, so `exercise.py` can follow. CI runs it on every change, after the 5.1.1 harness.
+does not stop it, so `exercise.py` can follow. On every change CI runs the 5.1.1 harness, then on a
+fresh 5.2.1 fixture `project_fields.py` followed by `exercise.py --adapter-tests`.
 
 ## Repeatable owned setup and client handoff
 

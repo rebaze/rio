@@ -443,7 +443,7 @@ func validProjectFields(f *ProjectFields, targetType string) error {
 		}
 	}
 	if p := f.Parent; p != nil {
-		if (p.Requested.UUID == "") == (p.Requested.Name == "") || p.Requested.Name != "" && p.Requested.Version == "" || !state(p.State, p.Observed != nil) {
+		if (p.Requested.UUID == "") == (p.Requested.Name == "") || p.Requested.UUID != "" && p.Requested.Version != "" || !state(p.State, p.Observed != nil) {
 			return bad
 		}
 		// A "different" parent must differ by the requested selector.
