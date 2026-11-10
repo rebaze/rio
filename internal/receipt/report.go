@@ -121,6 +121,10 @@ func Text(raw []byte, w io.Writer) error {
 			printf("  gate=%s mode=%s schema=%s findings=%d\n", a.Checks.Gate, a.Checks.Mode, a.Checks.Schema, a.Checks.Findings)
 		}
 	}
+	artifacts := map[string]Artifact{}
+	for _, a := range d.Artifacts {
+		artifacts[a.ID] = a
+	}
 	for _, v := range d.Deliveries {
 		printf("\n%s → %s (%s): %s\n", v.ArtifactID, v.Target, d.Targets[v.Target].URL, v.State)
 		project := displayValue(v.Project)
@@ -129,7 +133,15 @@ func Text(raw []byte, w io.Writer) error {
 		}
 		printf("  project=%s transport=%s TLS=%s verification=%s\n", project, v.Transport.Scheme, observed(v.Transport.TLSObserved), v.Transport.CertificateVerification)
 		for _, body := range v.Submitted {
-			printf("  submitted role=%s mediaType=%s artifactOutput=%s sha256=%s bytes=%d\n", body.Role, body.MediaType, body.ArtifactOutput, body.SHA256, body.Size)
+			// A compact body names an artifact output; show the bytes it refers to.
+			resolved := canonicalBody(body, artifacts)
+			line := "  submitted"
+			for _, field := range [][2]string{{"role", body.Role}, {"mediaType", body.MediaType}, {"artifactOutput", body.ArtifactOutput}, {"transformation", body.Transformation}} {
+				if field[1] != "" {
+					line += " " + field[0] + "=" + field[1]
+				}
+			}
+			printf("%s sha256=%s bytes=%d\n", line, resolved.SHA256, resolved.Size)
 		}
 		if v.RequestMayHaveOccurred && len(v.Submitted) == 0 {
 			fmt.Fprintln(&b, "  no complete body write recorded")
