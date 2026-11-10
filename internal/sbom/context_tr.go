@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/rebaze/rio/internal/buildcontext"
 )
@@ -77,6 +78,11 @@ func (d *Document) mergeFileComponents(dists []buildcontext.Distribution, prior 
 				owned = append(owned, fileComponentOwner+dist.Name)
 			}
 		default:
+			if uses == 1 && existing != nil {
+				if drift := subjectDrift(existing, want); drift != "" {
+					return nil, nil, fmt.Errorf("context distribution %q conflicts with the component rio added for it earlier (bom-ref %s): the subject's %s changed since then, and the file component copies it; distributions cannot be replaced: %s", dist.Name, ref, drift, dist.Name)
+				}
+			}
 			return nil, nil, fmt.Errorf("context distribution %q conflicts with an existing component with bom-ref %s; distributions cannot be replaced: %s", dist.Name, ref, dist.Name)
 		}
 	}
@@ -235,6 +241,48 @@ func fileComponent(dist buildcontext.Distribution, subject map[string]any) map[s
 		c["licenses"] = copyWithoutBOMRefs(licenses)
 	}
 	return c
+}
+
+// subjectDrift names the subject fields a file component copies (version,
+// manufacturer, licenses) that differ between existing and want, when they are
+// the only difference: rio's own output normalized again after the subject
+// changed. It returns "" when anything else differs too.
+func subjectDrift(existing, want map[string]any) string {
+	copied := []string{"version", "manufacturer", "licenses"}
+	rebased := map[string]any{}
+	for k, v := range existing {
+		rebased[k] = v
+	}
+	var changed []string
+	for _, k := range copied {
+		a, inExisting := existing[k]
+		b, inWant := want[k]
+		if inExisting == inWant && (!inExisting || sameJSON(a, b)) {
+			continue
+		}
+		if k == "version" {
+			was, _ := json.Marshal(a)
+			now, _ := json.Marshal(b)
+			if !inExisting {
+				was = []byte("none")
+			}
+			if !inWant {
+				now = []byte("none")
+			}
+			changed = append(changed, fmt.Sprintf("version (%s, now %s)", was, now))
+		} else {
+			changed = append(changed, k)
+		}
+		if inWant {
+			rebased[k] = b
+		} else {
+			delete(rebased, k)
+		}
+	}
+	if len(changed) == 0 || !sameJSON(rebased, want) {
+		return ""
+	}
+	return strings.Join(changed, " and ")
 }
 
 // copyWithoutBOMRefs deep-copies v, dropping every bom-ref: a bom-ref must be

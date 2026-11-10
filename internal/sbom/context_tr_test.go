@@ -294,6 +294,23 @@ func TestApplyContextFileComponentChanged(t *testing.T) {
 			t.Fatal("refusal mutated document")
 		}
 	})
+	t.Run("subject changed since the component was added", func(t *testing.T) {
+		root := tree(t, []byte(trSubjectDoc)).(map[string]any)
+		existing := jsonTree(t, tarballComponent).(map[string]any)
+		existing["version"] = "1.3.9"
+		delete(existing, "licenses")
+		existing["licenses"] = []any{map[string]any{"license": map[string]any{"id": "MIT"}}}
+		subjectOf(root)["components"] = []any{existing}
+		src, _ := json.Marshal(root)
+		d := load(t, src)
+		_, err := d.ApplyContext(trResolved("", trTarball))
+		if err == nil || !strings.HasSuffix(err.Error(), "distributions cannot be replaced: "+trTarball.Name) {
+			t.Fatalf("want refusal naming %s: %v", trTarball.Name, err)
+		}
+		if !strings.Contains(err.Error(), `the subject's version ("1.3.9", now "1.4.0") and licenses changed`) {
+			t.Fatalf("want the changed subject fields named: %v", err)
+		}
+	})
 	t.Run("existing nested component with the bom-ref", func(t *testing.T) {
 		root := tree(t, []byte(trSubjectDoc)).(map[string]any)
 		zlib := root["components"].([]any)[0].(map[string]any)
