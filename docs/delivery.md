@@ -76,6 +76,21 @@ A requested value is never recorded as applied without being seen. The read-back
 
 Tags route findings: a notification rule's filter such as `"owner:payments" in subject.project.tags` sends them to the owning team. Keep the three apart per application: a `Fact sheet` link in the SBOM for who is responsible ([enrichment](enrichment.md#ownership-reporting-and-routing)), an `owner:` tag for who is notified, and `securityContact` for the public reporting channel. Rio does not set project properties, team access or collection logic; these need separate API calls.
 
+## Credentials
+
+`apiKeyEnv`, `usernameEnv` and `passwordEnv` name environment variables; Rio reads the values from
+the environment at delivery and records only the variable names. In CI, inject them from the CI's
+secret store. On a workstation, keep them in a private file outside the project and load it into
+the shell; Rio does not read the file itself:
+
+```sh
+mkdir -p "$HOME/.config/rio" && chmod 700 "$HOME/.config/rio"
+# Save ~/.config/rio/dtrack.env with: export DTRACK_API_KEY='...'
+chmod 600 "$HOME/.config/rio/dtrack.env"
+. "$HOME/.config/rio/dtrack.env"
+rio
+```
+
 ## TLS and HTTP
 
 HTTPS performs certificate and hostname verification by default. `caFile: certs/receiver-ca.pem` adds a public CA certificate using a manifest-relative path. Read-only plan describes the file without opening it; only requested native network work resolves transport files and credentials.

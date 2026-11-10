@@ -1,0 +1,113 @@
+{
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "bom-ref": "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.18.2",
+      "group": "com.fasterxml.jackson.core",
+      "name": "jackson-databind",
+      "purl": "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.18.2",
+      "type": "library",
+      "version": "2.18.2"
+    },
+    {
+      "bom-ref": "pkg:maven/org.springframework/spring-web@6.2.1",
+      "group": "org.springframework",
+      "name": "spring-web",
+      "purl": "pkg:maven/org.springframework/spring-web@6.2.1",
+      "type": "library",
+      "version": "6.2.1"
+    },
+    {
+      "bom-ref": "pkg:maven/org.postgresql/postgresql@42.7.4",
+      "group": "org.postgresql",
+      "name": "postgresql",
+      "purl": "pkg:maven/org.postgresql/postgresql@42.7.4",
+      "type": "library",
+      "version": "42.7.4"
+    }
+  ],
+  "dependencies": [
+    {
+      "dependsOn": [
+        "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.18.2",
+        "pkg:maven/org.springframework/spring-web@6.2.1",
+        "pkg:maven/org.postgresql/postgresql@42.7.4"
+      ],
+      "ref": "pkg:maven/com.example.payments/payments-api@2.3.0"
+    }
+  ],
+  "metadata": {
+    "component": {
+      "bom-ref": "pkg:maven/com.example.payments/payments-api@2.3.0",
+      "externalReferences": [
+        {
+          "comment": "Fact sheet",
+          "type": "other",
+          "url": "https://ea.example.com/factsheet/Application/payments-api"
+        },
+        {
+          "type": "security-contact",
+          "url": "mailto:security@payments.example.com"
+        }
+      ],
+      "group": "com.example.payments",
+      "name": "payments-api",
+      "purl": "pkg:maven/com.example.payments/payments-api@2.3.0",
+      "supplier": {
+        "name": "Example Payments GmbH"
+      },
+      "type": "application",
+      "version": "2.3.0"
+    },
+    "properties": [
+      {
+        "name": "rebaze:normalize:artifact-id",
+        "value": "payments-api"
+      },
+      {
+        "name": "rebaze:normalize:enrichment",
+        "value": "{\"version\":1,\"field\":\"subject.links[Fact sheet]\",\"target\":\"/metadata/component/externalReferences\",\"before\":null,\"after\":[{\"comment\":\"Fact sheet\",\"type\":\"other\",\"url\":\"https://ea.example.com/factsheet/Application/payments-api\"}],\"source\":{\"kind\":\"manifest\",\"path\":\"rio.yaml\",\"sha256\":\"c0977fbce4b11bad534bb3e45df9fb58a24a5fff6d2268766352d539ec26061c\",\"selector\":\"enrichment.subject.links[Fact sheet]\"},\"assertion\":\"producer\"}"
+      },
+      {
+        "name": "rebaze:normalize:enrichment",
+        "value": "{\"version\":1,\"field\":\"subject.securityContact\",\"target\":\"/metadata/component/externalReferences\",\"before\":[{\"comment\":\"Fact sheet\",\"type\":\"other\",\"url\":\"https://ea.example.com/factsheet/Application/payments-api\"}],\"after\":[{\"comment\":\"Fact sheet\",\"type\":\"other\",\"url\":\"https://ea.example.com/factsheet/Application/payments-api\"},{\"type\":\"security-contact\",\"url\":\"mailto:security@payments.example.com\"}],\"source\":{\"kind\":\"manifest\",\"path\":\"rio.yaml\",\"sha256\":\"c0977fbce4b11bad534bb3e45df9fb58a24a5fff6d2268766352d539ec26061c\",\"selector\":\"enrichment.subject.securityContact\"},\"assertion\":\"producer\"}"
+      },
+      {
+        "name": "rebaze:normalize:enrichment",
+        "value": "{\"version\":1,\"field\":\"subject.supplier.name\",\"target\":\"/metadata/component/supplier/name\",\"before\":null,\"after\":\"Example Payments GmbH\",\"source\":{\"kind\":\"manifest\",\"path\":\"rio.yaml\",\"sha256\":\"c0977fbce4b11bad534bb3e45df9fb58a24a5fff6d2268766352d539ec26061c\",\"selector\":\"enrichment.subject.supplier.name\"},\"assertion\":\"producer\"}"
+      },
+      {
+        "name": "rebaze:normalize:input-sha256",
+        "value": "6bc292a298614b7b6ee82c99fb71883bbc6288d3090654472b5e0e9af331e92e"
+      },
+      {
+        "name": "rebaze:normalize:manifest-sha256",
+        "value": "c0977fbce4b11bad534bb3e45df9fb58a24a5fff6d2268766352d539ec26061c"
+      },
+      {
+        "name": "rebaze:normalize:spec-uplift",
+        "value": "from=1.4 to=1.6"
+      },
+      {
+        "name": "rebaze:normalize:tool",
+        "value": "rio 0.10.0"
+      }
+    ],
+    "timestamp": "2026-11-09T14:02:11Z",
+    "tools": [
+      {
+        "name": "synthetic-sbom-generator",
+        "vendor": "Example",
+        "version": "1.0.0"
+      },
+      {
+        "name": "rio",
+        "vendor": "rebaze",
+        "version": "0.10.0"
+      }
+    ]
+  },
+  "serialNumber": "urn:uuid:3e671687-395b-41f5-a30f-a58921a69b79",
+  "specVersion": "1.6",
+  "version": 1
+}

@@ -1,0 +1,56 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.4",
+  "serialNumber": "urn:uuid:3e671687-395b-41f5-a30f-a58921a69b79",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-11-09T14:02:11Z",
+    "tools": [
+      {"vendor": "Example", "name": "synthetic-sbom-generator", "version": "1.0.0"}
+    ],
+    "component": {
+      "type": "application",
+      "bom-ref": "pkg:maven/com.example.payments/payments-api@2.3.0",
+      "group": "com.example.payments",
+      "name": "payments-api",
+      "version": "2.3.0",
+      "purl": "pkg:maven/com.example.payments/payments-api@2.3.0"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.18.2",
+      "group": "com.fasterxml.jackson.core",
+      "name": "jackson-databind",
+      "version": "2.18.2",
+      "purl": "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.18.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.springframework/spring-web@6.2.1",
+      "group": "org.springframework",
+      "name": "spring-web",
+      "version": "6.2.1",
+      "purl": "pkg:maven/org.springframework/spring-web@6.2.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:maven/org.postgresql/postgresql@42.7.4",
+      "group": "org.postgresql",
+      "name": "postgresql",
+      "version": "42.7.4",
+      "purl": "pkg:maven/org.postgresql/postgresql@42.7.4"
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "pkg:maven/com.example.payments/payments-api@2.3.0",
+      "dependsOn": [
+        "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.18.2",
+        "pkg:maven/org.springframework/spring-web@6.2.1",
+        "pkg:maven/org.postgresql/postgresql@42.7.4"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+version: 1
+artifacts:
+  - id: payments-api
+    sbom: target/bom.json
+
+enrichment:                        # what the SBOM generator doesn't know
+  subject:
+    supplier: {name: Example Payments GmbH}
+    securityContact: mailto:security@payments.example.com
+    links:
+      - label: Fact sheet
+        url: https://ea.example.com/factsheet/Application/payments-api
+
+delivery:
+  targets:
+    security:
+      type: dependency-track
+      url: https://dtrack.example.com
+      apiKeyEnv: DTRACK_API_KEY
+      autoCreate: true
+      tags: [owner:payments]       # route findings to the owning team

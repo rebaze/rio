@@ -1,0 +1,59 @@
+Rio use case (synthetic data, SYNTHETIC Dependency-Track receiver on loopback)
+rio 0.10.0 (commit: 53af628e3144422dd4003a52309439ff75262512, built: 2026-11-10T06:21:50Z)
+
+$ rio
+run run-27130d3b98f3aca30c764753c3cb7207: success
+receipt: <output>/target/rio/runs/run-27130d3b98f3aca30c764753c3cb7207/record.json
+
+$ tree target
+target/
+├── rio/
+│   └── runs/
+│       └── run-27130d3b98f3aca30c764753c3cb7207/
+│           ├── .internal/
+│           │   ├── attempts.json
+│           │   ├── checkpoint-00000000.json
+│           │   ├── checkpoint-00000001.json
+│           │   ├── checkpoint-00000002.json
+│           │   ├── checkpoint-00000003.json
+│           │   ├── checkpoint-00000004.json
+│           │   ├── checkpoint-00000005.json
+│           │   ├── checkpoint-00000006.json
+│           │   └── checkpoint-00000007.json
+│           ├── deliveries/
+│           │   └── 803b1453c419942d3fbc16923ace3ff9192f5e8708d6b56d7de987ac6a32cd8c/
+│           │       ├── 00000000000000000000.json
+│           │       └── 00000000000000000001.json
+│           ├── index.json
+│           ├── payments-api.cdx.json
+│           └── record.json
+└── bom.json
+
+$ rio record inspect --file target/rio/runs/run-27130d3b98f3aca30c764753c3cb7207/record.json
+Rio 0.10.0 — pipeline: success
+run run-27130d3b98f3aca30c764753c3cb7207
+
+payments-api: completed
+  consumed target/bom.json sha256=6bc292a298614b7b6ee82c99fb71883bbc6288d3090654472b5e0e9af331e92e
+  output sha256=69a555590de5ad6fc528d898604e3e012097a9a1e37ea55ec9cd1936750ba2cf bytes=4618
+  spec 1.4 → 1.6
+  /metadata/component/externalReferences/0: absent → {"comment":"Fact sheet","type":"other","url":"https://ea.example.com/factsheet/Application/payments-api"} (producer assertion, manifest)
+  /metadata/component/externalReferences/1: absent → {"type":"security-contact","url":"mailto:security@payments.example.com"} (producer assertion, manifest)
+  /metadata/component/supplier: absent → {"name":"Example Payments GmbH"} (producer assertion, manifest)
+  gate=pass mode=fail schema=pass findings=0
+
+payments-api → security (http://127.0.0.1:49853): accepted
+  project={"name":"payments-api","version":"2.3.0"} transport=http TLS=not recorded verification=not-applicable
+  submitted role=sbom mediaType=application/vnd.cyclonedx+json artifactOutput=payments-api sha256= bytes=0
+  acknowledgment=accepted HTTP=200 code=accepted TLS=not recorded
+    dependency-track:event-token: 5d1f9a9e-2f0c-4c55-9d8e-7c3b2a1f0e64
+  project fields readBack=read
+    tags requested=["owner:payments"] state=observed
+
+Valid structure and internal consistency; unsigned recorded assertions/observations.
+HTTP acceptance does not prove ingestion or retained content.
+JSON sha256=8d64107edaf42186cd68ac06c9dcbed632dba9d3b4d6cdd455d002b227d827e5 bytes=4049
+
+PASS: enriched, leveled to CycloneDX 1.6, checked, delivered with a tag and read
+back. The receiver and its acknowledgment are synthetic.
+Everything is retained in: <output>

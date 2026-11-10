@@ -1,0 +1,320 @@
+{
+  "schemaVersion": 1,
+  "normalizationScope": {
+    "version": 1,
+    "manifestSHA256": "c0977fbce4b11bad534bb3e45df9fb58a24a5fff6d2268766352d539ec26061c",
+    "specVersionFloor": "1.6",
+    "explicitArtifacts": [
+      "payments-api"
+    ],
+    "artifactSets": [],
+    "artifacts": [
+      {
+        "id": "payments-api",
+        "declaredSBOM": "target/bom.json",
+        "input": "target/bom.json",
+        "transforms": []
+      }
+    ]
+  },
+  "tool": {
+    "name": "rio",
+    "version": "0.10.0"
+  },
+  "manifest": {
+    "path": "rio.yaml",
+    "sha256": "c0977fbce4b11bad534bb3e45df9fb58a24a5fff6d2268766352d539ec26061c"
+  },
+  "artifacts": [
+    {
+      "id": "payments-api",
+      "checks": {
+        "version": 1,
+        "mode": "fail",
+        "componentScope": "all components including nested",
+        "componentCount": 3,
+        "componentRequirements": [
+          "name",
+          "version",
+          "purl"
+        ],
+        "componentEvaluation": "evaluated",
+        "evaluations": [
+          {
+            "scope": "subject",
+            "requirement": "name",
+            "evaluated": 1,
+            "failed": 0,
+            "outcome": "pass"
+          },
+          {
+            "scope": "subject",
+            "requirement": "version",
+            "evaluated": 1,
+            "failed": 0,
+            "outcome": "pass"
+          },
+          {
+            "scope": "components",
+            "requirement": "name",
+            "evaluated": 3,
+            "failed": 0,
+            "outcome": "pass"
+          },
+          {
+            "scope": "components",
+            "requirement": "version",
+            "evaluated": 3,
+            "failed": 0,
+            "outcome": "pass"
+          },
+          {
+            "scope": "components",
+            "requirement": "purl",
+            "evaluated": 3,
+            "failed": 0,
+            "outcome": "pass"
+          }
+        ],
+        "schemaValidation": "pass",
+        "graphCheck": "dangling-dependency-references",
+        "graphFindings": 0
+      },
+      "normalization": {
+        "version": 1,
+        "changes": [
+          {
+            "target": "/specVersion",
+            "operation": "replace",
+            "rule": "spec-uplift",
+            "before": "1.4",
+            "after": "1.6"
+          },
+          {
+            "target": "/metadata/component/externalReferences/0",
+            "operation": "add",
+            "rule": "enrichment",
+            "before": null,
+            "after": {
+              "comment": "Fact sheet",
+              "type": "other",
+              "url": "https://ea.example.com/factsheet/Application/payments-api"
+            },
+            "resolution": {
+              "kind": "manifest",
+              "selector": "effective enrichment for payments-api",
+              "sha256": "c0977fbce4b11bad534bb3e45df9fb58a24a5fff6d2268766352d539ec26061c"
+            }
+          },
+          {
+            "target": "/metadata/component/externalReferences/1",
+            "operation": "add",
+            "rule": "enrichment",
+            "before": null,
+            "after": {
+              "type": "security-contact",
+              "url": "mailto:security@payments.example.com"
+            },
+            "resolution": {
+              "kind": "manifest",
+              "selector": "effective enrichment for payments-api",
+              "sha256": "c0977fbce4b11bad534bb3e45df9fb58a24a5fff6d2268766352d539ec26061c"
+            }
+          },
+          {
+            "target": "/metadata/component/supplier",
+            "operation": "add",
+            "rule": "enrichment",
+            "before": null,
+            "after": {
+              "name": "Example Payments GmbH"
+            },
+            "resolution": {
+              "kind": "manifest",
+              "selector": "effective enrichment for payments-api",
+              "sha256": "c0977fbce4b11bad534bb3e45df9fb58a24a5fff6d2268766352d539ec26061c"
+            }
+          }
+        ],
+        "bookkeeping": [
+          {
+            "target": "/metadata/properties/0",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:artifact-id",
+              "value": "payments-api"
+            }
+          },
+          {
+            "target": "/metadata/properties/1",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:enrichment",
+              "value": "{\"version\":1,\"field\":\"subject.links[Fact sheet]\",\"target\":\"/metadata/component/externalReferences\",\"before\":null,\"after\":[{\"comment\":\"Fact sheet\",\"type\":\"other\",\"url\":\"https://ea.example.com/factsheet/Application/payments-api\"}],\"source\":{\"kind\":\"manifest\",\"path\":\"rio.yaml\",\"sha256\":\"c0977fbce4b11bad534bb3e45df9fb58a24a5fff6d2268766352d539ec26061c\",\"selector\":\"enrichment.subject.links[Fact sheet]\"},\"assertion\":\"producer\"}"
+            }
+          },
+          {
+            "target": "/metadata/properties/2",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:enrichment",
+              "value": "{\"version\":1,\"field\":\"subject.securityContact\",\"target\":\"/metadata/component/externalReferences\",\"before\":[{\"comment\":\"Fact sheet\",\"type\":\"other\",\"url\":\"https://ea.example.com/factsheet/Application/payments-api\"}],\"after\":[{\"comment\":\"Fact sheet\",\"type\":\"other\",\"url\":\"https://ea.example.com/factsheet/Application/payments-api\"},{\"type\":\"security-contact\",\"url\":\"mailto:security@payments.example.com\"}],\"source\":{\"kind\":\"manifest\",\"path\":\"rio.yaml\",\"sha256\":\"c0977fbce4b11bad534bb3e45df9fb58a24a5fff6d2268766352d539ec26061c\",\"selector\":\"enrichment.subject.securityContact\"},\"assertion\":\"producer\"}"
+            }
+          },
+          {
+            "target": "/metadata/properties/3",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:enrichment",
+              "value": "{\"version\":1,\"field\":\"subject.supplier.name\",\"target\":\"/metadata/component/supplier/name\",\"before\":null,\"after\":\"Example Payments GmbH\",\"source\":{\"kind\":\"manifest\",\"path\":\"rio.yaml\",\"sha256\":\"c0977fbce4b11bad534bb3e45df9fb58a24a5fff6d2268766352d539ec26061c\",\"selector\":\"enrichment.subject.supplier.name\"},\"assertion\":\"producer\"}"
+            }
+          },
+          {
+            "target": "/metadata/properties/4",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:input-sha256",
+              "value": "6bc292a298614b7b6ee82c99fb71883bbc6288d3090654472b5e0e9af331e92e"
+            }
+          },
+          {
+            "target": "/metadata/properties/5",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:manifest-sha256",
+              "value": "c0977fbce4b11bad534bb3e45df9fb58a24a5fff6d2268766352d539ec26061c"
+            }
+          },
+          {
+            "target": "/metadata/properties/6",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:spec-uplift",
+              "value": "from=1.4 to=1.6"
+            }
+          },
+          {
+            "target": "/metadata/properties/7",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rebaze:normalize:tool",
+              "value": "rio 0.10.0"
+            }
+          },
+          {
+            "target": "/metadata/tools/1",
+            "operation": "add",
+            "rule": "rio-bookkeeping",
+            "before": null,
+            "after": {
+              "name": "rio",
+              "vendor": "rebaze",
+              "version": "0.10.0"
+            }
+          }
+        ],
+        "unmapped": [],
+        "skipped": []
+      },
+      "input": {
+        "path": "target/bom.json",
+        "sha256": "6bc292a298614b7b6ee82c99fb71883bbc6288d3090654472b5e0e9af331e92e"
+      },
+      "output": {
+        "path": "payments-api.cdx.json",
+        "sha256": "69a555590de5ad6fc528d898604e3e012097a9a1e37ea55ec9cd1936750ba2cf"
+      },
+      "specVersion": {
+        "input": "1.4",
+        "output": "1.6"
+      },
+      "schemaValidated": true,
+      "components": 3,
+      "transforms": [],
+      "gate": "ok",
+      "gateFindings": [],
+      "enrichment": {
+        "version": 1,
+        "changes": [
+          {
+            "field": "subject.links[Fact sheet]",
+            "target": "/metadata/component/externalReferences",
+            "before": null,
+            "after": [
+              {
+                "comment": "Fact sheet",
+                "type": "other",
+                "url": "https://ea.example.com/factsheet/Application/payments-api"
+              }
+            ],
+            "source": {
+              "kind": "manifest",
+              "path": "rio.yaml",
+              "sha256": "c0977fbce4b11bad534bb3e45df9fb58a24a5fff6d2268766352d539ec26061c",
+              "selector": "enrichment.subject.links[Fact sheet]"
+            },
+            "assertion": "producer"
+          },
+          {
+            "field": "subject.securityContact",
+            "target": "/metadata/component/externalReferences",
+            "before": [
+              {
+                "comment": "Fact sheet",
+                "type": "other",
+                "url": "https://ea.example.com/factsheet/Application/payments-api"
+              }
+            ],
+            "after": [
+              {
+                "comment": "Fact sheet",
+                "type": "other",
+                "url": "https://ea.example.com/factsheet/Application/payments-api"
+              },
+              {
+                "type": "security-contact",
+                "url": "mailto:security@payments.example.com"
+              }
+            ],
+            "source": {
+              "kind": "manifest",
+              "path": "rio.yaml",
+              "sha256": "c0977fbce4b11bad534bb3e45df9fb58a24a5fff6d2268766352d539ec26061c",
+              "selector": "enrichment.subject.securityContact"
+            },
+            "assertion": "producer"
+          },
+          {
+            "field": "subject.supplier.name",
+            "target": "/metadata/component/supplier/name",
+            "before": null,
+            "after": "Example Payments GmbH",
+            "source": {
+              "kind": "manifest",
+              "path": "rio.yaml",
+              "sha256": "c0977fbce4b11bad534bb3e45df9fb58a24a5fff6d2268766352d539ec26061c",
+              "selector": "enrichment.subject.supplier.name"
+            },
+            "assertion": "producer"
+          }
+        ]
+      }
+    }
+  ]
+}
