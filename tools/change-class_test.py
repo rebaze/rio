@@ -121,11 +121,11 @@ class LabelTest(unittest.TestCase):
         self.env = dict(os.environ, PATH=str(self.root / "bin") + os.pathsep + os.environ["PATH"],
                         FAKE_STATE=str(self.root), GITHUB_STEP_SUMMARY=str(self.root / "summary.md"))
 
-    def run_tool(self, names, labels=(), changed=None):
+    def run_tool(self, names, labels=(), changed=None, extra=()):
         (self.root / "files.json").write_text(json.dumps([{"filename": n} for n in names]))
         (self.root / "pr.json").write_text(json.dumps({"body": "", "labels": [{"name": n} for n in labels],
                                                        "changed_files": len(names) if changed is None else changed}))
-        result = subprocess.run([sys.executable, str(SCRIPT), "--pr", "7"], text=True, capture_output=True, env=self.env)
+        result = subprocess.run([sys.executable, str(SCRIPT), "--pr", "7", *extra], text=True, capture_output=True, env=self.env)
         calls = [json.loads(line) for line in (self.root / "calls.log").read_text().splitlines()]
         return result, [c for c in calls if c[1] == "-X"]
 
@@ -153,6 +153,15 @@ class LabelTest(unittest.TestCase):
         result, writes = self.run_tool(["README.md"], changed=4000)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("labels[]=class:significant", writes[0])
+
+    def test_fork_pr_is_classified_without_label_writes(self):
+        # A fork PR's pull_request token is read-only: report the class, still pass.
+        result, writes = self.run_tool([".github/workflows/ci.yaml"], labels=["class:standard"], extra=["--no-label"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(writes, [])
+        summary = (self.root / "summary.md").read_text()
+        self.assertIn("Change class for #7: significant", summary)
+        self.assertIn("A maintainer applies `class:significant`", summary)
 
 
 if __name__ == "__main__":

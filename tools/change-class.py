@@ -98,7 +98,9 @@ def gh(args):
     return result.stdout
 
 
-def label(repo, number):
+def label(repo, number, apply=True):
+    """Classify the PR and, when apply is set, make its labels match. Without apply
+    (a fork PR, whose token is read-only) the class is only reported."""
     pr = json.loads(gh(["api", "repos/" + repo + "/pulls/" + str(number)]))
     lines = gh(["api", "--paginate", "repos/" + repo + "/pulls/" + str(number) + "/files?per_page=100",
                 "--jq", ".[] | {filename, previous_filename, patch}"]).splitlines()
@@ -109,6 +111,8 @@ def label(repo, number):
         # Raise only: an earlier rule match or a maintainer set it. Lowering is a person's call.
         return "significant", {"kept_significant": ["label already set; a maintainer removes it to lower the class"]}
     wanted, other = LABELS[cls], LABELS["standard" if cls == "significant" else "significant"]
+    if not apply:
+        return cls, reasons
     if wanted not in current:
         gh(["api", "-X", "POST", "repos/" + repo + "/issues/" + str(number) + "/labels", "-f", "labels[]=" + wanted])
     if other in current:
@@ -116,8 +120,11 @@ def label(repo, number):
     return cls, reasons
 
 
-def summary(number, cls, reasons):
+def summary(number, cls, reasons, applied=True):
     lines = ["## Change class for #" + str(number) + ": " + cls, ""]
+    if not applied:
+        lines += ["Not labelled: this run's token is read-only (a pull request from a fork). "
+                  "A maintainer applies `" + LABELS[cls] + "`.", ""]
     if reasons:
         lines += ["| Criterion | Triggered by |", "|---|---|"]
         lines += ["| `" + k + "` | " + ", ".join("`" + v + "`" for v in vs) + " |" for k, vs in sorted(reasons.items())]
@@ -135,13 +142,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", default="rebaze/rio")
     parser.add_argument("--pr", type=int, required=True)
+    parser.add_argument("--no-label", action="store_true",
+                        help="report the class without changing labels (fork PRs, read-only token)")
     args = parser.parse_args()
     try:
-        cls, reasons = label(args.repo, args.pr)
+        cls, reasons = label(args.repo, args.pr, apply=not args.no_label)
     except (OSError, ValueError, KeyError) as error:
         print("FAILED: " + str(error), file=sys.stderr)
         return 1
-    summary(args.pr, cls, reasons)
+    summary(args.pr, cls, reasons, applied=not args.no_label)
     return 0
 
 
