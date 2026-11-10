@@ -1,7 +1,10 @@
 name: Auto-merge security updates
 
+# pull_request, not pull_request_target (#208): GitHub grants a Dependabot
+# pull_request run the write permissions named below. The job never checks out
+# or runs the PR's code.
 on:
-  pull_request_target:
+  pull_request:
     branches: [main]
     types: [opened, reopened, synchronize, ready_for_review, edited]
 

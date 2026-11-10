@@ -495,6 +495,11 @@ demonstration, including independent recipient verification and tamper refusals.
 
 ## Testing dependency auto-merge
 
+The `Auto-merge security updates` workflow runs on `pull_request` and only acts when Dependabot
+triggered the event. GitHub grants such a run the permissions the job names (`contents: write`,
+`pull-requests: write`, `actions: write` to dispatch Scorecard after the merge, read on checks and
+statuses) and no repository secrets. It never checks out or runs the PR's code.
+
 `dependabot-auto-merge_test.py` executes the merge workflow's actual shell policy against
 local GitHub API fixtures. It checks eligible patch/minor security groups and rejects routine
 or major updates, upstream maintainer changes, missing metadata, edited commits, stale heads,
@@ -991,9 +996,16 @@ real published v0.8.0 and v0.8.1 casks, checksums and tagged release workflows u
 
 `change-class.py` labels every pull request `class:standard` or `class:significant` and lists
 the triggering criteria in the job summary, so each release can state which of its changes were
-significant and why. The `Change class` workflow runs it on `pull_request_target`. It checks out
-the base branch's copy of the tool and reads only the PR body and changed-file list through the API.
-It never checks out or runs PR code.
+significant and why. The `Change class` workflow runs it on `pull_request`, with `contents: read`
+and `pull-requests: write`. It checks out the base commit's copy of the tool, never the PR's, and
+reads only the PR body and changed-file list through the API. A pull request from a fork gets a
+read-only token, so for it the job only reports the class in its summary (`--no-label`) and a
+maintainer applies the label. The workflow file itself is the PR's version, as with every
+`pull_request` workflow, and a change to it is always `pipeline_or_rules`.
+
+Both this workflow and the security auto-merge moved off `pull_request_target` (#208): GitHub is
+switching to a default that blocks that trigger in public repositories, and `classify` is a
+required check on `main`.
 
 A PR is significant when any of these applies:
 
