@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
-<title>Rio receipt · run-131fa960f778d27e93d022b7ddd5bbd9</title>
+<title>Rio receipt · run-27130d3b98f3aca30c764753c3cb7207</title>
 <style>
 :root { color-scheme: light; font-family: system-ui, sans-serif; color: #172b3a; background: #f5f6f3; }
 body { margin: 0; padding: 3rem 1.5rem; } main { max-width: 1100px; margin: auto; }
@@ -25,41 +25,41 @@ th { background: #eef2ef; } .muted, footer { color: #50636b; } .notice { border-
 <body><main>
 <header><p class="eyebrow">Rio · pipeline receipt</p><h1>Consumed → enriched → delivered → acknowledged</h1>
 <p><span class="status">success</span> · 1 artifacts · 1 delivery pairs</p>
-<p class="muted">2026-11-10T06:48:58.233228Z → 2026-11-10T06:48:58.38179Z<br>Run <code>run-131fa960f778d27e93d022b7ddd5bbd9</code> · Rio 0.10.0</p>
+<p class="muted">2026-11-10T08:17:43.923876Z → 2026-11-10T08:17:44.087984Z<br>Run <code>run-27130d3b98f3aca30c764753c3cb7207</code> · Rio 0.10.0</p>
 
 <p class="notice">Unsigned recorded assertions and observations. Execution success does not prove receiver ingestion or retained content. Input/output hashes identify bytes; they do not authenticate the producer.</p></header>
 <h2>Consumed SBOMs and meaningful changes</h2>
 <section class="card"><h3>payments-api <span class="status">completed</span></h3>
 
 <dl><dt>Consumed</dt><dd><code>target/bom.json</code></dd><dt>Input SHA-256</dt><dd><code>6bc292a298614b7b6ee82c99fb71883bbc6288d3090654472b5e0e9af331e92e</code> · 1738 bytes</dd>
-<dt>Output SHA-256</dt><dd><code>e88d635082e8e4a86d303e47715c1e9b14bb6965a236156d01627d15b5c14448</code> · 6173 bytes</dd></dl>
+<dt>Output SHA-256</dt><dd><code>69a555590de5ad6fc528d898604e3e012097a9a1e37ea55ec9cd1936750ba2cf</code> · 4618 bytes</dd></dl>
 
 <p>Specification 1.4 → 1.6</p>
 <table><thead><tr><th>Metadata</th><th>Before</th><th>After</th><th>Assertion / source</th></tr></thead><tbody>
-<tr><td><code>/metadata/component/externalReferences/0</code><br>add</td><td><code>absent</code></td><td><code>{&#34;type&#34;:&#34;issue-tracker&#34;,&#34;url&#34;:&#34;https://code.example.com/payments/payments-api/issues&#34;}</code></td><td>producer / manifest</td></tr><tr><td><code>/metadata/component/externalReferences/1</code><br>add</td><td><code>absent</code></td><td><code>{&#34;comment&#34;:&#34;Fact sheet&#34;,&#34;type&#34;:&#34;other&#34;,&#34;url&#34;:&#34;https://ea.example.com/factsheet/Application/payments-api&#34;}</code></td><td>producer / manifest</td></tr><tr><td><code>/metadata/component/externalReferences/2</code><br>add</td><td><code>absent</code></td><td><code>{&#34;type&#34;:&#34;security-contact&#34;,&#34;url&#34;:&#34;mailto:security@payments.example.com&#34;}</code></td><td>producer / manifest</td></tr><tr><td><code>/metadata/component/supplier</code><br>add</td><td><code>absent</code></td><td><code>{&#34;name&#34;:&#34;Example Payments GmbH&#34;,&#34;url&#34;:[&#34;https://payments.example.com&#34;]}</code></td><td>producer / manifest</td></tr>
+<tr><td><code>/metadata/component/externalReferences/0</code><br>add</td><td><code>absent</code></td><td><code>{&#34;comment&#34;:&#34;Fact sheet&#34;,&#34;type&#34;:&#34;other&#34;,&#34;url&#34;:&#34;https://ea.example.com/factsheet/Application/payments-api&#34;}</code></td><td>producer / manifest</td></tr><tr><td><code>/metadata/component/externalReferences/1</code><br>add</td><td><code>absent</code></td><td><code>{&#34;type&#34;:&#34;security-contact&#34;,&#34;url&#34;:&#34;mailto:security@payments.example.com&#34;}</code></td><td>producer / manifest</td></tr><tr><td><code>/metadata/component/supplier</code><br>add</td><td><code>absent</code></td><td><code>{&#34;name&#34;:&#34;Example Payments GmbH&#34;}</code></td><td>producer / manifest</td></tr>
 </tbody></table>
 
 <p>Gate <strong>pass</strong> (mode: fail) · Schema pass · Findings 0</p>
 
-<p class="muted">Subject requirements: name version securityContact  · Component requirements: name version purl <br>all components including nested · evaluated · components evaluated: 3 · 0 graph findings</p>
+<p class="muted">Subject requirements: name version  · Component requirements: name version purl <br>all components including nested · evaluated · components evaluated: 3 · 0 graph findings</p>
 </section>
 <h2>Destinations and acknowledgments</h2>
 <section class="card"><h3>payments-api → security <span class="status">accepted</span></h3>
-<dl><dt>Receiver URL</dt><dd><code>http://127.0.0.1:62271</code> (dependency-track)</dd>
+<dl><dt>Receiver URL</dt><dd><code>http://127.0.0.1:49853</code> (dependency-track)</dd>
 
 <dt>Project name</dt><dd><code>payments-api</code></dd><dt>Project version</dt><dd><code>2.3.0</code></dd>
 <dt>Transport</dt><dd>http · TLS not recorded · Certificate verification not-applicable</dd>
-<dt>Attempt</dt><dd><code>f7b7d4d78dccf64a65f01cb3b718b1b3</code> · 2026-11-10T06:48:58.354951Z</dd>
+<dt>Attempt</dt><dd><code>dedfa84edf635d0fd2c2d612faeb1aa1</code> · 2026-11-10T08:17:44.059162Z</dd>
 
 <dt>Request may have occurred</dt><dd>true</dd>
 <dt>Intended bytes</dt><dd>Output of <code>payments-api</code> · sbom · application/vnd.cyclonedx&#43;json</dd>
 
 <dt>Submitted bytes</dt><dd>Output of <code>payments-api</code> · sbom · application/vnd.cyclonedx&#43;json</dd>
-<dt>acknowledgment</dt><dd><strong>accepted</strong> · HTTP 200 · accepted · TLS not recorded · 2026-11-10T06:48:58.360985Z</dd>
+<dt>acknowledgment</dt><dd><strong>accepted</strong> · HTTP 200 · accepted · TLS not recorded · 2026-11-10T08:17:44.06418Z</dd>
 <dt>dependency-track:event-token</dt><dd><code>5d1f9a9e-2f0c-4c55-9d8e-7c3b2a1f0e64</code></dd></dl>
 </section>
 
 
-<footer><h2>Receipt identity and limits</h2><p>Exact JSON SHA-256: <code>abd6b8c54d1e1091f3b94d561545b660657375f52743c4a7bf06ad59885964bc</code><br>4761 bytes · <code>rio-run-receipt</code> version 1</p>
+<footer><h2>Receipt identity and limits</h2><p>Exact JSON SHA-256: <code>8d64107edaf42186cd68ac06c9dcbed632dba9d3b4d6cdd455d002b227d827e5</code><br>4049 bytes · <code>rio-run-receipt</code> version 1</p>
 <p>Inspection validates schema, references and internal consistency. It cannot replay absent source documents or detect every coherently forged unsigned receipt. Paths and URLs are references, not promises of future accessibility. This standalone view loads no remote resources.</p></footer>
 </main></body></html>

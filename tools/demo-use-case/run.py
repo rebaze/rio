@@ -142,7 +142,7 @@ def main():
         (work / "target").mkdir()
         shutil.copyfile(HERE / "inputs" / "bom.json", work / "target" / "bom.json")
         manifest = (HERE / "rio.yaml").read_text()
-        local = "url: http://127.0.0.1:%d\n      allowHTTP: true            # the synthetic receiver only" % server.server_port
+        local = "url: http://127.0.0.1:%d\n      allowHTTP: true              # the synthetic receiver only" % server.server_port
         assert "url: https://dtrack.example.com" in manifest
         (work / "rio.yaml").write_text(manifest.replace("url: https://dtrack.example.com", local))
 
@@ -164,8 +164,7 @@ def main():
         assert delivery["state"] == "accepted", delivery
         fields = delivery["projectFields"]
         assert fields["readBack"] == "read"
-        assert {k: v["state"] for k, v in fields.items() if k != "readBack"} == \
-            {"tags": "observed", "parent": "observed", "isLatest": "observed"}, fields
+        assert {k: v["state"] for k, v in fields.items() if k != "readBack"} == {"tags": "observed"}, fields
         delivered = (run / "payments-api.cdx.json").read_bytes()
         assert Receiver.uploads == [delivered], "the receiver got other bytes than Rio wrote"
 
@@ -177,8 +176,8 @@ def main():
         inspect = subprocess.run([binary, "record", "inspect", "--file", str(run / "record.json")],
                                  capture_output=True, encoding="utf-8", check=True)
         print(inspect.stdout, end="")
-        print("\nPASS: enriched, leveled to CycloneDX 1.6, gated, delivered with tags, parent and")
-        print("isLatest, and read back. The receiver and its acknowledgment are synthetic.")
+        print("\nPASS: enriched, leveled to CycloneDX 1.6, checked, delivered with a tag and read")
+        print("back. The receiver and its acknowledgment are synthetic.")
         print("Everything is retained in:", work)
     finally:
         server.shutdown()

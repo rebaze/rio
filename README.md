@@ -7,695 +7,113 @@
 [![Go](https://img.shields.io/github/go-mod/go-version/rebaze/rio)](go.mod)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rebaze/rio/badge)](https://scorecard.dev/viewer/?uri=github.com/rebaze/rio)
 
-**Rio normalizes CycloneDX SBOMs, delivers verified outputs, and records the evidence for both.**
+**Rio takes the CycloneDX SBOM your build writes, fixes it up, checks it, delivers it to
+Dependency-Track or an OCI registry, and keeps a receipt of what happened.**
 
-## From your build's SBOM to Dependency-Track, in one command
+## Example
 
-Your build writes `target/bom.json`. Commit this `rio.yaml` next to it:
+Your build writes `target/bom.json`. Put a `rio.yaml` next to it:
 
 ```yaml
 version: 1
 artifacts:
   - id: payments-api
-    sbom: target/bom.json              # written by your build
+    sbom: target/bom.json
 
-enrichment:                            # what the generator doesn't know
+enrichment:                        # what the SBOM generator doesn't know
   subject:
-    supplier:
-      name: Example Payments GmbH
-      url: [https://payments.example.com]
+    supplier: {name: Example Payments GmbH}
     securityContact: mailto:security@payments.example.com
-    issueTracker: https://code.example.com/payments/payments-api/issues
     links:
-      - label: Fact sheet              # who owns it, from your architecture tool
+      - label: Fact sheet
         url: https://ea.example.com/factsheet/Application/payments-api
-
-output:
-  specVersionFloor: "1.6"              # level older generators up
-gate:
-  require: [name, version, purl]       # on every component, or nothing ships
-  subject:
-    require: [securityContact]         # met by the enrichment above
 
 delivery:
   targets:
     security:
       type: dependency-track
       url: https://dtrack.example.com
-      apiKeyEnv: DTRACK_API_KEY        # the variable's name, never the key
+      apiKeyEnv: DTRACK_API_KEY
       autoCreate: true
-      tags: [owner:payments]           # route findings to the owning team
-      parent: {name: Payments}         # group the versions under the product
-      isLatest: true
+      tags: [owner:payments]       # route findings to the owning team
 ```
 
-Then run Rio, in CI or on your machine:
+Run it, in CI or on your machine:
 
-```sh
-export DTRACK_API_KEY=...              # from your secret store
-rio
+```console
+$ export DTRACK_API_KEY=...        # from your secret store
+$ rio
+run run-27130d3b98f3aca30c764753c3cb7207: success
+receipt: /src/payments-api/target/rio/runs/run-27130d3b98f3aca30c764753c3cb7207/record.json
 ```
+
+Rio raised the SBOM from CycloneDX 1.4 to 1.6, added the supplier, security contact and fact-sheet
+link, checked that every component has a name, version and package URL, uploaded it, and read the
+project back to confirm the tag. The run directory holds the result:
 
 ```text
-run run-131fa960f778d27e93d022b7ddd5bbd9: success
-receipt: /path/to/my-app/target/rio/runs/run-131fa960f778d27e93d022b7ddd5bbd9/record.json
+target/rio/runs/run-27130d3b98f3aca30c764753c3cb7207/
+├── payments-api.cdx.json   the SBOM, exactly as delivered
+└── record.json             what changed, what was checked, what Dependency-Track confirmed
 ```
 
-Rio levels the SBOM up to CycloneDX 1.6, adds the supplier, the security contact, the issue tracker
-and the fact-sheet link, checks every component for a name, version and package URL, uploads the
-result, and reads the project back to see whether the tags, parent and latest flag were applied.
-Each run gets a fresh directory (condensed from `tree`, which lists each journal entry and checkpoint):
-
-```text
-target/
-├── bom.json                    # your build's SBOM, unchanged
-└── rio/runs/run-131fa960f778d27e93d022b7ddd5bbd9/
-    ├── payments-api.cdx.json   # the SBOM, exactly as delivered
-    ├── record.json             # the run receipt
-    ├── index.json              # normalization evidence: digests, transforms, gate
-    ├── deliveries/<pair-key>/  # the delivery journal
-    └── .internal/              # recovery checkpoints
-```
-
-What changed in the SBOM, an excerpt of `payments-api.cdx.json`. Rio records the input's digest
-and the spec change as properties. Left out: the timestamp, `tools` (where Rio adds itself) and
-seven properties, five of them `rebaze:normalize:enrichment` entries that record where each added
-value came from in `rio.yaml`. The components and dependencies are unchanged.
-
-```json
-  "metadata": {
-    "component": {
-      "bom-ref": "pkg:maven/com.example.payments/payments-api@2.3.0",
-      "externalReferences": [
-        {
-          "type": "issue-tracker",
-          "url": "https://code.example.com/payments/payments-api/issues"
-        },
-        {
-          "comment": "Fact sheet",
-          "type": "other",
-          "url": "https://ea.example.com/factsheet/Application/payments-api"
-        },
-        {
-          "type": "security-contact",
-          "url": "mailto:security@payments.example.com"
-        }
-      ],
-      "group": "com.example.payments",
-      "name": "payments-api",
-      "purl": "pkg:maven/com.example.payments/payments-api@2.3.0",
-      "supplier": {
-        "name": "Example Payments GmbH",
-        "url": [
-          "https://payments.example.com"
-        ]
-      },
-      "type": "application",
-      "version": "2.3.0"
-    },
-    "properties": [
-      {
-        "name": "rebaze:normalize:input-sha256",
-        "value": "6bc292a298614b7b6ee82c99fb71883bbc6288d3090654472b5e0e9af331e92e"
-      },
-      {
-        "name": "rebaze:normalize:spec-uplift",
-        "value": "from=1.4 to=1.6"
-      },
-      {
-        "name": "rebaze:normalize:tool",
-        "value": "rio 0.10.0"
-      }
-    ]
-  },
-  "specVersion": "1.6",
-```
-
-The receipt, `record.json`, trimmed to one change and the delivery's acknowledgment and project fields.
-It says what Rio consumed and wrote, what it changed and on whose authority, what it checked, and what
-the server answered:
-
-```json
-{
-  "kind": "rio-run-receipt",
-  "rioVersion": "0.10.0",
-  "run": {
-    "operation": "pipeline",
-    "outcome": "success"
-  },
-  "artifacts": [
-    {
-      "id": "payments-api",
-      "state": "completed",
-      "input": {
-        "path": "target/bom.json",
-        "sha256": "6bc292a298614b7b6ee82c99fb71883bbc6288d3090654472b5e0e9af331e92e",
-        "size": 1738
-      },
-      "output": {
-        "path": "payments-api.cdx.json",
-        "sha256": "e88d635082e8e4a86d303e47715c1e9b14bb6965a236156d01627d15b5c14448",
-        "size": 6173
-      },
-      "changes": {
-        "metadata": [
-          {
-            "field": "/metadata/component/externalReferences/1",
-            "operation": "add",
-            "before": null,
-            "after": {
-              "comment": "Fact sheet",
-              "type": "other",
-              "url": "https://ea.example.com/factsheet/Application/payments-api"
-            },
-            "assertion": "producer",
-            "source": "manifest"
-          }
-        ],
-        "specVersion": {
-          "from": "1.4",
-          "to": "1.6"
-        }
-      },
-      "checks": {
-        "mode": "fail",
-        "gate": "pass",
-        "schema": "pass",
-        "componentsEvaluated": 3,
-        "findings": 0
-      }
-    }
-  ],
-  "deliveries": [
-    {
-      "artifactId": "payments-api",
-      "target": "security",
-      "project": {
-        "name": "payments-api",
-        "version": "2.3.0"
-      },
-      "state": "accepted",
-      "responses": [
-        {
-          "kind": "acknowledgment",
-          "value": "accepted",
-          "httpStatus": 200,
-          "code": "accepted",
-          "references": [
-            {
-              "kind": "dependency-track:event-token",
-              "value": "5d1f9a9e-2f0c-4c55-9d8e-7c3b2a1f0e64"
-            }
-          ]
-        }
-      ],
-      "projectFields": {
-        "readBack": "read",
-        "tags": {
-          "requested": [
-            "owner:payments"
-          ],
-          "state": "observed"
-        },
-        "parent": {
-          "requested": {
-            "name": "Payments"
-          },
-          "state": "observed"
-        },
-        "isLatest": {
-          "requested": true,
-          "state": "observed"
-        }
-      }
-    }
-  ]
-}
-```
-
-`observed` means Rio read the value back from the project; HTTP 200 alone records acceptance, not
-ingestion. Without permission to read the project, each value is `unknown`, never assumed. The data
-is synthetic, and the receiver is a **synthetic** loopback server imitating Dependency-Track 5.2.1,
-so the run's `rio.yaml` points at it instead of `dtrack.example.com`. Every file comes from Rio
-v0.10.0:
-
-**[record.json](tools/demo-use-case/example/record.json)** ·
-**[the delivered SBOM](tools/demo-use-case/example/payments-api.cdx.json)** ·
-[index.json](tools/demo-use-case/example/index.json) ·
-[the HTML report](https://raw.githubusercontent.com/rebaze/rio/main/tools/demo-use-case/example/report.html) (open locally) ·
-[full console output](tools/demo-use-case/example/output.txt) ·
-reproduce it with `python3 tools/demo-use-case/run.py`
-
-Native delivery checks that the SBOM matches that record, sends the exact verified bytes, and
-keeps a separate **delivery journal**: what Rio attempted, what the destination acknowledged,
-and what later checks observed. Lost responses remain visible as uncertainty, with no automatic
-resubmission. Normalization stays offline; delivery uses the network explicitly. Both run in one
-binary, on your workstation or in CI. Delivery destinations include **Dependency-Track** and
-**OCI artifact registries**.
-
-Handing evidence to a client? The [two-artifact client example](tools/demo-client-record/example/README.md)
-comes with an [HTML report](https://raw.githubusercontent.com/rebaze/rio/main/tools/demo-client-record/example/report.html)
-and a [runnable download](https://raw.githubusercontent.com/rebaze/rio/main/tools/demo-client-record/example/example.zip).
-
-[Install](#install) · [First delivery](#deliver-your-first-sbom) · [Try without a server](#quick-start) · [Verified delivery](#deliver-to-dependency-track) · [OCI registries](#deliver-to-an-oci-registry) · [One evidence record](#one-evidence-record) · [Configuration](#configure-your-project) · [For agents](#for-agents) · [Reference](#reference)
+See the whole run: [record.json](tools/demo-use-case/example/record.json) ·
+[the delivered SBOM](tools/demo-use-case/example/payments-api.cdx.json) ·
+[HTML report](https://raw.githubusercontent.com/rebaze/rio/main/tools/demo-use-case/example/report.html) ·
+[console output](tools/demo-use-case/example/output.txt). It is Rio v0.10.0 on synthetic data,
+delivering to a synthetic Dependency-Track receiver; [run it yourself](tools/demo-use-case/README.md),
+no server needed.
 
 ## Install
-
-With Homebrew:
 
 ```sh
 brew install rebaze/tap/rio
 ```
 
-Or with the installer:
+Or `curl -sSL https://raw.githubusercontent.com/rebaze/rio/main/install.sh | sh`, or download a
+[release binary](https://github.com/rebaze/rio/releases/latest) for Linux, macOS or Windows. Rio is
+a single binary with no runtime dependencies. Releases are signed, and the macOS binaries are
+notarized. [More install options](docs/cli.md#install).
 
-```sh
-curl -sSL https://raw.githubusercontent.com/rebaze/rio/main/install.sh | sh
-```
+## Usage
 
-Windows and other platforms: [download a release binary](https://github.com/rebaze/rio/releases/latest).
-Check it with `rio version`. Rio is a single binary with no runtime dependencies. Since v0.8.1,
-the macOS binaries are signed by rebaze and notarized by Apple; every release has signed
-checksums and build provenance. See [installation options](docs/cli.md#install) to pin a version, choose the
-install directory or verify a binary. Documentation follows `main`; check feature prerequisites
-when using an older release.
-
-Testing a fix on Linux? [Build and download a temporary test binary](tools/README.md#temporary-linux-test-binaries)
-from GitHub Actions, including a runnable example, without creating a release.
-
-## Deliver your first SBOM
-
-Already generating `target/bom.json`? Choose one destination below, save its configuration as
-**`rio.yaml`**, and run `rio` to normalize and deliver the SBOM. Intake and delivery share this one file.
-No server yet? Start with the [released, account-free normalization example](#quick-start).
-
-**Availability:** use Rio **v0.7.0 or newer** for the one-command pipeline and compact receipts.
-
-With either configuration below:
-
-```sh
-rio
-```
-
-### Send to Dependency-Track
-
-Here is a complete local layout for macOS/Linux. Commit `rio.yaml` and include `target/` in your
-`.gitignore`; keep the API key outside the project:
-
-```text
-~/.config/rio/dtrack.env          # private local credential file
-
-my-app/                         # run Rio from this directory
-├── rio.yaml                    # configuration below
-├── .gitignore                  # includes target/
-├── certs/dtrack-ca.pem          # optional public company CA certificate
-└── target/
-    ├── bom.json                # CycloneDX SBOM produced by your build
-    └── rio/                    # Rio creates this output directory
-        └── runs/<run-id>/     # fresh directory for each invocation
-            ├── app.cdx.json   # normalized SBOM
-            ├── index.json    # normalization evidence
-            ├── deliveries/   # internal delivery journals
-            └── record.json   # automatic compact receipt
-```
-
-Save this as `my-app/rio.yaml`:
-
-```yaml
-version: 1
-artifacts:
-  - id: app
-    sbom: target/bom.json
-delivery:
-  targets:
-    security:                   # a target name you choose
-      type: dependency-track
-      url: https://dtrack.example.com
-      apiKeyEnv: DTRACK_API_KEY  # environment variable name, never the key itself
-      autoCreate: true
-```
-
-**`security` is a local target label.** You could name it `company-dtrack` instead. It appears in
-`rio plan`, in the `--target security` filter, and as `destinationName` in journal evidence.
-The journal directory uses a generated hash. The API key determines access rights; the
-Dependency-Track project name/version come from the SBOM's subject. Separately, `app` is Rio's
-artifact ID and names the output `app.cdx.json`.
-
-Replace the URL with your server. Create a private directory for local credentials:
-
-```sh
-mkdir -p "$HOME/.config/rio"
-chmod 700 "$HOME/.config/rio"
-```
-
-Using your editor, save `~/.config/rio/dtrack.env` with this content:
-
-```sh
-export DTRACK_API_KEY='replace-with-your-dependency-track-api-key'
-```
-
-Restrict that private file to your account, then load it and run from `my-app`:
-
-```sh
-chmod 600 "$HOME/.config/rio/dtrack.env"
-. "$HOME/.config/rio/dtrack.env"
-rio
-```
-
-Your shell loads the credential into Rio's environment; Rio does not automatically read this file.
-For CI, store the value in a CI secret named `DTRACK_API_KEY` and inject it as an environment variable.
-Rio retains the variable name in evidence, never the API-key value.
-
-For an internal CA, obtain its public certificate from your administrator, save it as
-`certs/dtrack-ca.pem`, and add `caFile: certs/dtrack-ca.pem` under `security`. The path is relative to
-`rio.yaml`; certificate and hostname verification remain enabled. This is the preferred option.
-Rio v0.5.0 also provides
-`insecureSkipVerify: true` under `security` for explicitly skipping certificate-chain and hostname
-verification. It requires HTTPS and cannot be combined with `caFile`. The choice is saved in the
-journal and portable record alongside observed TLS facts; it does not imply the certificate was
-invalid. Protocol failures still fail, with no fallback or automatic replay.
-[TLS policy and synthetic demo](tools/README.md#native-verified-delivery).
-
-This example explicitly enables project creation; omit `autoCreate` when you provision projects
-yourself. [Permissions and options](tools/README.md#native-verified-delivery).
-
-### Store in an OCI registry
-
-Use this alternative `rio.yaml` to retain the same SBOM in a writable OCI repository:
-
-```yaml
-version: 1
-artifacts:
-  - id: app
-    sbom: target/bom.json
-delivery:
-  targets:
-    release-registry:           # another target name you choose
-      type: oci
-      registry: registry.example.com
-      repository: acme/app-sbom
-      auth:
-        usernameEnv: OCI_USERNAME
-        passwordEnv: OCI_PASSWORD
-```
-
-Set the registry host and repository. `release-registry` is the label used by
-`--target release-registry`; the inner `registry` field is the server address.
-For local use, put these assignments in a separate private `~/.config/rio/registry.env`:
-
-```sh
-export OCI_USERNAME='replace-with-your-registry-user'
-export OCI_PASSWORD='replace-with-your-registry-password-or-token'
-```
-
-Apply the same private-file permissions, then load it with `. "$HOME/.config/rio/registry.env"`
-before running Rio. In CI, inject the two variables from CI secrets.
-This publishes a **standalone SBOM** and returns an immutable manifest reference. To attach it to
-an existing image or image index, use that image's repository and add its exact `subject` descriptor
-(`digest`, `mediaType`, `size`); Rio leaves the image unchanged and requires Referrers API support.
-[Attachment configuration and current registry scope](tools/README.md#native-oci-delivery).
-
-### Keep the delivery evidence
-
-You get normalized bytes, their digest, the receiver's acknowledgment, and an automatic compact
-receipt. To preview destinations before sending, run `rio plan`. To use both destinations, put both
-target entries under `delivery.targets`; plain `rio` sends each selected artifact to every eligible target.
-
-Each invocation writes its receipt under `target/rio/runs/<run-id>/record.json` and prints its path.
-To choose a public receipt path instead, use a fresh filename:
-
-```sh
-rio --receipt record.json
-rio record inspect --file record.json
-rio record report --file record.json --output report.html
-```
-
-The receipt retains scope, meaningful changes, effective checks, selected attempts and missing-evidence
-gaps. Ordinary failures also retain a receipt; an enforced gate failure blocks delivery. Its parent
-must exist, and Rio refuses to overwrite an existing receipt. See the [client evidence workflow](docs/cli.md#inspect-report-and-recover) and
-[installed-binary examples](tools/README.md#client-evidence-demos), including a complete client handoff.
-
-The recipient can inspect `record.json` without your workspace or credentials, or read the optional
-self-contained HTML report. Keep the JSON alongside the report for machine inspection.
-[What the record establishes](docs/output.md).
-
-## When to use Rio
-
-- **Normalize versions and check quality.** Raise older SBOMs to your chosen CycloneDX floor,
-  preserve dependency membership, and check required names, versions and package URLs, and
-  optionally a [product security contact](docs/manifest.md#output-version-and-gate). A failed check
-  says what to fix and where.
-- **Keep lineage and pipeline context.** Record input/output digests and normalization details;
-  attach supplied product, source, build and generator metadata with its origins and changes.
-  Source/build details remain labeled as producer assertions.
-- **Deliver verified SBOMs with an inspectable history.** Upload directly to Dependency-Track by
-  project name/version or UUID. Retain the intended destination, payload digest, acknowledgment
-  and later activity observations in a delivery journal, including unknown outcomes. Publish unchanged
-  SBOM bytes to OCI registries with immutable manifest references and independent read-back evidence.
-- **Cover every selected module.** Include each qualifying module's SBOM automatically, with a
-  failure when a selected module has not produced its output.
-- **Optionally repair Eclipse/OSGi p2 coordinates.** Convert eligible package URLs to Maven
-  coordinates using explicit coordinate evidence and maintained mappings.
-  [Repair reference](docs/p2-repair.md) · [Focused example](tools/README.md#first-repair-sample).
-
-The records provide evidence for later release controls: which SBOM was processed, what changed,
-which supplied build assertions belong to it, and what is known about each delivery attempt.
-Rio's gate enforces configured SBOM handoff checks. The surrounding release system decides whether
-to publish using these facts and its own policy. SBOM generation, test execution and vulnerability
-scanning remain separate steps. See [project scope](docs/project.md#direction).
-
-### Where the evidence lives
-
-| Record | What it captures |
+| Command | What it does |
 |---|---|
-| `index.json` | Normalization inputs, output digests, transforms and gate results |
-| `<artifact>.intoto.json`, with `rio normalize --attest` | An **unsigned in-toto Statement** describing the normalization |
-| `record.json` (automatic for each invocation) | Compact input/output identities, meaningful changes, checks, delivery facts and coverage |
-| `<run-directory>/deliveries/<pair-key>/`, or an explicit `--record` directory | Separate journal events for delivery intent, receipt when available, and later reconciliation observations |
+| `rio` | Runs `rio.yaml`: normalize, enrich, check, deliver, write the receipt |
+| `rio plan` | Shows what `rio` would do, without doing it; `--json` for scripts and agents |
+| `rio --skip-delivery` | Everything except the upload |
+| `rio record inspect --file record.json` | Reads a receipt, offline |
+| `rio record report --file record.json --output report.html` | Renders a receipt as one self-contained HTML page |
+| `rio delivery reconcile --record DIR` | Asks the server about an earlier delivery, without uploading again |
 
-Optional [signing and recipient verification](tools/README.md#signing-and-verifying-normalization-attestations)
-adds a per-artifact bundle outside Rio, using a local key with public-log upload disabled.
+Exit code 0 is success, 1 a failed check (nothing was delivered), 2 a configuration or input error,
+and 3 to 5 a delivery that failed, was rejected or has an unknown outcome.
+[All commands and exit codes](docs/cli.md).
 
-Delivery history is not added to `index.json` or the normalization statements. These records
-support traceability; they do not authenticate the producer or prove successful ingestion.
-`rio delivery inspect` reads a journal offline; `rio delivery reconcile` queries the destination
-and appends new observations without uploading again.
+## What Rio does
 
-## Quick start
+- **Normalizes.** Raises older SBOMs to CycloneDX 1.6 (or 1.5) and keeps the dependency graph intact.
+- **Enriches.** Adds supplier, manufacturer, security contact, issue tracker, release notes and
+  labelled links from `rio.yaml`, and build and source facts from a [context file](docs/context.md).
+  Each added value records where it came from. [Enrichment](docs/enrichment.md)
+- **Checks.** Refuses to deliver when a component lacks a name, version or package URL, or the SBOM
+  misses what you require, such as a security contact or the
+  [BSI TR-03183-2 profile](docs/manifest.md#requirement-profiles). Each failure says how to fix it.
+- **Delivers.** To [Dependency-Track](docs/delivery.md#dependency-track), with project tags, parent
+  and latest-version flag, or to an [OCI registry](docs/delivery.md#oci-registries), standalone or
+  attached to an image. Rio sends exactly the bytes it checked.
+- **Keeps a receipt.** Digests of every input and output, each change, the check results and what the
+  server answered. A lost response stays recorded as unknown; Rio never retries it blindly.
+  [Reading a receipt](docs/output.md)
+- **Covers multi-module builds.** [`artifactSets`](docs/manifest.md#discovering-module-artifacts)
+  picks up every module's SBOM and fails when one is missing.
 
-With **Rio v0.7.0 or newer** installed, try this synthetic CycloneDX 1.5 input. It needs no project
-build or account. Download the existing sample and manifest, then normalize and inspect the receipt:
+Rio doesn't generate SBOMs or scan for vulnerabilities: it works on the SBOM your build already
+produces, and it uses the network only to deliver.
 
-```sh
-demo_dir=$(mktemp -d "${TMPDIR:-/tmp}/rio-sample.XXXXXXXX") &&
-sample_url=https://raw.githubusercontent.com/rebaze/rio/v0.4.0/tools/demo-agent-integration &&
-mkdir -p "$demo_dir/desktop/target" &&
-curl -fsSL "$sample_url/projects/explicit/seed.cdx.json" -o "$demo_dir/desktop/target/bom.json" &&
-curl -fsSL "$sample_url/examples/explicit.yaml" -o "$demo_dir/rio.yaml" &&
-rio normalize --manifest "$demo_dir/rio.yaml" --out "$demo_dir/out" --gate fail --receipt "$demo_dir/record.json" &&
-rio record inspect --file "$demo_dir/record.json" &&
-printf 'Inspect the input and results in: %s\n' "$demo_dir"
-```
+## Use it with a coding agent
 
-The `index.json` in the printed run directory shows the version change (excerpt):
-
-```json
-"specVersion": {
-  "input": "1.5",
-  "output": "1.6"
-}
-```
-
-It also records the input and output SHA-256 digests, manifest digest, tool version and `gate: "ok"`.
-Compare `desktop/target/bom.json` with `out/runs/<run-id>/desktop.cdx.json`: the spec version is normalized and
-the dependency inventory is preserved. The original file stays unchanged.
-
-To carry pipeline lineage alongside those records, bind a producer-supplied [context file](docs/context.md)
-by artifact ID and original SBOM digest. The [context example](tools/README.md#ci-build-context-demo)
-shows source/build metadata and shipped-file digests appearing in the SBOM and index; Rio does not
-infer them from this sample.
-
-If `rio` is not found, use its installed path or [add its directory to PATH](docs/cli.md#install).
-The [offline onboarding examples](tools/README.md#agent-integration-examples) run from a checkout.
-
-## Deliver to Dependency-Track
-
-Add targets to the existing `rio.yaml` to include native delivery in the pipeline:
-
-```yaml
-delivery:
-  targets:
-    security:
-      type: dependency-track
-      url: https://dtrack.example.com
-```
-
-Inject `DTRACK_API_KEY` through your secret manager or CI, then run the normal pipeline:
-
-```sh
-rio plan
-rio
-```
-
-Every selected artifact goes to every eligible target, using its verified SBOM subject name and
-version as the Dependency-Track project. Project creation is disabled by default; opt in with
-`autoCreate: true` on the target. Rio refuses duplicate project routing and preflights the complete
-batch before uploading. Each attempt receives an automatic journal under the current run directory.
-A standalone `rio deliver --index PATH` refuses to reuse existing journals for that indexed output.
-A new root `rio` invocation creates new outputs and may upload them again. An accepted receipt acknowledges submission only;
-it does not prove ingestion. A partially completed batch retains each attempt independently.
-
-For the quick-start sample's custom output location, use
-`rio deliver --manifest "$demo_dir/rio.yaml" --index "$demo_dir/out/runs/RUN_ID/index.json"`,
-replacing `RUN_ID` with the run printed by normalization.
-Changing only delivery settings after normalization is supported; the index retains its original
-manifest digest, while each delivery records the current manifest digest.
-
-Dependency-Track reads a project's tags, parent and latest-version flag only from the upload, so set
-them on the target or per artifact under `overrides` (Rio v0.10.0 and newer):
-
-```yaml
-      autoCreate: true
-      tags: [owner:payments]               # the project's complete tag set
-      parent: {name: Payments, version: all}
-      isLatest: true
-```
-
-Parent and latest apply when the upload creates the project version; changing tags later needs a key
-with `PORTFOLIO_MANAGEMENT_UPDATE`. A 200 does not say whether they applied, so Rio reads the project
-back and records each requested value as `observed`, `different` or `unknown` in the receipt, never
-as applied unseen. [Per-case server behaviour and permissions](docs/delivery.md#tags-parent-and-latest-version).
-
-Use the reported journal path with `rio delivery inspect --record PATH` or
-`rio delivery reconcile --record PATH` to query saved receipt activity without resubmitting.
-See [delivery configuration and the runnable demo](tools/README.md#native-verified-delivery)
-for filters, overrides, UUID selectors, deliberate retries, and tested server versions.
-
-## Deliver to an OCI registry
-
-With a build that includes OCI delivery, add a registry target to the same `rio.yaml`:
-
-```yaml
-delivery:
-  targets:
-    release-registry:
-      type: oci
-      registry: registry.example.com
-      repository: acme/application-sbom
-      auth:
-        usernameEnv: OCI_USERNAME
-        passwordEnv: OCI_PASSWORD
-```
-
-Inject the named credentials through your secret manager, then preview and run the pipeline:
-
-```sh
-rio plan --target release-registry --json
-rio --target release-registry --json
-```
-
-Rio uploads the exact verified CycloneDX bytes with a deterministic OCI manifest. It reports a
-consumer reference such as `registry.example.com/acme/application-sbom@sha256:<manifest-digest>`
-and uses the generated tag `rio-sbom-sha256-<manifest-digest>`. A valid persisted receipt is exit 0;
-normal publication does not claim that a later read-back has already succeeded.
-
-To attach the SBOM to an existing image, use **that image's repository** and add its exact
-`subject` descriptor to the target. This example is illustrative; replace all descriptor values
-with those from your image-producing pipeline:
-
-```yaml
-repository: acme/application
-subject:
-  digest: sha256:1111111111111111111111111111111111111111111111111111111111111111
-  mediaType: application/vnd.oci.image.manifest.v1+json
-  size: 527
-```
-
-Rio verifies that subject before writing and requires the OCI Referrers API for attachment.
-Choose the image index or a specific platform manifest explicitly. The **SBOM blob digest**,
-**Rio wrapper manifest digest**, and **subject image digest** are different identities. Attachment
-does not change the subject, prove executable-to-SBOM correspondence, or trigger security analysis.
-
-Use the reported journal with `rio delivery reconcile --record PATH` for a bounded read-only
-content/discovery check. Reconciliation needs no original SBOM or index files. After a lost response
-it can report `verification: verified` while the historical acknowledgment remains `unknown`.
-`rio delivery inspect` and `rio record inspect` remain offline. Server tag immutability and retention policy
-matter: generated tags avoid human release aliases but are not an atomic protection against racing
-external writers. See [OCI configuration, recovery, demos and tested registry scope](tools/README.md#native-oci-delivery).
-
-## One evidence record
-
-Each invocation automatically produces one compact receipt for the work it performed. With your
-pipeline configured, choose a fresh public filename and inspect it offline:
-
-```sh
-rio --receipt record.json
-rio record inspect --file record.json
-```
-
-The receipt records byte identities, meaningful metadata changes, checks and delivery observations;
-it does not embed indexes, journals or SBOM inventories. Inspection works after the source workspace
-is gone. Separate `rio normalize`, `rio deliver` and reconciliation invocations have their own
-receipts; retries and reconciliation link to prior attempts rather than copying their history.
-
-Inspection checks internal consistency, without authenticating producers, fetching external SBOM
-bytes, or proving ingestion. See the [receipt field guide and recovery instructions](docs/output.md)
-and [installed-binary demo](tools/README.md#failure-and-recovery-demo).
-
-## Configure your project
-
-Once the sample works, point Rio at an SBOM your own build produces. For a project with
-`target/bom.json`, create or adapt `rio.yaml`:
-
-```yaml
-version: 1
-artifacts:
-  - id: app
-    sbom: target/bom.json
-```
-
-This minimal manifest uses the default 1.6 spec floor and checks the input. Add
-[enrichment](docs/enrichment.md) for supplied product metadata, such as the issue tracker, release
-notes or a [labelled link to the application's fact sheet](docs/enrichment.md#links), and
-[context](docs/context.md) for producer-provided source/build assertions. Their source and change records travel with the outputs.
-
-Preview the selection, then normalize into a fresh directory:
-
-```sh
-rio plan
-out_dir=$(mktemp -d "${TMPDIR:-/tmp}/rio.XXXXXXXX")
-rio normalize --out "$out_dir" --gate fail
-printf 'Results: %s\n' "$out_dir"
-```
-
-You get `app.cdx.json`, `index.json` and `record.json` in the printed run directory. Explicit artifact paths are relative to `rio.yaml`, and
-each must resolve to exactly one SBOM. `--gate fail` returns exit **1** for failed requirements,
-with results still available for inspection. Missing inputs or invalid configuration return exit
-**2**; ordinary failures still retain a failed receipt. See [exit codes](docs/cli.md#exit-codes) and [what the gate checks](docs/manifest.md#output-version-and-gate).
-
-Use **`artifactSets`** when a directory convention defines your deliverable modules:
-
-```yaml
-version: 1
-artifactSets:
-  - modules: "services/*server/pom.xml"
-    sbom: "target/bom.json"
-    idFrom: module-directory
-```
-
-This selects module markers first. `services/orders-server/pom.xml` produces an `orders-server`
-artifact from that module's `target/bom.json`; a selected module without an SBOM fails the run.
-Rio matches marker paths, not Maven artifact IDs. Explicit artifacts and sets can share a manifest.
-Module discovery, enrichment and context are available in v0.4.0 and newer.
-
-[Manifest reference](docs/manifest.md) covers exclusions, naming rules, paths, transforms and
-shared settings. [Module discovery](docs/manifest.md#discovering-module-artifacts) explains the full
-selection contract. [CI examples](tools/README.md#agent-integration-examples) show build → plan →
-run → inspect. Each invocation gets a fresh run directory; `index.json` defines that run's outputs.
-
-## For agents
-
-Paste this into your project's coding-agent session:
+Paste this into your project's agent session:
 
 ```text
 Integrate Rio into this project. Read
@@ -704,34 +122,34 @@ first. Inspect our build and existing configuration, ask only about unresolved
 decisions, then configure and validate Rio. Report anything still needed.
 ```
 
-The [integration guide](docs/agent-integration.md) works with any harness; provide the guide and its references locally if
-the agent cannot fetch them. Use `rio plan --json` to inspect resolved inputs and settings.
-[AGENTS.md](AGENTS.md) is for developing Rio itself.
+## Documentation
 
-## Reference
+| I want to… | Read |
+|---|---|
+| Set up a first delivery, step by step | [Quick start](docs/quick-start.md) |
+| Configure artifacts, module discovery, checks and output | [Manifest](docs/manifest.md) |
+| Add product and organization metadata | [Enrichment](docs/enrichment.md) |
+| Attach build and source facts | [Context](docs/context.md) |
+| Configure Dependency-Track or OCI delivery, credentials and TLS | [Delivery](docs/delivery.md) |
+| Look up commands, flags, exit codes and the plan JSON | [Commands](docs/cli.md) |
+| Read a receipt, the index or the attestations | [Output records](docs/output.md) |
+| Recover from an interrupted run | [Recovery](docs/recovery.md) |
+| Repair Eclipse p2 package URLs | [p2 repair](docs/p2-repair.md) |
+| Run the demos | [Tools and examples](tools/README.md) |
+| Integrate with a coding agent | [Agent integration](docs/agent-integration.md) |
 
-Reading an extracted release archive? [Open these references on GitHub](https://github.com/rebaze/rio#reference).
-
-<!-- Keep previously linked README fragments useful after moving the reference. -->
-<a id="usage"></a><a id="rio-plan"></a><a id="the-plan-json"></a><a id="exit-codes"></a>
+<!-- Keep previously linked README fragments useful after the README was shortened. -->
+<a id="see-what-your-client-receives"></a><a id="deliver-your-first-sbom"></a><a id="send-to-dependency-track"></a>
+<a id="store-in-an-oci-registry"></a><a id="keep-the-delivery-evidence"></a><a id="when-to-use-rio"></a>
+<a id="where-the-evidence-lives"></a><a id="quick-start"></a><a id="deliver-to-dependency-track"></a>
+<a id="deliver-to-an-oci-registry"></a><a id="one-evidence-record"></a><a id="configure-your-project"></a>
+<a id="for-agents"></a><a id="reference"></a>
+<a id="rio-plan"></a><a id="the-plan-json"></a><a id="exit-codes"></a>
 <a id="the-manifest"></a><a id="discovering-module-artifacts"></a>
 <a id="build-and-source-context"></a>
 <a id="manifest-enrichment"></a><a id="existing-values-and-explicit-replacement"></a><a id="enrichment-provenance-and-compatibility"></a>
 <a id="normalization-attestations"></a><a id="what-rio-writes-into-the-output-sbom"></a><a id="reading-the-repair-records"></a><a id="what-a-record-establishes"></a>
 <a id="repaired-unmapped-skipped"></a>
-
-| I want to… | Read |
-|---|---|
-| Look up CLI flags, exit codes or the plan JSON contract | [Commands](docs/cli.md) |
-| Configure explicit artifacts or module discovery | [Manifest](docs/manifest.md) |
-| Supply product and organization metadata | [Enrichment](docs/enrichment.md) |
-| Attach supplied source/build context | [Context](docs/context.md) |
-| Read the index, repair records or unsigned statements | [Output records](docs/output.md) |
-| Deliver verified SBOMs and inspect delivery journals | [Native delivery](tools/README.md#native-verified-delivery) |
-| Repair Eclipse p2 package URLs | [p2 repair](docs/p2-repair.md) |
-| Run demos, prepare mapping tables or upload to DependencyTrack | [Tools and examples](tools/README.md) |
-| Integrate a project with a coding agent | [Agent integration](docs/agent-integration.md) |
-
 <a id="why-it-exists"></a><a id="the-case-it-was-built-for"></a><a id="what-works-today"></a>
 <a id="direction"></a><a id="rio-and-rebaze"></a><a id="out-of-scope"></a><a id="no-network-calls"></a><a id="build-from-source"></a>
 

@@ -3,10 +3,10 @@
   "schemaVersion": 1,
   "rioVersion": "0.10.0",
   "run": {
-    "id": "run-131fa960f778d27e93d022b7ddd5bbd9",
+    "id": "run-27130d3b98f3aca30c764753c3cb7207",
     "operation": "pipeline",
-    "startedAt": "2026-11-10T06:48:58.233228Z",
-    "finishedAt": "2026-11-10T06:48:58.38179Z",
+    "startedAt": "2026-11-10T08:17:43.923876Z",
+    "finishedAt": "2026-11-10T08:17:44.087984Z",
     "outcome": "success",
     "stages": {
       "checks": "passed",
@@ -26,24 +26,13 @@
       },
       "output": {
         "path": "payments-api.cdx.json",
-        "sha256": "e88d635082e8e4a86d303e47715c1e9b14bb6965a236156d01627d15b5c14448",
-        "size": 6173
+        "sha256": "69a555590de5ad6fc528d898604e3e012097a9a1e37ea55ec9cd1936750ba2cf",
+        "size": 4618
       },
       "changes": {
         "metadata": [
           {
             "field": "/metadata/component/externalReferences/0",
-            "operation": "add",
-            "before": null,
-            "after": {
-              "type": "issue-tracker",
-              "url": "https://code.example.com/payments/payments-api/issues"
-            },
-            "assertion": "producer",
-            "source": "manifest"
-          },
-          {
-            "field": "/metadata/component/externalReferences/1",
             "operation": "add",
             "before": null,
             "after": {
@@ -55,7 +44,7 @@
             "source": "manifest"
           },
           {
-            "field": "/metadata/component/externalReferences/2",
+            "field": "/metadata/component/externalReferences/1",
             "operation": "add",
             "before": null,
             "after": {
@@ -70,10 +59,7 @@
             "operation": "add",
             "before": null,
             "after": {
-              "name": "Example Payments GmbH",
-              "url": [
-                "https://payments.example.com"
-              ]
+              "name": "Example Payments GmbH"
             },
             "assertion": "producer",
             "source": "manifest"
@@ -90,8 +76,7 @@
         "schema": "pass",
         "subjectRequirements": [
           "name",
-          "version",
-          "securityContact"
+          "version"
         ],
         "componentRequirements": [
           "name",
@@ -108,7 +93,7 @@
   "targets": {
     "security": {
       "type": "dependency-track",
-      "url": "http://127.0.0.1:62271"
+      "url": "http://127.0.0.1:49853"
     }
   },
   "deliveries": [
@@ -119,7 +104,7 @@
         "name": "payments-api",
         "version": "2.3.0"
       },
-      "attemptId": "f7b7d4d78dccf64a65f01cb3b718b1b3",
+      "attemptId": "dedfa84edf635d0fd2c2d612faeb1aa1",
       "state": "accepted",
       "intended": [
         {
@@ -135,7 +120,7 @@
           "role": "sbom"
         }
       ],
-      "attemptedAt": "2026-11-10T06:48:58.354951Z",
+      "attemptedAt": "2026-11-10T08:17:44.059162Z",
       "requestMayHaveOccurred": true,
       "transport": {
         "scheme": "http",
@@ -146,7 +131,7 @@
           "kind": "acknowledgment",
           "value": "accepted",
           "httpStatus": 200,
-          "observedAt": "2026-11-10T06:48:58.360985Z",
+          "observedAt": "2026-11-10T08:17:44.06418Z",
           "code": "accepted",
           "references": [
             {
@@ -162,16 +147,6 @@
           "requested": [
             "owner:payments"
           ],
-          "state": "observed"
-        },
-        "parent": {
-          "requested": {
-            "name": "Payments"
-          },
-          "state": "observed"
-        },
-        "isLatest": {
-          "requested": true,
           "state": "observed"
         }
       }
