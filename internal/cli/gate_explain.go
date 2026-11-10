@@ -169,8 +169,8 @@ const emitAdvice = "Have the SBOM generator emit it."
 // say than "have the generator emit it".
 func profileFix(scope, field string) string {
 	const logical = "if the subject is a product rather than one shipped file, declare it logical with level in the build context file or rio:tr-03183-2:level from the generator"
-	// The TR omits filename, hash and file properties for an assembled part (§3.2.1).
-	const assembled = "mark components that do not exist as a file of their own (for example statically linked libraries) as assembled with rio:tr-03183-2:level"
+	// Neither level demands filename, hash or file properties (§3.2.1).
+	const assembled = "mark components that do not exist as a file of their own with rio:tr-03183-2:level: assembled for a part built into another (for example a statically linked library), logical for a product or grouping"
 	switch field {
 	case string(gate.RequireCreator):
 		if scope == "subject" {

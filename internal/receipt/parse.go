@@ -395,20 +395,9 @@ func profileFailuresFit(c *Checks) bool {
 			reqs.Subject = append(reqs.Subject, r)
 		}
 	}
-	for _, subjectLevel := range append([]string{""}, ProfileLevelKeys...) {
-		children, total := map[string]int{}, 0
-		for _, k := range ProfileLevelKeys {
-			children[k] = c.ProfileLevels[k]
-			if k == subjectLevel {
-				children[k]--
-			}
-			total += children[k]
-		}
-		if (subjectLevel != "" && children[subjectLevel] < 0) || total != c.ComponentsEvaluated {
-			continue
-		}
+	for _, counts := range gate.ProfilePlacements(c.ProfileLevels, c.ComponentsEvaluated, reqs) {
 		evaluated := map[string]int{}
-		for _, e := range gate.ProfileEvaluationCounts(subjectLevel, children, reqs) {
+		for _, e := range counts {
 			evaluated[e.Scope+"."+e.Requirement] = e.Evaluated
 		}
 		fits := true

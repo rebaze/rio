@@ -2,6 +2,7 @@ package gate
 
 import (
 	"fmt"
+	"iter"
 	"strings"
 
 	"github.com/rebaze/rio/internal/sbom"
@@ -79,6 +80,10 @@ const (
 	LevelIdentified = "identified"
 	LevelReferenced = "referenced"
 )
+
+// LevelOrder is the levels in reporting order: the keys a recorded
+// profileLevels holds.
+var LevelOrder = []string{LevelFull, LevelLogical, LevelAssembled, LevelIdentified, LevelReferenced}
 
 // BSI property taxonomy names and their allowed values, verbatim.
 const (
@@ -395,6 +400,34 @@ func (run *profileRun) evaluations(reqs Requirements, findings []Finding) []Eval
 		out[i] = evaluate(e.Scope, Requirement(e.Requirement), e.Evaluated, findings)
 	}
 	return out
+}
+
+// ProfilePlacements yields, for each placement of the subject among recorded
+// profileLevels that leaves exactly components components, the subject's
+// level and ProfileEvaluationCounts for it: first no subject (""), then the
+// subject at each level of LevelOrder. Recorded levels count the subject when
+// metadata.component is an object, which a record does not otherwise say, so a
+// reader checks recorded evaluations or failures against these placements.
+func ProfilePlacements(levels map[string]int, components int, reqs Requirements) iter.Seq2[string, []Evaluation] {
+	return func(yield func(string, []Evaluation) bool) {
+		for _, subjectLevel := range append([]string{""}, LevelOrder...) {
+			children, total, placed := map[string]int{}, 0, true
+			for _, k := range LevelOrder {
+				children[k] = levels[k]
+				if k == subjectLevel {
+					children[k]--
+				}
+				placed = placed && children[k] >= 0
+				total += children[k]
+			}
+			if !placed || total != components {
+				continue
+			}
+			if !yield(subjectLevel, ProfileEvaluationCounts(subjectLevel, children, reqs)) {
+				return
+			}
+		}
+	}
 }
 
 // ProfileEvaluationCounts is the evaluation list a profile run reports, in

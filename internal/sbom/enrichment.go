@@ -110,6 +110,18 @@ func SPDXSpelling(id string) string {
 	return spdxFolded[strings.ToLower(id)]
 }
 
+// KnownSPDXLicenceAnyCase reports whether id is a licence ID in the embedded
+// list spelled exactly or, failing that, in another case, as SPDX matches
+// identifiers in licence expressions. An exact spelling always matches.
+func KnownSPDXLicenceAnyCase(id string) bool {
+	return KnownSPDXLicence(id) || KnownSPDXLicence(SPDXSpelling(id))
+}
+
+// KnownSPDXExceptionAnyCase is KnownSPDXLicenceAnyCase for exception IDs.
+func KnownSPDXExceptionAnyCase(id string) bool {
+	return KnownSPDXException(id) || KnownSPDXException(SPDXSpelling(id))
+}
+
 // KnownSPDXException reports whether id is a licence exception ID in the
 // embedded SPDX list, the right side of a WITH. A load failure reads as
 // unknown.

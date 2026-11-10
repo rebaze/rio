@@ -2,6 +2,8 @@
 // Paths and URLs are references only: parsing never opens or follows them.
 package receipt
 
+import "github.com/rebaze/rio/internal/gate"
+
 const (
 	Kind          = "rio-run-receipt"
 	MaxBytes      = 8 << 20
@@ -127,12 +129,16 @@ type ProfileRef struct {
 }
 
 // ProfileLevelKeys are the keys profileLevels holds, in level order.
-var ProfileLevelKeys = []string{"full", "logical", "assembled", "identified", "referenced"}
+var ProfileLevelKeys = gate.LevelOrder
 
-// knownProfile is the one profile rio ships. It is spelled out here rather
-// than imported from internal/gate so the receipt stays a leaf package.
+// knownProfile reports whether p names a profile rio ships, with that
+// profile's guideline and version.
 func knownProfile(p *ProfileRef) bool {
-	return p != nil && *p == ProfileRef{Name: "bsi-tr-03183-2@2.1.0", Guideline: "BSI TR-03183-2", GuidelineVersion: "2.1.0"}
+	if p == nil {
+		return false
+	}
+	known, ok := gate.LookupProfile(p.Name)
+	return ok && known.Guideline == p.Guideline && known.GuidelineVersion == p.GuidelineVersion
 }
 
 // FailedRequirement is one requirement that failed and how many times: once

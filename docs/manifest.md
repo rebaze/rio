@@ -121,7 +121,7 @@ rio: artifact "cart-api" failed the gate; gate mode fail, so nothing was deliver
   subject.dependencies (BSI TR-03183-2 2.1.0 §5.2.2): the SBOM subject has no dependencies entry covered by a compositions entry. Have the SBOM generator emit it.
   subject.distributionLicences (BSI TR-03183-2 2.1.0 §5.2.2, §6.1): the SBOM subject has no concluded licence in SPDX form. Have the SBOM generator emit it.
   components.creator (BSI TR-03183-2 2.1.0 §5.2.2): 2 components have no creator (manufacturer), for example "pkg:generic/zlib@1.3.1". Have the SBOM generator emit it.
-  components.deployableHash (BSI TR-03183-2 2.1.0 §5.2.2): 2 components have no SHA-512 hash on a distribution reference, for example "pkg:generic/zlib@1.3.1". Have the SBOM generator emit it, or mark components that do not exist as a file of their own (for example statically linked libraries) as assembled with rio:tr-03183-2:level. Rio does not hash files.
+  components.deployableHash (BSI TR-03183-2 2.1.0 §5.2.2): 2 components have no SHA-512 hash on a distribution reference, for example "pkg:generic/zlib@1.3.1". Have the SBOM generator emit it, or mark components that do not exist as a file of their own with rio:tr-03183-2:level: assembled for a part built into another (for example a statically linked library), logical for a product or grouping. Rio does not hash files.
 ```
 
 `rio plan` shows the profile before anything runs: a line `gate  profile bsi-tr-03183-2@2.1.0 (BSI TR-03183-2 2.1.0)`

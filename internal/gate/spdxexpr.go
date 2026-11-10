@@ -134,7 +134,7 @@ func (p *spdxParser) with() bool {
 	p.pos++
 	if p.operator("WITH") {
 		exc := p.peek()
-		if exc == "" || isSPDXOperator(exc) || !validIDChars(exc) || !sbom.KnownSPDXException(sbom.SPDXSpelling(exc)) {
+		if exc == "" || isSPDXOperator(exc) || !validIDChars(exc) || !sbom.KnownSPDXExceptionAnyCase(exc) {
 			return false
 		}
 		p.pos++
@@ -160,7 +160,7 @@ func validLicenceID(t string) bool {
 		return validIDChars(strings.TrimPrefix(doc, "DocumentRef-")) && validLicenseRef(ref)
 	}
 	id := strings.TrimSuffix(t, "+")
-	return validIDChars(id) && sbom.KnownSPDXLicence(sbom.SPDXSpelling(id))
+	return validIDChars(id) && sbom.KnownSPDXLicenceAnyCase(id)
 }
 
 func validLicenseRef(t string) bool {

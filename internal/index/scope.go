@@ -67,7 +67,7 @@ type ProfileRef struct {
 	GuidelineVersion string `json:"guidelineVersion"`
 }
 
-var profileLevelKeys = []string{"full", "logical", "assembled", "identified", "referenced"}
+var profileLevelKeys = gate.LevelOrder
 
 // validProfile accepts only a profile gate knows, spelled exactly.
 func (c *EffectiveChecks) validProfile() bool {
@@ -106,21 +106,7 @@ func (c *EffectiveChecks) profileEvaluationsMatch(selection, subject map[string]
 			reqs.Subject = append(reqs.Subject, r)
 		}
 	}
-	for _, subjectLevel := range append([]string{""}, profileLevelKeys...) {
-		children := map[string]int{}
-		total, placed := 0, true
-		for _, k := range profileLevelKeys {
-			children[k] = c.ProfileLevels[k]
-			if k == subjectLevel {
-				children[k]--
-			}
-			placed = placed && children[k] >= 0
-			total += children[k]
-		}
-		if !placed || total != c.ComponentCount {
-			continue
-		}
-		want := gate.ProfileEvaluationCounts(subjectLevel, children, reqs)
+	for _, want := range gate.ProfilePlacements(c.ProfileLevels, c.ComponentCount, reqs) {
 		if len(want) != len(c.Evaluations) {
 			continue
 		}
