@@ -9,135 +9,253 @@
 
 **Rio normalizes CycloneDX SBOMs, delivers verified outputs, and records the evidence for both.**
 
-## See what your client receives
+## From your build's SBOM to Dependency-Track, in one command
 
-**Two SBOMs consumed → pipeline evidence added → delivered to Dependency-Track → receipts retained.**
+Your build writes `target/bom.json`. Commit this `rio.yaml` next to it:
 
-Here is a JSON excerpt from the actual Rio v0.7.0 record, produced with a synthetic HTTPS receiver
-speaking the Dependency-Track upload API. This shows the `api` artifact; the second artifact,
-checks and run details are omitted here. Values and full digests match the complete file.
+```yaml
+version: 1
+artifacts:
+  - id: payments-api
+    sbom: target/bom.json              # written by your build
+
+enrichment:                            # what the generator doesn't know
+  subject:
+    supplier:
+      name: Example Payments GmbH
+      url: [https://payments.example.com]
+    securityContact: mailto:security@payments.example.com
+    issueTracker: https://code.example.com/payments/payments-api/issues
+    links:
+      - label: Fact sheet              # who owns it, from your architecture tool
+        url: https://ea.example.com/factsheet/Application/payments-api
+
+output:
+  specVersionFloor: "1.6"              # level older generators up
+gate:
+  require: [name, version, purl]       # on every component, or nothing ships
+  subject:
+    require: [securityContact]         # met by the enrichment above
+
+delivery:
+  targets:
+    security:
+      type: dependency-track
+      url: https://dtrack.example.com
+      apiKeyEnv: DTRACK_API_KEY        # the variable's name, never the key
+      autoCreate: true
+      tags: [owner:payments]           # route findings to the owning team
+      parent: {name: Payments}         # group the versions under the product
+      isLatest: true
+```
+
+Then run Rio, in CI or on your machine:
+
+```sh
+export DTRACK_API_KEY=...              # from your secret store
+rio
+```
+
+```text
+run run-131fa960f778d27e93d022b7ddd5bbd9: success
+receipt: /path/to/my-app/target/rio/runs/run-131fa960f778d27e93d022b7ddd5bbd9/record.json
+```
+
+Rio levels the SBOM up to CycloneDX 1.6, adds the supplier, the security contact, the issue tracker
+and the fact-sheet link, checks every component for a name, version and package URL, uploads the
+result, and reads the project back to see whether the tags, parent and latest flag were applied.
+Each run gets a fresh directory (condensed from `tree`, which lists each journal entry and checkpoint):
+
+```text
+target/
+├── bom.json                    # your build's SBOM, unchanged
+└── rio/runs/run-131fa960f778d27e93d022b7ddd5bbd9/
+    ├── payments-api.cdx.json   # the SBOM, exactly as delivered
+    ├── record.json             # the run receipt
+    ├── index.json              # normalization evidence: digests, transforms, gate
+    ├── deliveries/<pair-key>/  # the delivery journal
+    └── .internal/              # recovery checkpoints
+```
+
+What changed in the SBOM, an excerpt of `payments-api.cdx.json`. Rio records the input's digest
+and the spec change as properties. Left out: the timestamp, `tools` (where Rio adds itself) and
+seven properties, five of them `rebaze:normalize:enrichment` entries that record where each added
+value came from in `rio.yaml`. The components and dependencies are unchanged.
+
+```json
+  "metadata": {
+    "component": {
+      "bom-ref": "pkg:maven/com.example.payments/payments-api@2.3.0",
+      "externalReferences": [
+        {
+          "type": "issue-tracker",
+          "url": "https://code.example.com/payments/payments-api/issues"
+        },
+        {
+          "comment": "Fact sheet",
+          "type": "other",
+          "url": "https://ea.example.com/factsheet/Application/payments-api"
+        },
+        {
+          "type": "security-contact",
+          "url": "mailto:security@payments.example.com"
+        }
+      ],
+      "group": "com.example.payments",
+      "name": "payments-api",
+      "purl": "pkg:maven/com.example.payments/payments-api@2.3.0",
+      "supplier": {
+        "name": "Example Payments GmbH",
+        "url": [
+          "https://payments.example.com"
+        ]
+      },
+      "type": "application",
+      "version": "2.3.0"
+    },
+    "properties": [
+      {
+        "name": "rebaze:normalize:input-sha256",
+        "value": "6bc292a298614b7b6ee82c99fb71883bbc6288d3090654472b5e0e9af331e92e"
+      },
+      {
+        "name": "rebaze:normalize:spec-uplift",
+        "value": "from=1.4 to=1.6"
+      },
+      {
+        "name": "rebaze:normalize:tool",
+        "value": "rio 0.10.0"
+      }
+    ]
+  },
+  "specVersion": "1.6",
+```
+
+The receipt, `record.json`, trimmed to one change and the delivery's acknowledgment and project fields.
+It says what Rio consumed and wrote, what it changed and on whose authority, what it checked, and what
+the server answered:
 
 ```json
 {
   "kind": "rio-run-receipt",
-  "schemaVersion": 1,
-  "rioVersion": "0.7.0",
+  "rioVersion": "0.10.0",
   "run": {
     "operation": "pipeline",
     "outcome": "success"
   },
   "artifacts": [
     {
-      "id": "api",
+      "id": "payments-api",
+      "state": "completed",
       "input": {
-        "path": "api.cdx.json",
-        "sha256": "1d2b04c0df452a4c2c34d84a6c195bb2805c3f208cf8f6c0bbe90ec54970dc01",
-        "size": 376
+        "path": "target/bom.json",
+        "sha256": "6bc292a298614b7b6ee82c99fb71883bbc6288d3090654472b5e0e9af331e92e",
+        "size": 1738
       },
       "output": {
-        "path": "api.cdx.json",
-        "sha256": "55e46a63a8b30ad6082b6c35dd43f0e5bc65d5cdd5ecd91126c09d0327f3d3e4",
-        "size": 2307
+        "path": "payments-api.cdx.json",
+        "sha256": "e88d635082e8e4a86d303e47715c1e9b14bb6965a236156d01627d15b5c14448",
+        "size": 6173
       },
       "changes": {
         "metadata": [
           {
-            "field": "build.id",
+            "field": "/metadata/component/externalReferences/1",
             "operation": "add",
             "before": null,
-            "after": "42",
+            "after": {
+              "comment": "Fact sheet",
+              "type": "other",
+              "url": "https://ea.example.com/factsheet/Application/payments-api"
+            },
             "assertion": "producer",
-            "source": "context-file"
-          },
-          {
-            "field": "build.url",
-            "operation": "add",
-            "before": null,
-            "after": "https://ci.example.org/runs/42",
-            "assertion": "producer",
-            "source": "context-file"
+            "source": "manifest"
           }
-        ]
+        ],
+        "specVersion": {
+          "from": "1.4",
+          "to": "1.6"
+        }
+      },
+      "checks": {
+        "mode": "fail",
+        "gate": "pass",
+        "schema": "pass",
+        "componentsEvaluated": 3,
+        "findings": 0
       }
     }
   ],
-  "targets": {
-    "security": {
-      "type": "dependency-track",
-      "url": "https://127.0.0.1:53946"
-    }
-  },
   "deliveries": [
     {
-      "artifactId": "api",
+      "artifactId": "payments-api",
       "target": "security",
       "project": {
-        "name": "api",
-        "version": "1.0.0"
+        "name": "payments-api",
+        "version": "2.3.0"
       },
-      "submitted": [
-        {
-          "artifactOutput": "api",
-          "mediaType": "application/vnd.cyclonedx+json",
-          "role": "sbom"
-        }
-      ],
-      "transport": {
-        "scheme": "https",
-        "tlsObserved": true,
-        "certificateVerification": "enforced"
-      },
+      "state": "accepted",
       "responses": [
         {
-          "tlsObserved": true,
           "kind": "acknowledgment",
           "value": "accepted",
           "httpStatus": 200,
-          "observedAt": "2026-09-27T23:54:37.014772Z",
           "code": "accepted",
           "references": [
             {
               "kind": "dependency-track:event-token",
-              "value": "11111111-1111-4111-8111-111111111111"
+              "value": "5d1f9a9e-2f0c-4c55-9d8e-7c3b2a1f0e64"
             }
           ]
         }
-      ]
+      ],
+      "projectFields": {
+        "readBack": "read",
+        "tags": {
+          "requested": [
+            "owner:payments"
+          ],
+          "state": "observed"
+        },
+        "parent": {
+          "requested": {
+            "name": "Payments"
+          },
+          "state": "observed"
+        },
+        "isLatest": {
+          "requested": true,
+          "state": "observed"
+        }
+      }
     }
   ]
 }
 ```
 
-**[Read the full record.json — 5,791 bytes](tools/demo-client-record/example/record.json)** ·
-**[Download the HTML report](https://raw.githubusercontent.com/rebaze/rio/main/tools/demo-client-record/example/report.html)** (open locally) ·
-[Download the runnable example](https://raw.githubusercontent.com/rebaze/rio/main/tools/demo-client-record/example/example.zip) ·
-[Reproduce this example](tools/demo-client-record/example/README.md)
+`observed` means Rio read the value back from the project; HTTP 200 alone records acceptance, not
+ingestion. Without permission to read the project, each value is `unknown`, never assumed. The data
+is synthetic, and the receiver is a **synthetic** loopback server imitating Dependency-Track 5.2.1,
+so the run's `rio.yaml` points at it instead of `dtrack.example.com`. Every file comes from Rio
+v0.10.0:
 
-The URL is the **destination server**, not the Dependency-Track project website. This demo used a
-local receiver; your record contains your configured instance URL, such as `https://dtrack.example.org`.
-It also retains the original and delivered SBOM digests, exact payload sizes, project identities,
-and response timestamps. Pipeline values are supplied by your build; HTTP 200 records acceptance,
-not proof of ingestion.
-
-With intake, [pipeline context](docs/context.md), and delivery configured in `rio.yaml`:
-
-```sh
-rio --receipt record.json
-rio record inspect --file record.json
-rio record report --file record.json --output report.html
-```
-
-Set a spec-version floor, attach product and pipeline metadata, and get normalized SBOMs plus an
-`index.json` linking original inputs, output digests, the manifest and check results.
+**[record.json](tools/demo-use-case/example/record.json)** ·
+**[the delivered SBOM](tools/demo-use-case/example/payments-api.cdx.json)** ·
+[index.json](tools/demo-use-case/example/index.json) ·
+[the HTML report](https://raw.githubusercontent.com/rebaze/rio/main/tools/demo-use-case/example/report.html) (open locally) ·
+[full console output](tools/demo-use-case/example/output.txt) ·
+reproduce it with `python3 tools/demo-use-case/run.py`
 
 Native delivery checks that the SBOM matches that record, sends the exact verified bytes, and
 keeps a separate **delivery journal**: what Rio attempted, what the destination acknowledged,
 and what later checks observed. Lost responses remain visible as uncertainty, with no automatic
 resubmission. Normalization stays offline; delivery uses the network explicitly. Both run in one
-binary, on your workstation or in CI.
+binary, on your workstation or in CI. Delivery destinations include **Dependency-Track** and
+**OCI artifact registries**.
 
-Delivery destinations include **Dependency-Track** and **OCI artifact registries**, with separate
-delivery acknowledgments, transport facts and content verification.
+Handing evidence to a client? The [two-artifact client example](tools/demo-client-record/example/README.md)
+comes with an [HTML report](https://raw.githubusercontent.com/rebaze/rio/main/tools/demo-client-record/example/report.html)
+and a [runnable download](https://raw.githubusercontent.com/rebaze/rio/main/tools/demo-client-record/example/example.zip).
 
 [Install](#install) · [First delivery](#deliver-your-first-sbom) · [Try without a server](#quick-start) · [Verified delivery](#deliver-to-dependency-track) · [OCI registries](#deliver-to-an-oci-registry) · [One evidence record](#one-evidence-record) · [Configuration](#configure-your-project) · [For agents](#for-agents) · [Reference](#reference)
 

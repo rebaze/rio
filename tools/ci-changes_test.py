@@ -77,7 +77,7 @@ class ChangesTest(unittest.TestCase):
                 self.assertEqual(detect(path)["go"], "true")
 
     def test_client_evidence_demo_files_run_binary_checks(self):
-        for name in ("normalization-evidence", "recovery", "client-record"):
+        for name in ("normalization-evidence", "recovery", "client-record", "use-case"):
             for leaf in ("run.py", "rio.yaml", "fixtures/bom.json", "README.md"):
                 with self.subTest(name=name, leaf=leaf):
                     self.assertEqual(detect("tools/demo-" + name + "/" + leaf)["go"], "true")

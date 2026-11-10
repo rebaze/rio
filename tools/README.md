@@ -651,6 +651,18 @@ Python library (the demo also uses bash, tar and shasum). The video preserves co
 and slows playback for reading; it clearly labels the offline service substitutes. Commands remain
 on screen above their output. Version 2 transcripts require a fresh run of the demo capture command.
 
+## The README's use case
+
+[`demo-use-case/`](demo-use-case/README.md) is the README's lead example: one `rio.yaml` and one
+`rio` that levels up, enriches, gates and delivers an SBOM to a **synthetic** Dependency-Track
+receiver with tags, parent and latest flag, then reads them back. Its committed
+[`example/`](demo-use-case/example/) holds the receipt, the delivered SBOM and the console output of
+a Rio v0.10.0 run.
+
+```sh
+python3 tools/demo-use-case/run.py /path/to/rio
+```
+
 ## Manifest enrichment demo
 
 The [standalone enrichment demo](demo-enrichment/README.md) includes synthetic CycloneDX 1.6

@@ -1,0 +1,34 @@
+version: 1
+artifacts:
+  - id: payments-api
+    sbom: target/bom.json              # written by your build
+
+enrichment:                            # what the generator doesn't know
+  subject:
+    supplier:
+      name: Example Payments GmbH
+      url: [https://payments.example.com]
+    securityContact: mailto:security@payments.example.com
+    issueTracker: https://code.example.com/payments/payments-api/issues
+    links:
+      - label: Fact sheet              # who owns it, from your architecture tool
+        url: https://ea.example.com/factsheet/Application/payments-api
+
+output:
+  specVersionFloor: "1.6"              # level older generators up
+gate:
+  require: [name, version, purl]       # on every component, or nothing ships
+  subject:
+    require: [securityContact]         # met by the enrichment above
+
+delivery:
+  targets:
+    security:
+      type: dependency-track
+      url: http://127.0.0.1:62271
+      allowHTTP: true            # the synthetic receiver only
+      apiKeyEnv: DTRACK_API_KEY        # the variable's name, never the key
+      autoCreate: true
+      tags: [owner:payments]           # route findings to the owning team
+      parent: {name: Payments}         # group the versions under the product
+      isLatest: true
