@@ -12,7 +12,7 @@ Dependency-Track or an OCI registry, and keeps a receipt of what happened.**
 
 ## Example
 
-Your build writes `target/bom.json`. Put a `rio.yaml` next to it:
+Your build writes `target/bom.json`. Add a `rio.yaml` to the project root:
 
 ```yaml
 version: 1
@@ -38,7 +38,7 @@ delivery:
       tags: [owner:payments]       # route findings to the owning team
 ```
 
-Run it, in CI or on your machine:
+Run Rio from the project root, in CI or on your machine:
 
 ```console
 $ export DTRACK_API_KEY=...        # from your secret store
