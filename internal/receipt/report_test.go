@@ -140,3 +140,38 @@ func TestHTMLNamesTheProfile(t *testing.T) {
 		}
 	}
 }
+
+// A compact receipt names the artifact output it submitted instead of
+// repeating its digest; inspection shows the digest and size it refers to.
+func TestTextResolvesSubmittedArtifactOutput(t *testing.T) {
+	render := func(d Document) string {
+		t.Helper()
+		raw, err := Marshal(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		if err := Text(raw, &out); err != nil {
+			t.Fatal(err)
+		}
+		return out.String()
+	}
+	d := fixture()
+	d.Deliveries[0].Submitted[0].Role = "sbom"
+	d.Deliveries[0].Submitted[0].MediaType = "application/vnd.cyclonedx+json"
+	text := render(d)
+	want := "  submitted role=sbom mediaType=application/vnd.cyclonedx+json artifactOutput=api sha256=" + strings.Repeat("b", 64) + " bytes=234\n"
+	if !strings.Contains(text, want) {
+		t.Fatalf("missing %q in:\n%s", want, text)
+	}
+
+	direct := fixture()
+	body := Bytes{SHA256: strings.Repeat("c", 64), Size: 345, Role: "sbom"}
+	direct.Deliveries[0].Intended = []Bytes{body}
+	direct.Deliveries[0].Submitted = []Bytes{body}
+	text = render(direct)
+	want = "  submitted role=sbom sha256=" + strings.Repeat("c", 64) + " bytes=345\n"
+	if !strings.Contains(text, want) {
+		t.Fatalf("missing %q in:\n%s", want, text)
+	}
+}
