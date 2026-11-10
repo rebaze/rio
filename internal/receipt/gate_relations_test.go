@@ -6,6 +6,7 @@ import (
 	"github.com/rebaze/rio/internal/index"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -302,6 +303,9 @@ func TestFailedProfileIDs(t *testing.T) {
 		c.Findings = 3 // sbom, subject, one component
 		if withProfile {
 			profileReceipt(&d)
+			// A full subject and one full component, so every profile field
+			// was evaluated for both.
+			c.ProfileLevels["referenced"], c.ProfileLevels["full"] = 0, c.ComponentsEvaluated+1
 		}
 		return d
 	}
@@ -338,6 +342,97 @@ func TestFailedProfileIDs(t *testing.T) {
 	d.Artifacts[0].Checks.Findings = 1
 	if err := parse(d); err != nil {
 		t.Fatalf("components.version under a profile refused: %v", err)
+	}
+}
+
+func TestProfileFailuresMustFitTheLevels(t *testing.T) {
+	build := func(levels map[string]int, failed ...FailedRequirement) Document {
+		d := gateRelationFixture()
+		failReceiptGate(&d, "warn")
+		profileReceipt(&d)
+		c := d.Artifacts[0].Checks
+		for k, v := range levels {
+			c.ProfileLevels[k] = v
+		}
+		c.Failed = failed
+		c.Findings = 0
+		for _, f := range failed {
+			if strings.HasPrefix(f.Requirement, "components.") {
+				c.Findings = 1 // the one component
+			}
+		}
+		for _, f := range failed {
+			if strings.HasPrefix(f.Requirement, "subject.") {
+				c.Findings++
+				break
+			}
+		}
+		return d
+	}
+	parse := func(d Document) error {
+		raw, err := json.Marshal(d)
+		if err != nil {
+			return err
+		}
+		_, err = Parse(raw)
+		return err
+	}
+	filename := FailedRequirement{Requirement: "components.filename", Count: 1}
+	subjectFilename := FailedRequirement{Requirement: "subject.filename", Count: 1}
+	accepted := map[string]Document{
+		"a full component missing its filename": build(map[string]int{"referenced": 0, "full": 1}, filename),
+		"a full subject missing its filename":   build(map[string]int{"referenced": 1, "full": 1}, subjectFilename),
+		"creator, which every level demands":    build(nil, FailedRequirement{Requirement: "components.creator", Count: 1}),
+	}
+	for name, d := range accepted {
+		if err := parse(d); err != nil {
+			t.Errorf("%s refused: %v", name, err)
+		}
+	}
+	refused := map[string]Document{
+		// A referenced component is never checked for a filename.
+		"a filename failure with only referenced components": build(nil, filename),
+		// Without a subject among the levels, no subject profile field ran.
+		"a subject filename failure without a subject": build(nil, subjectFilename),
+		// The subject is the full one; the component is referenced.
+		"both filename failures with one full entry": build(map[string]int{"referenced": 1, "full": 1}, subjectFilename, filename),
+	}
+	for name, d := range refused {
+		if err := parse(d); err == nil {
+			t.Errorf("%s accepted", name)
+		}
+	}
+}
+
+func TestComponentEvaluationFollowsTheIndexRule(t *testing.T) {
+	cases := map[string]func(*Checks){
+		"not evaluated although a profile ran over components": func(c *Checks) {
+			c.Profile = &ProfileRef{Name: "bsi-tr-03183-2@2.1.0", Guideline: "BSI TR-03183-2", GuidelineVersion: "2.1.0"}
+			c.ProfileLevels = map[string]int{"full": 0, "logical": 0, "assembled": 0, "identified": 0, "referenced": 1}
+			c.ComponentEvaluation = "not-evaluated"
+		},
+		"not evaluated although a requirement was selected": func(c *Checks) { c.ComponentEvaluation = "not-evaluated" },
+		"evaluated with no requirements":                    func(c *Checks) { c.ComponentRequirements = nil },
+		"evaluated with no components":                      func(c *Checks) { c.ComponentsEvaluated = 0 },
+	}
+	for name, change := range cases {
+		t.Run(name, func(t *testing.T) {
+			d := gateRelationFixture()
+			change(d.Artifacts[0].Checks)
+			raw, err := json.Marshal(d)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = Parse(raw); err == nil {
+				t.Fatal("contradictory component evaluation accepted")
+			}
+		})
+	}
+	d := gateRelationFixture()
+	d.Artifacts[0].Checks.ComponentsEvaluated = 0
+	d.Artifacts[0].Checks.ComponentEvaluation = "not-evaluated"
+	if _, err := Marshal(d); err != nil {
+		t.Fatalf("an SBOM without components refused: %v", err)
 	}
 }
 
