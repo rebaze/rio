@@ -17,7 +17,9 @@ const (
 // (optionally with a trailing "+"), LicenseRef-… and DocumentRef-…:LicenseRef-…,
 // joined with AND, OR and WITH (uppercase or all lowercase) and parentheses.
 // The right side of WITH is an exception id from the same list; an exception
-// id is never a licence, and a licence id never an exception.
+// id is never a licence, and a licence id never an exception. Licence and
+// exception ids match regardless of case, as SPDX matches them ("apache-2.0"
+// is Apache-2.0); LicenseRef- and DocumentRef- prefixes do not.
 //
 // It checks form only. A well-formed expression can still name the wrong
 // licence.
@@ -132,7 +134,7 @@ func (p *spdxParser) with() bool {
 	p.pos++
 	if p.operator("WITH") {
 		exc := p.peek()
-		if exc == "" || isSPDXOperator(exc) || !validIDChars(exc) || !sbom.KnownSPDXException(exc) {
+		if exc == "" || isSPDXOperator(exc) || !validIDChars(exc) || !sbom.KnownSPDXException(sbom.SPDXSpelling(exc)) {
 			return false
 		}
 		p.pos++
@@ -158,7 +160,7 @@ func validLicenceID(t string) bool {
 		return validIDChars(strings.TrimPrefix(doc, "DocumentRef-")) && validLicenseRef(ref)
 	}
 	id := strings.TrimSuffix(t, "+")
-	return validIDChars(id) && sbom.KnownSPDXLicence(id)
+	return validIDChars(id) && sbom.KnownSPDXLicence(sbom.SPDXSpelling(id))
 }
 
 func validLicenseRef(t string) bool {

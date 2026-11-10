@@ -64,7 +64,7 @@ advisories must be absolute HTTP(S) URLs without credentials; security contact a
 | `subject.securityContact`, `.website`, `.documentation`, `.support`, `.issueTracker`, `.releaseNotes`, `.advisories` | One typed entry each in `metadata.component.externalReferences`: `security-contact`, `website`, `documentation`, `support`, `issue-tracker`, `release-notes`, `advisories` | Product contact and information URLs |
 | `subject.links` | Labelled entries in `metadata.component.externalReferences`; the label is the reference's `comment` | The organization's own links, such as a fact sheet. See [Links](#links) |
 | `producer` | `metadata.manufacturer` | Organization that created the SBOM; requires 1.6 |
-| `dataLicense` | `metadata.licenses` | One SPDX licence identifier for the SBOM data, such as `CC0-1.0`; an exception identifier such as `LLVM-exception` is refused at manifest load. Does not change component licenses |
+| `dataLicense` | `metadata.licenses` | One SPDX licence identifier for the SBOM data, such as `CC0-1.0`; an exception identifier such as `LLVM-exception` is refused at manifest load. Rio writes it as `license.id`, which CycloneDX's schema enumerates, so the case must match the SPDX list; `cc0-1.0` is refused with the correct spelling. Does not change component licenses |
 
 CycloneDX 1.5 supports the other modeled fields. A 1.5 output with `producer` or
 `subject.manufacturer` is refused: rio does not substitute a different organization role. The
