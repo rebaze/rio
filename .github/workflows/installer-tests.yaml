@@ -33,7 +33,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    # Python 3.9 is not available on ubuntu-latest (26.04); keep the job name, pin the runner.
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     timeout-minutes: 20
     steps:
       - name: Preserve fixture bytes on Windows
