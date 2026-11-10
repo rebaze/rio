@@ -414,6 +414,13 @@ func TestComponentEvaluationFollowsTheIndexRule(t *testing.T) {
 		"not evaluated although a requirement was selected": func(c *Checks) { c.ComponentEvaluation = "not-evaluated" },
 		"evaluated with no requirements":                    func(c *Checks) { c.ComponentRequirements = nil },
 		"evaluated with no components":                      func(c *Checks) { c.ComponentsEvaluated = 0 },
+		"not available although components were counted":    func(c *Checks) { c.ComponentEvaluation = "not-available" },
+		"not available although a profile ran": func(c *Checks) {
+			c.Profile = &ProfileRef{Name: "bsi-tr-03183-2@2.1.0", Guideline: "BSI TR-03183-2", GuidelineVersion: "2.1.0"}
+			c.ProfileLevels = map[string]int{"full": 0, "logical": 0, "assembled": 0, "identified": 0, "referenced": 0}
+			c.ComponentsEvaluated = 0
+			c.ComponentEvaluation = "not-available"
+		},
 	}
 	for name, change := range cases {
 		t.Run(name, func(t *testing.T) {

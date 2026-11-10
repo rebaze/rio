@@ -168,7 +168,12 @@ func Validate(d Document) error {
 				return err
 			}
 			// The index's rule: components count as evaluated exactly when
-			// something was required of them and there were any.
+			// something was required of them and there were any. Rio writes
+			// not-available only for a pre-existing SBOM whose record carries no
+			// checks, so no component counts and no profile.
+			if c.ComponentEvaluation == "not-available" && (c.ComponentsEvaluated > 0 || c.Profile != nil) {
+				return invalid("component evaluation")
+			}
 			if c.ComponentEvaluation != "not-available" {
 				state := "not-evaluated"
 				if (len(c.ComponentRequirements) > 0 || c.Profile != nil) && c.ComponentsEvaluated > 0 {
