@@ -137,6 +137,15 @@ func TestEnrichmentRejectsUnknownSPDXIdentifier(t *testing.T) {
 	}
 }
 
+// license.id is an exact enum in CycloneDX: a wrong case is refused, and the
+// error names the right spelling.
+func TestEnrichmentDataLicenseNamesTheExactCase(t *testing.T) {
+	_, err := manifest.Load(write(t, "version: 1\nenrichment: {dataLicense: cc0-1.0}\nartifacts: [{id: a, sbom: a.json}]\n"))
+	if err == nil || !strings.Contains(err.Error(), `must be spelled "CC0-1.0"`) {
+		t.Fatalf("error=%v, want the exact spelling", err)
+	}
+}
+
 // A data licence is a licence; an SPDX exception ID names none.
 func TestEnrichmentRejectsSPDXExceptionAsDataLicense(t *testing.T) {
 	_, err := manifest.Load(write(t, "version: 1\nenrichment: {dataLicense: LLVM-exception}\nartifacts: [{id: a, sbom: a.json}]\n"))

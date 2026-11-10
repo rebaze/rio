@@ -255,6 +255,24 @@ func TestApplyContextFileComponentChanged(t *testing.T) {
 			t.Fatal("refusal mutated document")
 		}
 	})
+	t.Run("prior record, subject changed since", func(t *testing.T) {
+		d := load(t, []byte(trSubjectDoc))
+		if _, err := d.ApplyContext(trResolved("", trTarball)); err != nil {
+			t.Fatal(err)
+		}
+		root := tree(t, mustContextBytes(t, d)).(map[string]any)
+		subjectOf(root)["version"] = "1.4.1"
+		subjectOf(root)["licenses"] = []any{map[string]any{"license": map[string]any{"id": "MIT"}}}
+		src, _ := json.Marshal(root)
+		_, err := load(t, src).ApplyContext(trResolved("", trTarball))
+		if err == nil || !strings.HasSuffix(err.Error(), "distributions cannot be replaced: "+trTarball.Name) {
+			t.Fatalf("want refusal naming %s: %v", trTarball.Name, err)
+		}
+		want := `the component rio added for it earlier (bom-ref rio:distribution:` + trTarball.Name + `): its version ("1.4.0"; the subject's is "1.4.1") and licenses no longer match the subject's, which it copies`
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("want the drifted fields named:\n%v", err)
+		}
+	})
 	t.Run("prior record, changed property", func(t *testing.T) {
 		d := load(t, []byte(trSubjectDoc))
 		if _, err := d.ApplyContext(trResolved("", trTarball)); err != nil {
@@ -292,6 +310,18 @@ func TestApplyContextFileComponentChanged(t *testing.T) {
 		}
 		if !bytes.Equal(before, mustContextBytes(t, d)) {
 			t.Fatal("refusal mutated document")
+		}
+	})
+	t.Run("a component rio did not add gets the short form", func(t *testing.T) {
+		root := tree(t, []byte(trSubjectDoc)).(map[string]any)
+		existing := jsonTree(t, tarballComponent).(map[string]any)
+		existing["version"] = "1.3.9"
+		subjectOf(root)["components"] = []any{existing}
+		src, _ := json.Marshal(root)
+		d := load(t, src)
+		_, err := d.ApplyContext(trResolved("", trTarball))
+		if err == nil || !strings.Contains(err.Error(), "conflicts with an existing component with bom-ref") {
+			t.Fatalf("want the short refusal for a component rio does not own: %v", err)
 		}
 	})
 	t.Run("existing nested component with the bom-ref", func(t *testing.T) {

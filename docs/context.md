@@ -273,11 +273,15 @@ replaced: <name>`.
 The trap: the file components copy the subject's `version`, `manufacturer` and `licenses` at the
 time the context is applied. If you change the subject's version, manufacturer or licences later
 and normalize rio's own output again with the same `distributions`, the freshly built components
-no longer match the ones already in the SBOM and the run is refused:
+no longer match the ones already in the SBOM and the run is refused. For a component rio added, the
+error names the copied fields that differ:
 
 ```text
-rio: rio.yaml: artifact "cart-api": context /artifacts/0: context distribution "cart-api-1.4.0-linux-amd64.tar.gz" conflicts with an existing component with bom-ref rio:distribution:cart-api-1.4.0-linux-amd64.tar.gz; distributions cannot be replaced: cart-api-1.4.0-linux-amd64.tar.gz
+rio: rio.yaml: artifact "cart-api": context /artifacts/0: context distribution "cart-api-1.4.0-linux-amd64.tar.gz" conflicts with the component rio added for it earlier (bom-ref rio:distribution:cart-api-1.4.0-linux-amd64.tar.gz): its version ("1.4.0"; the subject's is "1.4.1") no longer matches the subject's, which it copies; distributions cannot be replaced: cart-api-1.4.0-linux-amd64.tar.gz
 ```
+
+Any other difference, or a component rio did not add, gives the shorter `conflicts with an existing
+component with bom-ref …` form.
 
 Make those changes in the SBOM before the first context run, or build the SBOM again from its
 source rather than editing the normalized output. A subject version bump is a new release with

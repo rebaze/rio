@@ -25,6 +25,11 @@ func TestSPDXExpression(t *testing.T) {
 		"GPL-2.0-only WITH Classpath-exception-2.0 OR MIT",
 		"  MIT  ",
 		"(MIT)AND(Apache-2.0)",
+		// SPDX matches licence and exception ids regardless of case.
+		"apache-2.0",
+		"mit OR APACHE-2.0",
+		"gpl-2.0+",
+		"Apache-2.0 WITH llvm-exception",
 	}
 	rejected := []string{
 		"",
@@ -59,6 +64,9 @@ func TestSPDXExpression(t *testing.T) {
 		"MIT OR LLVM-exception",
 		"LLVM-exception WITH LLVM-exception",
 		"Apache-2.0 WITH LicenseRef-x",
+		"llvm-exception",
+		"MIT WITH apache-2.0",
+		"licenseref-x",
 	}
 	for _, s := range accepted {
 		if !validSPDXExpression(s) {

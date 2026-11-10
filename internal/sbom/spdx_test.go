@@ -66,6 +66,11 @@ func TestSPDXLicencesAndExceptions(t *testing.T) {
 		{"NotALicence-1.0", false, false},
 		{"mit", false, false},
 	}
+	for id, want := range map[string]string{"mit": "MIT", "APACHE-2.0": "Apache-2.0", "llvm-EXCEPTION": "LLVM-exception", "MIT": "MIT", "NotALicence-1.0": ""} {
+		if got := sbom.SPDXSpelling(id); got != want {
+			t.Errorf("SPDXSpelling(%q) = %q, want %q", id, got, want)
+		}
+	}
 	for _, tc := range cases {
 		if got := sbom.KnownSPDXLicence(tc.id); got != tc.licence {
 			t.Errorf("KnownSPDXLicence(%q) = %v, want %v", tc.id, got, tc.licence)

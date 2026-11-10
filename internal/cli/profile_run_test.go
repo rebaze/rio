@@ -46,7 +46,7 @@ func TestGateExplainProfile(t *testing.T) {
 			{SBOM: true, Missing: []string{"creator"}},
 			{Subject: true, Missing: []string{"creator"}},
 			{Component: "a@1", Missing: []string{"deployableHash", "distributionLicences"}},
-			{Component: "b@1", Missing: []string{"deployableHash"}},
+			{Component: "b@1", Missing: []string{"deployableHash", "executable"}},
 			{Subject: true, Missing: []string{"filename", "deployableHash"}},
 		},
 	}
@@ -56,7 +56,8 @@ func TestGateExplainProfile(t *testing.T) {
 		"subject.filename (BSI TR-03183-2 2.1.0 §5.2.2): the SBOM subject has no filename (bsi:component:filename). Have the SBOM generator emit it, or, if the subject is a product rather than one shipped file, declare it logical with level in the build context file or rio:tr-03183-2:level from the generator.",
 		"subject.deployableHash (BSI TR-03183-2 2.1.0 §5.2.2): the SBOM subject has no SHA-512 hash on a distribution reference. Have the SBOM generator emit it, or, if the subject is a product rather than one shipped file, declare it logical with level in the build context file or rio:tr-03183-2:level from the generator; list the shipped files with sha512 under distributions in the build context file. Rio does not hash files.",
 		`components.distributionLicences (BSI TR-03183-2 2.1.0 §5.2.2, §6.1): 1 component has no concluded licence in SPDX form, for example "a@1". Have the SBOM generator emit it.`,
-		`components.deployableHash (BSI TR-03183-2 2.1.0 §5.2.2): 2 components have no SHA-512 hash on a distribution reference, for example "a@1". Have the SBOM generator emit it, or mark components that do not exist as a file of their own (for example statically linked libraries) as assembled with rio:tr-03183-2:level. Rio does not hash files.`,
+		`components.deployableHash (BSI TR-03183-2 2.1.0 §5.2.2): 2 components have no SHA-512 hash on a distribution reference, for example "a@1". Have the SBOM generator emit it, or mark components that do not exist as a file of their own with rio:tr-03183-2:level: assembled for a part built into another (for example a statically linked library), logical for a product or grouping. Rio does not hash files.`,
+		`components.executable (BSI TR-03183-2 2.1.0 §5.2.2): 1 component has no bsi:component:executable property (executable or non-executable), for example "b@1". Have the SBOM generator emit it, or mark components that do not exist as a file of their own with rio:tr-03183-2:level: assembled for a part built into another (for example a statically linked library), logical for a product or grouping.`,
 	}
 	got := gateExplanations(r)
 	// distributionLicences precedes deployableHash in the failed-ID order.

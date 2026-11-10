@@ -39,7 +39,10 @@ var (
 	spdxOnce       sync.Once
 	spdxLicences   map[string]bool
 	spdxExceptions map[string]bool
-	spdxErr        error
+	// spdxFolded maps each lowercased licence and exception ID to its listed
+	// spelling; an ID whose lowercase form is ambiguous maps to "".
+	spdxFolded map[string]string
+	spdxErr    error
 )
 
 // spdxIdentifiers loads the embedded SPDX enum, which lists licence IDs in
@@ -73,12 +76,17 @@ func spdxIdentifiers() (licences, exceptions map[string]bool, err error) {
 			spdxErr = errors.New("the embedded SPDX list has no exceptions after its licences")
 			return
 		}
-		spdxLicences, spdxExceptions = map[string]bool{}, map[string]bool{}
+		spdxLicences, spdxExceptions, spdxFolded = map[string]bool{}, map[string]bool{}, map[string]string{}
 		for i, v := range schema.Enum {
 			if i < split {
 				spdxLicences[v] = true
 			} else {
 				spdxExceptions[v] = true
+			}
+			if _, seen := spdxFolded[strings.ToLower(v)]; seen {
+				spdxFolded[strings.ToLower(v)] = ""
+			} else {
+				spdxFolded[strings.ToLower(v)] = v
 			}
 		}
 	})
@@ -90,6 +98,28 @@ func spdxIdentifiers() (licences, exceptions map[string]bool, err error) {
 func KnownSPDXLicence(id string) bool {
 	licences, _, err := spdxIdentifiers()
 	return err == nil && licences[id]
+}
+
+// SPDXSpelling returns the embedded list's spelling of id, matched without
+// regard to case as SPDX matches identifiers, or "" when the list has no such
+// ID. It does not say whether the ID is a licence or an exception.
+func SPDXSpelling(id string) string {
+	if _, _, err := spdxIdentifiers(); err != nil {
+		return ""
+	}
+	return spdxFolded[strings.ToLower(id)]
+}
+
+// KnownSPDXLicenceAnyCase reports whether id is a licence ID in the embedded
+// list spelled exactly or, failing that, in another case, as SPDX matches
+// identifiers in licence expressions. An exact spelling always matches.
+func KnownSPDXLicenceAnyCase(id string) bool {
+	return KnownSPDXLicence(id) || KnownSPDXLicence(SPDXSpelling(id))
+}
+
+// KnownSPDXExceptionAnyCase is KnownSPDXLicenceAnyCase for exception IDs.
+func KnownSPDXExceptionAnyCase(id string) bool {
+	return KnownSPDXException(id) || KnownSPDXException(SPDXSpelling(id))
 }
 
 // KnownSPDXException reports whether id is a licence exception ID in the
@@ -220,6 +250,10 @@ func ValidateEnrichmentConfig(cfg *enrichment.Resolved) error {
 			return fmt.Errorf("reading embedded SPDX identifiers: %w", err)
 		}
 		if !licences[id] {
+			// CycloneDX's license.id is an exact enum, so the case must match.
+			if spelled := SPDXSpelling(id); spelled != "" && licences[spelled] {
+				return fmt.Errorf("%s: dataLicense %q must be spelled %q: CycloneDX requires the SPDX list's exact case", f.Source, id, spelled)
+			}
 			return fmt.Errorf("%s: dataLicense %q is not an SPDX licence identifier in Rio's embedded list", f.Source, id)
 		}
 	}

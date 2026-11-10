@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/rebaze/rio/internal/delivery"
+	"github.com/rebaze/rio/internal/gate"
 )
 
 func invalid(field string) error { return fmt.Errorf("invalid run receipt: %s", field) }
@@ -166,8 +167,21 @@ func Validate(d Document) error {
 			if err := validateProfile(c); err != nil {
 				return err
 			}
-			if c.ComponentEvaluation == "evaluated" && ((len(c.ComponentRequirements) == 0 && c.Profile == nil) || c.ComponentsEvaluated == 0) {
-				return invalid("empty checks claimed evaluated")
+			// The index's rule: components count as evaluated exactly when
+			// something was required of them and there were any. Rio writes
+			// not-available only for a pre-existing SBOM whose record carries no
+			// checks, so no component counts and no profile.
+			if c.ComponentEvaluation == "not-available" && (c.ComponentsEvaluated > 0 || c.Profile != nil) {
+				return invalid("component evaluation")
+			}
+			if c.ComponentEvaluation != "not-available" {
+				state := "not-evaluated"
+				if (len(c.ComponentRequirements) > 0 || c.Profile != nil) && c.ComponentsEvaluated > 0 {
+					state = "evaluated"
+				}
+				if c.ComponentEvaluation != state {
+					return invalid("component evaluation")
+				}
 			}
 			if c.Gate == "pass" && c.Findings > 0 {
 				return invalid("passing gate findings")
@@ -365,7 +379,44 @@ func validateFailed(c *Checks) error {
 	if componentFindings < componentMax || componentFindings > componentSum || componentFindings > c.ComponentsEvaluated {
 		return bad()
 	}
+	if c.Profile != nil && !profileFailuresFit(c) {
+		return bad()
+	}
 	return nil
+}
+
+// profileFailuresFit reports whether every failure count is within what the
+// profile run evaluated, for some placement of the subject among
+// profileLevels: a field fails only on components at levels that demand it,
+// and a subject field only when the subject's level demands it. The gate's own
+// ProfileEvaluationCounts says what was evaluated, as the index check does.
+func profileFailuresFit(c *Checks) bool {
+	var reqs gate.Requirements
+	if contains(c.ComponentRequirements, string(gate.RequirePURL)) {
+		reqs.Components = []gate.Requirement{gate.RequirePURL}
+	}
+	for _, r := range []gate.Requirement{gate.RequireSecurityContact, gate.RequireDigest} {
+		if contains(c.SubjectRequirements, string(r)) {
+			reqs.Subject = append(reqs.Subject, r)
+		}
+	}
+	for _, counts := range gate.ProfilePlacements(c.ProfileLevels, c.ComponentsEvaluated, reqs) {
+		evaluated := map[string]int{}
+		for _, e := range counts {
+			evaluated[e.Scope+"."+e.Requirement] = e.Evaluated
+		}
+		fits := true
+		for _, f := range c.Failed {
+			if n, ok := evaluated[f.Requirement]; !ok || f.Count > n {
+				fits = false
+				break
+			}
+		}
+		if fits {
+			return true
+		}
+	}
+	return false
 }
 
 // validateProfile checks the profile evidence: the one known triple, and level
