@@ -100,6 +100,11 @@ jobs:
           MACOS_NOTARY_KEY_ID: ${{ vars.MACOS_NOTARY_KEY_ID }}
           MACOS_NOTARY_ISSUER_ID: ${{ vars.MACOS_NOTARY_ISSUER_ID }}
 
+      - name: Install pinned stable Rio for self-SBOMs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/install-self-sbom-rio.py --output "$RUNNER_TEMP/rio-stable"
+
       - name: Prepare release source SBOM
         id: self-sbom
         shell: bash
@@ -108,16 +113,12 @@ jobs:
         run: |
           set -euo pipefail
           printf 'artifact-name=rio-self-sbom-%s-%s-%s\n' "$TAG" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
-          # Made as CI makes it, named for the tag. rio checks it, run as the
-          # linux/amd64 binary just built.
-          rio=$(find dist -path '*linux_amd64*' -type f -name rio)
-          if [[ -z "$rio" || ! -f "$rio" ]]; then
-            echo "expected exactly one linux/amd64 rio binary in dist" >&2
-            exit 1
-          fi
-          python3 tools/self-sbom.py prepare --rio "$rio" \
+          # The tagged source is the subject; the pinned published Rio release
+          # enriches and checks its inventory independently of the candidate.
+          python3 tools/self-sbom.py prepare --rio "$RUNNER_TEMP/rio-stable/bin/rio" \
             --version "${TAG#v}" --project-version "$TAG" \
             --output "$RUNNER_TEMP/rio-self-sbom" --release
+          cp "$RUNNER_TEMP/rio-stable/installation.json" "$RUNNER_TEMP/rio-self-sbom/rio-tool.json"
           cp "$RUNNER_TEMP/rio-self-sbom/source.cdx.json" "dist/rio-${TAG}-source.cdx.json"
 
       - name: Retain prepared release self-SBOM
@@ -246,14 +247,10 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: .go-version
-          check-latest: true
-      - name: Build tagged Rio for native delivery
+      - name: Install pinned stable Rio for self-SBOMs
         env:
-          CGO_ENABLED: "0"
-        run: go build -trimpath -o "$RUNNER_TEMP/rio-self" ./cmd/rio
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/install-self-sbom-rio.py --output "$RUNNER_TEMP/rio-stable"
       - name: Restore prior delivery state and download published source SBOM
         shell: bash
         env:
@@ -327,7 +324,7 @@ jobs:
             echo "RIO_DTRACK_API_KEY is required for release self-SBOM delivery" >&2
             exit 1
           fi
-          python3 tools/self-sbom.py deliver --rio "$RUNNER_TEMP/rio-self" \
+          python3 tools/self-sbom.py deliver --rio "$RUNNER_TEMP/rio-stable/bin/rio" \
             --prepared "$RUNNER_TEMP/rio-self-sbom" \
             --published-sbom "$RUNNER_TEMP/rio-published-sbom/rio-${TAG}-source.cdx.json"
       - name: Retain release self-SBOM delivery receipts

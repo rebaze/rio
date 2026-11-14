@@ -93,7 +93,10 @@ block merges. A clean source build does not repair binaries already downloaded b
 compiler security fix still needs a new patch release through the normal release process.
 
 Rio also delivers its strictly checked source SBOM to Dependency-Track from trusted CI and after
-a release is public. The release upload must match the attested, published bytes. Projects carry
+a release is public. Preparation, gating and delivery use a previously published stable Rio,
+explicitly pinned by tag, source commit and archive checksums in `tools/self-sbom-rio.json`;
+the candidate being monitored is never the monitoring executable. Pin updates require review.
+The release upload must match the attested, published bytes. Projects carry
 `owner:team-rio` for the configured owner notification rule; inventory read-back confirms that tag.
 Dependency-Track analysis runs asynchronously and complements the daily source and weekly released
 binary `govulncheck` gates. Synthetic Go canaries verified findings on the deployed receiver; actual

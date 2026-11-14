@@ -29,6 +29,11 @@ A path to an installed release binary also works:
 python3 tools/demo-self-sbom/run.py /path/to/rio --output /tmp/rio-monitoring-demo
 ```
 
+CI and release jobs use the [pinned stable Rio actor](../README.md#pinned-stable-rio-actor).
+To exercise that same downloaded executable locally, supply its `bin/rio` path here. The
+candidate source remains the inventory being monitored; the candidate executable is used only
+by product tests.
+
 The output directory must not exist. Without `--output`, the script creates a temporary
 directory and prints its location. No Go toolchain, build from source, external receiver or
 real credential is needed. The script starts a synthetic receiver on loopback, creates a

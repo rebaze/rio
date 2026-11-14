@@ -13,7 +13,7 @@ from http.server import ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / 'tools/self-sbom.py'
-RIO = os.environ.get('RIO_BIN', str(ROOT / 'rio'))
+RIO = os.environ.get('SELF_SBOM_TEST_RIO', os.environ.get('RIO_BIN', str(ROOT / 'rio')))
 receiver_spec = importlib.util.spec_from_file_location('self_sbom_receiver', ROOT / 'tools/demo-use-case/run.py')
 receiver = importlib.util.module_from_spec(receiver_spec)
 receiver_spec.loader.exec_module(receiver)

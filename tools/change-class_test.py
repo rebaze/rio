@@ -43,6 +43,8 @@ class ClassifyTest(unittest.TestCase):
             "tools/release-publish.py": "pipeline_or_rules",
             "tools/security/go.sum": "pipeline_or_rules",
             ".go-version": "pipeline_or_rules",
+            "tools/self-sbom-rio.json": "pipeline_or_rules",
+            "tools/install-self-sbom-rio.py": "pipeline_or_rules",
             "install.sh": "pipeline_or_rules",
             ".github/pull_request_template.md": "pipeline_or_rules",
         }

@@ -169,7 +169,9 @@ class ChangesTest(unittest.TestCase):
     def test_self_sbom_tools_run_binary_and_python_checks(self):
         for path in ("tools/source-sbom.sh", "tools/source-sbom-modules.json",
                      "tools/source-sbom_test.py", "tools/self-sbom.py",
-                     "tools/self-sbom_test.py", "tools/self-sbom-workflows_test.py"):
+                     "tools/self-sbom_test.py", "tools/self-sbom-workflows_test.py",
+                     "tools/install-self-sbom-rio.py", "tools/install-self-sbom-rio_test.py",
+                     "tools/self-sbom-rio.json"):
             with self.subTest(path=path):
                 result = detect(path)
                 self.assertEqual(result["go"], "true")

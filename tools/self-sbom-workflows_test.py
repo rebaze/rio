@@ -68,6 +68,53 @@ def script(source):
 
 
 class SelfSBOMWorkflowTest(unittest.TestCase):
+    def test_self_sbom_consumers_install_and_use_pinned_stable_rio(self):
+        for file, job_name in (("ci", "build"), ("ci", "self-sbom"),
+                               ("release", "build"), ("release", "deliver-sbom")):
+            with self.subTest(workflow=file, job=job_name):
+                source = job(workflow(file), job_name)
+                install = step(source, "Install pinned stable Rio for self-SBOMs")
+                self.assertIn('python3 tools/install-self-sbom-rio.py --output "$RUNNER_TEMP/rio-stable"', install)
+                self.assertIn("GH_TOKEN: ${{ github.token }}", install)
+                self.assertNotIn("latest", install.lower())
+                self.assertNotIn("||", install.split("run:", 1)[1])
+                if file == "ci" and job_name == "build":
+                    self.assertIn("steps.changes.outputs.go == 'true' || steps.changes.outputs.python == 'true'", install)
+                    exercise = step(source, "Exercise source-SBOM generation")
+                    self.assertIn('"$RUNNER_TEMP/rio-stable/bin/rio"', exercise)
+                    self.assertNotIn('"$PWD/rio"', exercise)
+                    tests = step(source, "Test the Python tools")
+                    self.assertIn("RIO_BIN: ${{ github.workspace }}/rio", tests)
+                    self.assertIn("SELF_SBOM_TEST_RIO: ${{ runner.temp }}/rio-stable/bin/rio", tests)
+                    self.assertIn("SOURCE_SBOM_TEST_RIO: ${{ runner.temp }}/rio-stable/bin/rio", tests)
+                elif file == "release" and job_name == "build":
+                    prepare = step(source, "Prepare release source SBOM")
+                    self.assertIn('--rio "$RUNNER_TEMP/rio-stable/bin/rio"', prepare)
+                    self.assertNotIn("find dist", prepare)
+                else:
+                    self.assertNotIn("go build", source)
+                    if job_name == "deliver-sbom":
+                        self.assertNotIn("actions/setup-go@", source)
+                        delivery = step(source, "Deliver the exact published source SBOM")
+                        self.assertIn('--rio "$RUNNER_TEMP/rio-stable/bin/rio"', delivery)
+                    else:
+                        demo = step(source, "Exercise installed-binary self-SBOM demonstration offline")
+                        self.assertIn('"$RUNNER_TEMP/rio-stable/bin/rio"', demo)
+                consumers = [part for part in re.split(r"(?m)^      - ", source)
+                             if "tools/self-sbom.py" in part]
+                for consumer in consumers:
+                    self.assertIn('--rio "$RUNNER_TEMP/rio-stable/bin/rio"', consumer)
+                    if "tools/self-sbom.py prepare" in consumer:
+                        self.assertIn('cp "$RUNNER_TEMP/rio-stable/installation.json" "$RUNNER_TEMP/rio-self-sbom/rio-tool.json"', consumer)
+
+    def test_self_sbom_tests_prefer_explicit_stable_rio_over_candidate(self):
+        result = subprocess.run(
+            [sys.executable, "-c", "import runpy; print(runpy.run_path('tools/self-sbom_test.py')['RIO'])"],
+            cwd=ROOT, env=dict(os.environ, SELF_SBOM_TEST_RIO="/stable/bin/rio", RIO_BIN="/candidate/rio"),
+            capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "/stable/bin/rio")
+
     def test_scoped_bundles_keep_interruption_checkpoints(self):
         for file, job_name, step_name in (
             ('ci', 'self-sbom', 'Retain self-SBOM and delivery receipts'),
@@ -117,6 +164,9 @@ class SelfSBOMWorkflowTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             calls = Path(directory) / "calls"
             output = Path(directory) / "output"
+            (Path(directory) / "rio-stable").mkdir()
+            (Path(directory) / "rio-stable/installation.json").write_text('{"tag":"v0.10.2"}')
+            (Path(directory) / "rio-self-sbom").mkdir()
             prefix = 'python3() { printf "%s\\0" "$@" > "$CALLS"; }\n'
             shell_env = dict(os.environ, RUNNER_TEMP=directory,
                              GITHUB_RUN_ID="321", GITHUB_RUN_ATTEMPT="2",
@@ -145,6 +195,7 @@ class SelfSBOMWorkflowTest(unittest.TestCase):
                                               REF_NAME=ref, PR_NUMBER=number)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(args[:2], ["tools/self-sbom.py", "prepare"])
+                self.assertTrue(args[args.index("--rio") + 1].endswith("/rio-stable/bin/rio"))
                 self.assertEqual(args[args.index("--version") + 1], "0.0.0-ci.321.2")
                 self.assertEqual(args[args.index("--project-version") + 1],
                                  expected + "-0123456789ab.321.2")
@@ -187,6 +238,7 @@ class SelfSBOMWorkflowTest(unittest.TestCase):
         result, args = self.run_shell(script(delivery), DTRACK_API_KEY="test-only")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(args[:2], ["tools/self-sbom.py", "deliver"])
+        self.assertTrue(args[args.index("--rio") + 1].endswith("/rio-stable/bin/rio"))
 
     def test_forks_prepare_without_receiving_the_delivery_secret(self):
         source = job(workflow("ci"), "self-sbom")
@@ -238,8 +290,9 @@ class SelfSBOMWorkflowTest(unittest.TestCase):
         prepare = script(step(job(workflow("release"), "build"), "Prepare release source SBOM"))
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "dist/rio_linux_amd64").mkdir(parents=True)
-            (root / "dist/rio_linux_amd64/rio").touch()
+            (root / "dist").mkdir()
+            (root / "rio-stable").mkdir()
+            (root / "rio-stable/installation.json").write_bytes(b'{"tag":"v0.10.2"}\n')
             calls = root / "calls"
             output = root / "output"
             # Source generation itself is covered by the helper's integration
@@ -259,10 +312,13 @@ class SelfSBOMWorkflowTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             args = calls.read_bytes().decode().rstrip("\0").split("\0")
             self.assertEqual(args[args.index("--version") + 1], "1.2.3")
+            self.assertEqual(args[args.index("--rio") + 1], directory + "/rio-stable/bin/rio")
             self.assertEqual(args[args.index("--project-version") + 1], "v1.2.3")
             self.assertIn("--release", args)
             self.assertEqual((root / "dist/rio-v1.2.3-source.cdx.json").read_bytes(),
                              b"prepared source bytes\n")
+            self.assertEqual((root / "rio-self-sbom/rio-tool.json").read_bytes(),
+                             b'{"tag":"v0.10.2"}\n')
             self.assertEqual(output.read_text().strip(),
                              "artifact-name=rio-self-sbom-v1.2.3-321-2")
 
@@ -276,8 +332,7 @@ class SelfSBOMWorkflowTest(unittest.TestCase):
         self.assertIn("github.ref_name, github.run_id, github.run_attempt", upload)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "dist/rio_linux_amd64").mkdir(parents=True)
-            (root / "dist/rio_linux_amd64/rio").touch()
+            (root / "dist").mkdir()
             output = root / "output"
             fake = '''python3() {
               mkdir -p "$RUNNER_TEMP/rio-self-sbom"
@@ -375,7 +430,8 @@ class SelfSBOMWorkflowTest(unittest.TestCase):
 
     def test_ci_runs_the_source_and_workflow_regressions(self):
         source = step(job(workflow("ci"), "build"), "Test the Python tools")
-        for name in ("source-sbom_test.py", "self-sbom_test.py", "self-sbom-workflows_test.py"):
+        for name in ("source-sbom_test.py", "self-sbom_test.py", "self-sbom-workflows_test.py",
+                     "install-self-sbom-rio_test.py"):
             self.assertIn("python3 tools/" + name, source)
 
 
