@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "url": "https://dependencytrack.rebaze.de",
+  "projectName": "rio",
+  "collection": {
+    "name": "Rio product",
+    "uuid": "cbfbb6ad-4424-4580-b9c4-b44ca851dcce"
+  },
+  "main": {
+    "version": "main",
+    "uuid": "47333a30-052b-4d7b-aca5-ce9be07a0f8c"
+  },
+  "organization": {
+    "name": "rebaze",
+    "uuid": "f3550ffe-cb15-4afd-849d-994d50d4c885"
+  }
+}

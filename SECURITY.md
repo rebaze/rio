@@ -92,15 +92,23 @@ alongside `build`, `Analyze Go`, and `classify` on main so failed platform or re
 block merges. A clean source build does not repair binaries already downloaded by users: a
 compiler security fix still needs a new patch release through the normal release process.
 
-Rio also delivers its strictly checked source SBOM to Dependency-Track from trusted CI and after
-a release is public. Preparation, gating and delivery use a previously published stable Rio,
-explicitly pinned by tag, source commit and archive checksums in `tools/self-sbom-rio.json`;
-the candidate being monitored is never the monitoring executable. Pin updates require review.
-The release upload must match the attested, published bytes. Projects carry
-`owner:team-rio` for the configured owner notification rule; inventory read-back confirms that tag.
-Dependency-Track analysis runs asynchronously and complements the daily source and weekly released
-binary `govulncheck` gates. Synthetic Go canaries verified findings on the deployed receiver; actual
-notification delivery has not been independently observed. [Workflow, evidence and demo](tools/README.md#self-sbom-monitoring).
+Rio monitors one fixed active `rio` / `main` project and retained published releases under
+`Rio product`, within `rebaze`. Only canonical main CI publishes development inventory;
+PRs, tags and reusable CI retain artifacts only. Preparation, gating and delivery use the
+previously published Rio v0.10.2, pinned by tag, source commit and archive checksums in
+`tools/self-sbom-rio.json`; the candidate is never the monitoring executable. Main is never
+latest. Release latest promotion requires the exact published SBOM, a native acknowledgment
+whose event token explicitly completed, and verified inventory and parent. Older reruns and
+prereleases cannot roll latest backward.
+
+The protected main publisher has no project-create/delete permission. Its receiver access
+covers the managed Rio subtree through collection inheritance; the workflow confines uploads
+to the fixed main UUID. The separate release lifecycle key can only view and update portfolio
+metadata. Persistent receiver coordination
+quarantines ambiguous main uploads until explicit reconciliation. These controls complement
+the daily source and weekly released-binary `govulncheck` gates. The configured owner rule
+and observed `owner:team-rio` tag support routing; actual notification delivery has not been
+independently observed. [Workflow, permissions, evidence and recovery](tools/README.md#self-sbom-monitoring).
 
 Published binaries are scanned separately. Every Monday the `Scan published release` workflow
 downloads the latest release, verifies its archive checksums and build provenance, and runs the

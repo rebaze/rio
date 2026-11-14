@@ -15,6 +15,11 @@ version. It verifies delivery and inventory only; it does not simulate vulnerabi
 The [input template](stdlib.cdx.json.in) is directly inspectable and contains no installed
 Go runtime or executable code.
 
+[The deployed bounded-lifecycle verification](bounded-lifecycle-verification.json) separately
+records Rio's real 14-component main and release inventories, release latest promotion, and
+the archival of nine legacy CI snapshots. The synthetic canaries below remain an explicit
+operator demo; normal PR and branch CI creates no Dependency-Track project.
+
 ## Run locally
 
 Install Rio 0.10.x and Python 3.9+. From the repository root:
@@ -29,7 +34,7 @@ A path to an installed release binary also works:
 python3 tools/demo-self-sbom/run.py /path/to/rio --output /tmp/rio-monitoring-demo
 ```
 
-CI and release jobs use the [pinned stable Rio actor](../README.md#pinned-stable-rio-actor).
+CI and release jobs use the [pinned stable Rio v0.10.2 actor](../README.md#pinned-stable-rio-actor).
 To exercise that same downloaded executable locally, supply its `bin/rio` path here. The
 candidate source remains the inventory being monitored; the candidate executable is used only
 by product tests.
@@ -71,3 +76,27 @@ The monitoring configuration applies `owner:team-rio`. A deployed notification r
 configured for that owner tag, and inventory read-back observed the tag. Actual notification
 delivery has not been independently observed. See the [workflow and recovery details](../README.md#self-sbom-monitoring)
 for Rio's own source SBOMs, exact published-byte verification and retained retry evidence.
+
+
+## Relationship to production monitoring
+
+This demo uses synthetic canaries in a separate `rio-sbom-monitoring-canary` project. The
+committed summaries record direct canary delivery, inventory and (for the live run) observed
+findings. They do not demonstrate production main coordination, token-specific import
+completion or release latest promotion. A canary run needs its own suitable credential;
+the restricted production main key cannot create these canary projects.
+
+Production uses one active `rio` / `main` project and retained release versions under the
+`Rio product` collection within `rebaze`. Main is never latest. Only canonical main CI uploads
+development inventory; PR, tag and reusable CI observations remain checked artifacts. Source
+revision and workflow build URL are embedded before native normalization, so the fixed `main`
+project version does not hide which commit was consumed. Published stable releases are
+promoted only after exact-asset, accepted-token completion and inventory verification.
+
+The product collection's own latest flag supports the organization rollup separately from
+the latest `rio` release flag. Persistent `rio-monitoring/main-import` coordination prevents
+an earlier pending or ambiguous upload from being overwritten by another workflow. An
+ambiguous submission needs explicit reconciliation; do not reset its marker blindly. See
+[bounded projects and publication](../README.md#bounded-projects-and-publication) and
+[persistent recovery](../README.md#persistent-import-coordination-and-recovery) for the current
+production policy and the unchanged v0.10.2 bootstrap migration.

@@ -18,10 +18,9 @@ jobs:
     uses: ./.github/workflows/ci.yaml
     with:
       full_validation: true
-    secrets:
-      RIO_DTRACK_API_KEY: ${{ secrets.RIO_DTRACK_API_KEY }}
     permissions:
       contents: read
+      actions: read
 
   analyze:
     uses: ./.github/workflows/codeql.yaml
@@ -110,14 +109,22 @@ jobs:
         shell: bash
         env:
           TAG: ${{ github.ref_name }}
+          SOURCE_SHA: ${{ github.sha }}
+          BUILD_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BUILD_ID: ${{ github.run_id }}.${{ github.run_attempt }}
         run: |
           set -euo pipefail
           printf 'artifact-name=rio-self-sbom-%s-%s-%s\n' "$TAG" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "expected a full Git source revision for release self-SBOM preparation" >&2
+            exit 1
+          fi
           # The tagged source is the subject; the pinned published Rio release
           # enriches and checks its inventory independently of the candidate.
           python3 tools/self-sbom.py prepare --rio "$RUNNER_TEMP/rio-stable/bin/rio" \
             --version "${TAG#v}" --project-version "$TAG" \
-            --output "$RUNNER_TEMP/rio-self-sbom" --release
+            --source-revision "$SOURCE_SHA" --build-url "$BUILD_URL" --build-id "$BUILD_ID" \
+            --output "$RUNNER_TEMP/rio-self-sbom" --release --target-config tools/self-sbom-targets.json
           cp "$RUNNER_TEMP/rio-stable/installation.json" "$RUNNER_TEMP/rio-self-sbom/rio-tool.json"
           cp "$RUNNER_TEMP/rio-self-sbom/source.cdx.json" "dist/rio-${TAG}-source.cdx.json"
 
@@ -239,10 +246,19 @@ jobs:
     needs: [build, publish]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    outputs:
+      artifact-name: ${{ steps.delivery-artifact.outputs.artifact-name }}
     permissions:
       contents: read
       actions: read
     steps:
+      - name: Record delivery artifact identity
+        id: delivery-artifact
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          printf 'artifact-name=release-self-sbom-delivery-%s-%s-%s\n' "$TAG" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
@@ -325,13 +341,70 @@ jobs:
             exit 1
           fi
           python3 tools/self-sbom.py deliver --rio "$RUNNER_TEMP/rio-stable/bin/rio" \
-            --prepared "$RUNNER_TEMP/rio-self-sbom" \
+            --prepared "$RUNNER_TEMP/rio-self-sbom" --target-config tools/self-sbom-targets.json \
             --published-sbom "$RUNNER_TEMP/rio-published-sbom/rio-${TAG}-source.cdx.json"
       - name: Retain release self-SBOM delivery receipts
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-self-sbom-delivery-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ steps.delivery-artifact.outputs.artifact-name }}
+          path: ${{ runner.temp }}/rio-self-sbom/
+          include-hidden-files: true
+          if-no-files-found: warn
+
+  # Only published releases can reach lifecycle management. The release
+  # environment holds this key; CI and native upload use their narrower key.
+  promote-sbom:
+    needs: [publish, deliver-sbom]
+    if: github.event_name == 'push' && github.repository == 'rebaze/rio' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      contents: read
+      actions: read
+    concurrency:
+      group: rio-release-sbom-promotion
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install pinned stable Rio for self-SBOMs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/install-self-sbom-rio.py --output "$RUNNER_TEMP/rio-stable"
+      - name: Restore accepted delivery evidence and published source SBOM
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          DELIVERY_ARTIFACT: ${{ needs.deliver-sbom.outputs.artifact-name }}
+        run: |
+          set -euo pipefail
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$DELIVERY_ARTIFACT" --dir "$RUNNER_TEMP/rio-self-sbom"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "rio-${TAG}-source.cdx.json" --dir "$RUNNER_TEMP/rio-published-sbom"
+      - name: Promote the verified latest stable release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DTRACK_LIFECYCLE_KEY: ${{ secrets.RIO_DTRACK_LIFECYCLE_KEY }}
+          TAG: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 tools/self-sbom-lifecycle.py promote --rio "$RUNNER_TEMP/rio-stable/bin/rio" \
+            --prepared "$RUNNER_TEMP/rio-self-sbom" \
+            --published-sbom "$RUNNER_TEMP/rio-published-sbom/rio-${TAG}-source.cdx.json" \
+            --tag "$TAG" --commit "$COMMIT" --target-config tools/self-sbom-targets.json --repo rebaze/rio
+      - name: Retain release lifecycle evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-self-sbom-lifecycle-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/rio-self-sbom/
           include-hidden-files: true
           if-no-files-found: warn

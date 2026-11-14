@@ -13,16 +13,14 @@ on:
       full_validation:
         type: boolean
         default: true
-    secrets:
-      RIO_DTRACK_API_KEY:
-        required: false
 
 permissions:
   contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
-  cancel-in-progress: true
+  # Eligible main uploads must finish even when a newer source revision arrives.
+  cancel-in-progress: ${{ !(github.workflow == 'CI' && github.repository == 'rebaze/rio' && github.ref == 'refs/heads/main' && contains(fromJSON('["push","schedule","workflow_dispatch"]'), github.event_name)) }}
 
 jobs:
   build:
@@ -261,6 +259,7 @@ jobs:
           python3 tools/source-sbom_test.py
           python3 tools/self-sbom_test.py
           python3 tools/self-sbom-workflows_test.py
+          python3 tools/self-sbom-lifecycle_test.py
           python3 tools/install-self-sbom-rio_test.py
           python3 tools/rio-context_test.py
           python3 tools/release-publish_test.py
@@ -276,10 +275,15 @@ jobs:
         run: goreleaser check --config .goreleaser.yaml
 
   # Independent of path filtering: every revision has an inventory, including
-  # documentation-only changes. Forks retain the bundle without delivery access.
+  # documentation-only changes. Canonical main may publish it in a separate job;
+  # PRs, branches and reusable callers retain artifact-only observations.
   self-sbom:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    outputs:
+      publish-main: ${{ steps.prepare.outputs.publish-main }}
+      artifact-name: ${{ steps.prepare.outputs.artifact-name }}
+      source-sha: ${{ steps.prepare.outputs.source-sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -298,6 +302,7 @@ jobs:
       - name: Exercise installed-binary self-SBOM demonstration offline
         run: python3 tools/demo-self-sbom/run.py "$RUNNER_TEMP/rio-stable/bin/rio" --run-id ci-demo
       - name: Prepare source SBOM
+        id: prepare
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -305,6 +310,11 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           SOURCE_SHA: ${{ github.sha }}
+          BUILD_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BUILD_ID: ${{ github.run_id }}.${{ github.run_attempt }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          REPOSITORY: ${{ github.repository }}
+          REF: ${{ github.ref }}
         run: |
           set -euo pipefail
           if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
@@ -320,33 +330,154 @@ jobs:
             project_version="dev-$REF_NAME"
           fi
           project_version="${project_version}-${SOURCE_SHA:0:12}.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
+          publish_main=false
+          mode=(--artifact-only)
+          if [[ "$WORKFLOW_NAME" == "CI" && "$REPOSITORY" == "rebaze/rio" && "$REF" == "refs/heads/main" &&
+                ( "$EVENT_NAME" == "push" || "$EVENT_NAME" == "schedule" || "$EVENT_NAME" == "workflow_dispatch" ) ]]; then
+            publish_main=true
+            project_version=main
+            mode=(--target-config tools/self-sbom-targets.json)
+          fi
+          printf 'publish-main=%s\nartifact-name=self-sbom-ci-%s-%s\nsource-sha=%s\n' \
+            "$publish_main" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$SOURCE_SHA" >> "$GITHUB_OUTPUT"
           python3 tools/self-sbom.py prepare --rio "$RUNNER_TEMP/rio-stable/bin/rio" \
             --version "0.0.0-ci.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}" \
-            --project-version "$project_version" --output "$RUNNER_TEMP/rio-self-sbom"
+            --source-revision "$SOURCE_SHA" --build-url "$BUILD_URL" --build-id "$BUILD_ID" \
+            --project-version "$project_version" --output "$RUNNER_TEMP/rio-self-sbom" "${mode[@]}"
           cp "$RUNNER_TEMP/rio-stable/installation.json" "$RUNNER_TEMP/rio-self-sbom/rio-tool.json"
-      - name: Deliver source SBOM
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        shell: bash
-        env:
-          DTRACK_API_KEY: ${{ secrets.RIO_DTRACK_API_KEY }}
-        run: |
-          set -euo pipefail
-          if [[ -z "$DTRACK_API_KEY" ]]; then
-            echo "RIO_DTRACK_API_KEY is required for trusted self-SBOM delivery" >&2
-            exit 1
-          fi
-          python3 tools/self-sbom.py deliver --rio "$RUNNER_TEMP/rio-stable/bin/rio" \
-            --prepared "$RUNNER_TEMP/rio-self-sbom"
-      - name: Explain skipped fork delivery
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
-        shell: bash
-        run: |
-          echo 'Self-SBOM generated and retained. Dependency-Track delivery skipped for this fork PR because delivery credentials are unavailable to forks.' >> "$GITHUB_STEP_SUMMARY"
+          printf '{"source_sha":"%s","run_id":"%s","run_attempt":"%s","publish_main":%s}\n' \
+            "$SOURCE_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$publish_main" > "$RUNNER_TEMP/rio-self-sbom/build-context.json"
+      - name: Explain artifact-only observation
+        if: steps.prepare.outputs.publish-main == 'false'
+        run: echo 'Self-SBOM checked and retained. This artifact-only context does not enter the protected main publication environment.' >> "$GITHUB_STEP_SUMMARY"
       - name: Retain self-SBOM and delivery receipts
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: self-sbom-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ steps.prepare.outputs.artifact-name || format('self-sbom-ci-{0}-{1}', github.run_id, github.run_attempt) }}
+          path: ${{ runner.temp }}/rio-self-sbom/
+          include-hidden-files: true
+          if-no-files-found: warn
+
+  # Only the actual canonical main writer enters this protected environment
+  # and shared queue. Artifact-only CI contexts skip this job entirely.
+  publish-main-sbom:
+    name: publish-main-sbom
+    if: needs.self-sbom.result == 'success' && needs.self-sbom.outputs.publish-main == 'true'
+    needs: self-sbom
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: rio-main
+    permissions:
+      contents: read
+      actions: read
+    concurrency:
+      group: rio-main-sbom
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.self-sbom.result == 'success' && needs.self-sbom.outputs.publish-main == 'true'
+        with:
+          ref: ${{ needs.self-sbom.outputs.source-sha }}
+          persist-credentials: false
+      - name: Install pinned stable Rio for self-SBOMs
+        if: needs.self-sbom.result == 'success' && needs.self-sbom.outputs.publish-main == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/install-self-sbom-rio.py --output "$RUNNER_TEMP/rio-stable"
+      - name: Restore prior main delivery state
+        if: needs.self-sbom.result == 'success' && needs.self-sbom.outputs.publish-main == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREPARED_ARTIFACT: ${{ needs.self-sbom.outputs.artifact-name }}
+        run: |
+          set -euo pipefail
+          PREPARED_ARTIFACT=$(python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          run_id = os.environ["GITHUB_RUN_ID"]
+          attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
+          endpoint = f"repos/{repo}/actions/runs/{run_id}"
+
+          def items(path, key):
+              page = 1
+              while True:
+                  response = subprocess.run(
+                      ["gh", "api", f"{path}?per_page=100&page={page}"],
+                      check=True, capture_output=True, text=True)
+                  entries = json.loads(response.stdout)[key]
+                  if not isinstance(entries, list):
+                      raise SystemExit("invalid delivery evidence metadata")
+                  yield from entries
+                  if len(entries) < 100:
+                      return
+                  page += 1
+
+          previous = None
+          for prior in range(attempt - 1, 0, -1):
+              jobs = items(f"{endpoint}/attempts/{prior}/jobs", "jobs")
+              if any(job["name"] == "publish-main-sbom" and any(
+                         step["name"] == "Deliver main source SBOM" and step.get("conclusion") != "skipped"
+                         for step in job.get("steps", [])) for job in jobs):
+                  previous = prior
+                  break
+          selected = os.environ["PREPARED_ARTIFACT"]
+          if previous is not None:
+              selected = f"main-self-sbom-delivery-{run_id}-{previous}"
+              matches = [artifact for artifact in items(f"{endpoint}/artifacts", "artifacts")
+                         if artifact["name"] == selected
+                         and artifact.get("workflow_run", {}).get("id") == int(run_id)]
+              if len(matches) != 1 or matches[0].get("expired") is not False:
+                  raise SystemExit("prior main delivery evidence is missing or expired; reconcile before retrying")
+          if not selected:
+              raise SystemExit("original prepared self-SBOM artifact identity is missing")
+          print(selected)
+          PY
+          )
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$PREPARED_ARTIFACT" --dir "$RUNNER_TEMP/rio-self-sbom"
+      - name: Skip superseded main source revisions
+        id: current
+        if: needs.self-sbom.result == 'success' && needs.self-sbom.outputs.publish-main == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.self-sbom.outputs.source-sha }}
+        run: |
+          set -euo pipefail
+          head=$(gh api repos/rebaze/rio/git/ref/heads/main --jq '.object.sha')
+          if [[ "$head" == "$SOURCE_SHA" ]]; then
+            echo 'current=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'current=false' >> "$GITHUB_OUTPUT"
+            echo 'Main self-SBOM publication skipped: a newer source revision is current.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Deliver main source SBOM
+        if: steps.current.outputs.current == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DTRACK_MAIN_KEY: ${{ secrets.RIO_DTRACK_MAIN_KEY }}
+          SOURCE_SHA: ${{ needs.self-sbom.outputs.source-sha }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$DTRACK_MAIN_KEY" ]]; then
+            echo "RIO_DTRACK_MAIN_KEY is required for canonical main self-SBOM delivery" >&2
+            exit 1
+          fi
+          # The workflow run counter orders snapshots built from the same source.
+          python3 tools/self-sbom-lifecycle.py deliver-main --rio "$RUNNER_TEMP/rio-stable/bin/rio" \
+            --prepared "$RUNNER_TEMP/rio-self-sbom" --target-config tools/self-sbom-targets.json \
+            --source-revision "$SOURCE_SHA" --repo "$GITHUB_REPOSITORY" --run-number "$GITHUB_RUN_NUMBER"
+      - name: Retain main delivery evidence
+        if: always() && needs.self-sbom.result == 'success' && needs.self-sbom.outputs.publish-main == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: main-self-sbom-delivery-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/rio-self-sbom/
           include-hidden-files: true
           if-no-files-found: warn
@@ -518,7 +649,7 @@ jobs:
   complete:
     name: CI complete
     if: always()
-    needs: [build, delivery-platforms, oci-distribution, dependency-track, self-sbom]
+    needs: [build, delivery-platforms, oci-distribution, dependency-track, self-sbom, publish-main-sbom]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
@@ -528,6 +659,10 @@ jobs:
         shell: bash
         run: |
           jq -e '
-            (keys == ["build", "delivery-platforms", "dependency-track", "oci-distribution", "self-sbom"]) and
-            all(.[]; .result == "success")
+            (keys == ["build", "delivery-platforms", "dependency-track", "oci-distribution", "publish-main-sbom", "self-sbom"]) and
+            (."self-sbom".outputs."publish-main" as $publish
+              | ($publish == "true" or $publish == "false")
+              and all(to_entries[] | select(.key != "publish-main-sbom"); .value.result == "success")
+              and (."publish-main-sbom".result == "success"
+                or ($publish == "false" and ."publish-main-sbom".result == "skipped")))
           ' <<<"$NEEDS_JSON"

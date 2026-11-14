@@ -2,7 +2,7 @@
 #
 # source-sbom.sh - the CycloneDX SBOM of rio, as a release ships it.
 #
-#   tools/source-sbom.sh VERSION OUT RIO RECEIPT [NORMALIZATION_OUTPUT_ROOT]
+#   tools/source-sbom.sh VERSION OUT RIO RECEIPT [NORMALIZATION_OUTPUT_ROOT [CLAIMS_JSON]]
 #
 # VERSION is the release without its v (0.9.0). The SBOM lists every Go module
 # linked into any of the six release binaries, the standard library included,
@@ -23,6 +23,8 @@
 # the gate fails; a failing gate fails the script.
 # NORMALIZATION_OUTPUT_ROOT optionally preserves rio's run directory, index
 # and normalized SBOM for verified native delivery after this script exits.
+# CLAIMS_JSON optionally supplies explicit source/build claims, bound to the raw
+# producer SBOM by rio-context.py before the same native normalization pass.
 #
 # CI and the release both make the SBOM here, so the SBOM checked before the
 # tag is made the same way as the one that ships.
@@ -30,11 +32,11 @@
 set -eu
 
 usage() {
-	echo "usage: $0 VERSION OUT RIO RECEIPT [NORMALIZATION_OUTPUT_ROOT]" >&2
+	echo "usage: $0 VERSION OUT RIO RECEIPT [NORMALIZATION_OUTPUT_ROOT [CLAIMS_JSON]]" >&2
 	exit 2
 }
 
-[ $# -eq 4 ] || [ $# -eq 5 ] || usage
+[ $# -eq 4 ] || [ $# -eq 5 ] || [ $# -eq 6 ] || usage
 version=$1
 # grep reads lines, so a version must also be exactly one line.
 if [ "$(printf '%s\n' "$version" | wc -l)" -ne 1 ] ||
@@ -53,6 +55,25 @@ rio=$(absolute "$3")
 receipt=$(absolute "$4")
 
 root=$(cd -- "$(dirname -- "$0")/.." && pwd)
+claims=
+if [ $# -eq 6 ]; then
+	claims=$(absolute "$6")
+	# Share the orchestrator's strict nonsecret-claims validation, before Go or
+	# the cross-platform generator can run. Importing it performs no work.
+	python3 - "$root/tools/self-sbom.py" "$claims" <<'PY'
+import importlib.util
+import json
+from pathlib import Path
+import sys
+spec = importlib.util.spec_from_file_location('self_sbom', sys.argv[1])
+tool = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(tool)
+try:
+    tool.validate_build_claims(json.loads(Path(sys.argv[2]).read_text(encoding='utf-8')))
+except (ValueError, OSError):
+    sys.exit('source-sbom.sh: invalid build claims')
+PY
+fi
 # SOURCE_SBOM_MODULES points at another table; only the script's own checks use it.
 modules=$(absolute "${SOURCE_SBOM_MODULES:-$root/tools/source-sbom-modules.json}")
 work=$(mktemp -d)
@@ -146,6 +167,21 @@ jq --slurpfile table "$modules" '$table[0].modules as $rows
 		.name = "stdlib" | .version |= ltrimstr("go") | .purl = ("pkg:golang/stdlib@" + .version)
 		else . end)' "$work/merged.cdx.json" >"$work/rio-source.cdx.json"
 
+context_yaml=
+if [ -n "$claims" ]; then
+	set -- python3 "$root/tools/rio-context.py" --artifact-id rio-source --sbom "$work/rio-source.cdx.json" \
+		--source-repository https://github.com/rebaze/rio \
+		--source-revision "$(jq -r '.sourceRevision' "$claims")" --build-url "$(jq -r '.buildURL' "$claims")"
+	if jq -e 'has("buildID")' "$claims" >/dev/null; then
+		set -- "$@" --build-id "$(jq -r '.buildID' "$claims")"
+	fi
+	"$@" >"$work/context.json"
+	context_yaml='    context:
+      file: context.json
+      require: [source.repository, source.revision, build.url]
+'
+fi
+
 cat >"$work/rio.yaml" <<EOF
 version: 1
 artifacts:
@@ -154,7 +190,7 @@ artifacts:
     subject:
       name: rio
       version: "$version"
-enrichment:
+${context_yaml}enrichment:
   producer:
     name: rebaze GmbH
     url: [https://rebaze.de]

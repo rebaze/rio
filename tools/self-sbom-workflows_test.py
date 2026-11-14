@@ -29,7 +29,7 @@ elif args[:2] == ["run", "download"]:
     target = Path(args[args.index("--dir") + 1])
     target.mkdir(parents=True)
     (target / "restored-artifact").write_text(name)
-    if name.startswith("release-self-sbom-delivery-"):
+    if name.startswith(("release-self-sbom-delivery-", "main-self-sbom-delivery-")):
         (target / "delivery-state.json").write_text('{{"status":"accepted"}}')
 elif args[:2] == ["release", "download"]:
     target = Path(args[args.index("--dir") + 1])
@@ -69,8 +69,8 @@ def script(source):
 
 class SelfSBOMWorkflowTest(unittest.TestCase):
     def test_self_sbom_consumers_install_and_use_pinned_stable_rio(self):
-        for file, job_name in (("ci", "build"), ("ci", "self-sbom"),
-                               ("release", "build"), ("release", "deliver-sbom")):
+        for file, job_name in (("ci", "build"), ("ci", "self-sbom"), ("ci", "publish-main-sbom"),
+                               ("release", "build"), ("release", "deliver-sbom"), ("release", "promote-sbom")):
             with self.subTest(workflow=file, job=job_name):
                 source = job(workflow(file), job_name)
                 install = step(source, "Install pinned stable Rio for self-SBOMs")
@@ -93,9 +93,11 @@ class SelfSBOMWorkflowTest(unittest.TestCase):
                     self.assertNotIn("find dist", prepare)
                 else:
                     self.assertNotIn("go build", source)
-                    if job_name == "deliver-sbom":
+                    if job_name in ("deliver-sbom", "publish-main-sbom", "promote-sbom"):
                         self.assertNotIn("actions/setup-go@", source)
-                        delivery = step(source, "Deliver the exact published source SBOM")
+                        delivery = step(source, {"deliver-sbom": "Deliver the exact published source SBOM",
+                                                 "publish-main-sbom": "Deliver main source SBOM",
+                                                 "promote-sbom": "Promote the verified latest stable release"}[job_name])
                         self.assertIn('--rio "$RUNNER_TEMP/rio-stable/bin/rio"', delivery)
                     else:
                         demo = step(source, "Exercise installed-binary self-SBOM demonstration offline")
@@ -120,14 +122,19 @@ class SelfSBOMWorkflowTest(unittest.TestCase):
             ('ci', 'self-sbom', 'Retain self-SBOM and delivery receipts'),
             ('release', 'build', 'Retain prepared release self-SBOM'),
             ('release', 'deliver-sbom', 'Retain release self-SBOM delivery receipts'),
+            ('ci', 'publish-main-sbom', 'Retain main delivery evidence'),
+            ('release', 'promote-sbom', 'Retain release lifecycle evidence'),
         ):
             with self.subTest(workflow=file, step=step_name):
                 retention = step(job(workflow(file), job_name), step_name)
                 self.assertIn('include-hidden-files: true', retention)
                 self.assertIn('path: ${{ runner.temp }}/rio-self-sbom/', retention)
 
-    def restore(self, attempt, jobs, artifacts=None, extra_pages=None):
-        source = script(step(job(workflow("release"), "deliver-sbom"),
+    def restore(self, attempt, jobs, artifacts=None, extra_pages=None, main=False, promotion=False):
+        source = script(step(job(workflow("ci" if main else "release"),
+                                 "publish-main-sbom" if main else "promote-sbom" if promotion else "deliver-sbom"),
+                             "Restore accepted delivery evidence and published source SBOM" if promotion else
+                             "Restore prior main delivery state" if main else
                              "Restore prior delivery state and download published source SBOM"))
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -150,6 +157,9 @@ class SelfSBOMWorkflowTest(unittest.TestCase):
                                              GH_FIXTURES=directory, GITHUB_RUN_ID="321",
                                              GITHUB_RUN_ATTEMPT=str(attempt), TAG="v1.2.3",
                                              GITHUB_REPOSITORY="rebaze/rio",
+                                             DELIVERY_JOB="publish-main-sbom" if main else "deliver-sbom",
+                                             DELIVERY_ARTIFACT_PREFIX="main-self-sbom-delivery" if main else "release-self-sbom-delivery-v1.2.3",
+                                             DELIVERY_ARTIFACT="release-self-sbom-delivery-v1.2.3-321-1",
                                              PREPARED_ARTIFACT="rio-self-sbom-v1.2.3-321-1"))
             calls = [json.loads(line) for line in (root / "calls").read_text().splitlines()] if (root / "calls").exists() else []
             restored = root / "rio-self-sbom/restored-artifact"
@@ -158,7 +168,7 @@ class SelfSBOMWorkflowTest(unittest.TestCase):
             return result, calls, restored.read_text() if restored.exists() else None, \
                 published.read_bytes() if published.exists() else None, state.exists()
 
-    def run_shell(self, source, **env):
+    def run_shell(self, source, extra_prefix="", **env):
         # Only the external self-SBOM tool is replaced: the workflow's version
         # selection, quoting, key guard and exit behavior run as written.
         with tempfile.TemporaryDirectory() as directory:
@@ -170,13 +180,20 @@ class SelfSBOMWorkflowTest(unittest.TestCase):
             prefix = 'python3() { printf "%s\\0" "$@" > "$CALLS"; }\n'
             shell_env = dict(os.environ, RUNNER_TEMP=directory,
                              GITHUB_RUN_ID="321", GITHUB_RUN_ATTEMPT="2",
+                             GITHUB_RUN_NUMBER="83",
+                             GITHUB_SHA="0123456789abcdef0123456789abcdef01234567",
+                             GITHUB_REPOSITORY="rebaze/rio",
+                             WORKFLOW_NAME="Release preflight", REPOSITORY="rebaze/rio",
+                             REF="refs/heads/main",
                              SOURCE_SHA="0123456789abcdef0123456789abcdef01234567",
-                             GITHUB_OUTPUT=str(output), CALLS=str(calls))
+                             BUILD_URL="https://github.com/rebaze/rio/actions/runs/321", BUILD_ID="321.2",
+                             GITHUB_OUTPUT=str(output), GITHUB_STEP_SUMMARY=str(Path(directory) / "summary"), CALLS=str(calls))
             shell_env.update(env)
-            result = subprocess.run(["bash", "-euo", "pipefail", "-c", prefix + source],
+            result = subprocess.run(["bash", "-euo", "pipefail", "-c", prefix + extra_prefix + source],
                                     env=shell_env,
                                     capture_output=True, text=True)
             args = calls.read_bytes().decode().rstrip("\0").split("\0") if calls.exists() else []
+            self.last_outputs = dict(line.split("=", 1) for line in output.read_text().splitlines()) if output.exists() else {}
             return result, args
 
     def test_ci_streams_and_subject_versions(self):
@@ -197,9 +214,37 @@ class SelfSBOMWorkflowTest(unittest.TestCase):
                 self.assertEqual(args[:2], ["tools/self-sbom.py", "prepare"])
                 self.assertTrue(args[args.index("--rio") + 1].endswith("/rio-stable/bin/rio"))
                 self.assertEqual(args[args.index("--version") + 1], "0.0.0-ci.321.2")
+                self.assertIn("--source-revision", args)
+                self.assertEqual(args[args.index("--source-revision") + 1], "0123456789abcdef0123456789abcdef01234567")
+                self.assertEqual(args[args.index("--build-url") + 1], "https://github.com/rebaze/rio/actions/runs/321")
+                self.assertEqual(args[args.index("--build-id") + 1], "321.2")
                 self.assertEqual(args[args.index("--project-version") + 1],
                                  expected + "-0123456789ab.321.2")
                 self.assertNotIn("--release", args)
+                self.assertIn("--artifact-only", args)
+                self.assertEqual(self.last_outputs.get("publish-main"), "false")
+
+    def test_only_canonical_main_ci_manages_the_rolling_project(self):
+        prepare = script(step(job(workflow("ci"), "self-sbom"), "Prepare source SBOM"))
+        for event, workflow_name, repo, ref, eligible in (
+            ("push", "CI", "rebaze/rio", "refs/heads/main", True),
+            ("schedule", "CI", "rebaze/rio", "refs/heads/main", True),
+            ("workflow_dispatch", "CI", "rebaze/rio", "refs/heads/main", True),
+            ("pull_request", "CI", "rebaze/rio", "refs/heads/main", False),
+            ("push", "Release", "rebaze/rio", "refs/heads/main", False),
+            ("workflow_dispatch", "Release preflight", "rebaze/rio", "refs/heads/main", False),
+            ("push", "CI", "someone/rio", "refs/heads/main", False),
+            ("workflow_dispatch", "CI", "rebaze/rio", "refs/heads/feature", False),
+        ):
+            with self.subTest(event=event, workflow=workflow_name, repo=repo, ref=ref):
+                result, args = self.run_shell(prepare, EVENT_NAME=event, REF_TYPE="branch", REF_NAME="main",
+                                              PR_NUMBER="230", WORKFLOW_NAME=workflow_name, REPOSITORY=repo, REF=ref)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.last_outputs.get("publish-main"), str(eligible).lower())
+                self.assertEqual("--artifact-only" in args, not eligible)
+                if eligible:
+                    self.assertEqual(args[args.index("--project-version") + 1], "main")
+                    self.assertEqual(args[args.index("--target-config") + 1], "tools/self-sbom-targets.json")
 
     def test_ci_same_stream_separates_revisions_runs_and_attempts(self):
         prepare = script(step(job(workflow("ci"), "self-sbom"), "Prepare source SBOM"))
@@ -228,36 +273,41 @@ class SelfSBOMWorkflowTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(args, [])
 
-    def test_trusted_ci_requires_key_before_delivery(self):
-        delivery = step(job(workflow("ci"), "self-sbom"), "Deliver source SBOM")
-        self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", delivery)
-        self.assertIn("github.event_name != 'pull_request'", delivery)
-        result, args = self.run_shell(script(delivery), DTRACK_API_KEY="")
+    def test_current_main_requires_key_before_delivery(self):
+        delivery = step(job(workflow("ci"), "publish-main-sbom"), "Deliver main source SBOM")
+        self.assertIn("steps.current.outputs.current == 'true'", delivery)
+        self.assertIn("DTRACK_MAIN_KEY: ${{ secrets.RIO_DTRACK_MAIN_KEY }}", delivery)
+        self.assertIn("GH_TOKEN: ${{ github.token }}", delivery)
+        self.assertNotIn("RIO_DTRACK_API_KEY", delivery)
+        result, args = self.run_shell(script(delivery), DTRACK_MAIN_KEY="")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(args, [])
-        result, args = self.run_shell(script(delivery), DTRACK_API_KEY="test-only")
+        result, args = self.run_shell(script(delivery), DTRACK_MAIN_KEY="test-only")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(args[:2], ["tools/self-sbom.py", "deliver"])
+        self.assertEqual(args[:2], ["tools/self-sbom-lifecycle.py", "deliver-main"])
         self.assertTrue(args[args.index("--rio") + 1].endswith("/rio-stable/bin/rio"))
+        self.assertEqual(args[args.index("--target-config") + 1], "tools/self-sbom-targets.json")
+        self.assertEqual(args[args.index("--source-revision") + 1], "0123456789abcdef0123456789abcdef01234567")
+        self.assertEqual(args[args.index("--repo") + 1], "rebaze/rio")
+        self.assertIn("--run-number", args)
+        self.assertEqual(args[args.index("--run-number") + 1], "83")
 
     def test_forks_prepare_without_receiving_the_delivery_secret(self):
         source = job(workflow("ci"), "self-sbom")
         self.assertNotRegex(source.split("steps:", 1)[0], r"(?i)if:|DTRACK_API_KEY")
         self.assertNotIn("DTRACK_API_KEY", step(source, "Prepare source SBOM"))
-        skipped = step(source, "Explain skipped fork delivery")
-        self.assertIn("github.event.pull_request.head.repo.full_name != github.repository", skipped)
-        self.assertIn("GITHUB_STEP_SUMMARY", skipped)
         secret_lines = [line.strip() for line in source.splitlines() if "secrets." in line]
-        self.assertEqual(secret_lines, ["DTRACK_API_KEY: ${{ secrets.RIO_DTRACK_API_KEY }}"])
+        self.assertEqual(secret_lines, [])
         self.assertIn("actions/upload-artifact@", source)
 
-    def test_reusable_ci_only_receives_its_declared_delivery_key(self):
+    def test_reusable_ci_callers_forward_no_delivery_keys(self):
         ci = workflow("ci")
         declaration = ci.split("  workflow_call:", 1)[1].split("\npermissions:", 1)[0]
-        self.assertRegex(declaration, r"secrets:\s+RIO_DTRACK_API_KEY:\s+required: false")
+        self.assertNotIn("secrets:", declaration)
         for name in ("release", "release-preflight"):
             validate = job(workflow(name), "validate")
-            self.assertRegex(validate, r"secrets:\s+RIO_DTRACK_API_KEY: \$\{\{ secrets.RIO_DTRACK_API_KEY \}\}")
+            self.assertNotIn("secrets:", validate)
+            self.assertRegex(validate, r"permissions:\s+contents: read\s+actions: read")
             self.assertNotIn("inherit", validate)
             self.assertNotIn("MACOS_", validate)
 
@@ -268,6 +318,7 @@ class SelfSBOMWorkflowTest(unittest.TestCase):
         self.assertIn('--version "${TAG#v}"', prepare)
         self.assertIn('--project-version "$TAG"', prepare)
         self.assertIn("--release", prepare)
+        self.assertIn("--target-config tools/self-sbom-targets.json", prepare)
         self.assertIn("source.cdx.json", prepare)
         self.assertRegex(build, r"self-sbom-artifact: \$\{\{ steps\.[\w-]+\.outputs\.artifact-name \}\}")
         self.assertIn("actions/upload-artifact@", build)
@@ -308,12 +359,18 @@ class SelfSBOMWorkflowTest(unittest.TestCase):
                                     env=dict(os.environ, RUNNER_TEMP=directory,
                                              GITHUB_OUTPUT=str(output), CALLS=str(calls),
                                              TAG="v1.2.3", GITHUB_RUN_ID="321",
+                                             SOURCE_SHA="0123456789abcdef0123456789abcdef01234567",
+                                             BUILD_URL="https://github.com/rebaze/rio/actions/runs/321", BUILD_ID="321.2",
                                              GITHUB_RUN_ATTEMPT="2"))
             self.assertEqual(result.returncode, 0, result.stderr)
             args = calls.read_bytes().decode().rstrip("\0").split("\0")
             self.assertEqual(args[args.index("--version") + 1], "1.2.3")
             self.assertEqual(args[args.index("--rio") + 1], directory + "/rio-stable/bin/rio")
             self.assertEqual(args[args.index("--project-version") + 1], "v1.2.3")
+            self.assertIn("--source-revision", args)
+            self.assertEqual(args[args.index("--source-revision") + 1], "0123456789abcdef0123456789abcdef01234567")
+            self.assertEqual(args[args.index("--build-url") + 1], "https://github.com/rebaze/rio/actions/runs/321")
+            self.assertEqual(args[args.index("--build-id") + 1], "321.2")
             self.assertIn("--release", args)
             self.assertEqual((root / "dist/rio-v1.2.3-source.cdx.json").read_bytes(),
                              b"prepared source bytes\n")
@@ -344,6 +401,8 @@ class SelfSBOMWorkflowTest(unittest.TestCase):
                                     cwd=root, capture_output=True, text=True,
                                     env=dict(os.environ, RUNNER_TEMP=directory,
                                              GITHUB_OUTPUT=str(output), TAG="v1.2.3",
+                                             SOURCE_SHA="0123456789abcdef0123456789abcdef01234567",
+                                             BUILD_URL="https://github.com/rebaze/rio/actions/runs/321", BUILD_ID="321.2",
                                              GITHUB_RUN_ID="321", GITHUB_RUN_ATTEMPT="2"))
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(output.read_text().strip(),
@@ -431,8 +490,90 @@ class SelfSBOMWorkflowTest(unittest.TestCase):
     def test_ci_runs_the_source_and_workflow_regressions(self):
         source = step(job(workflow("ci"), "build"), "Test the Python tools")
         for name in ("source-sbom_test.py", "self-sbom_test.py", "self-sbom-workflows_test.py",
-                     "install-self-sbom-rio_test.py"):
+                     "install-self-sbom-rio_test.py", "self-sbom-lifecycle_test.py"):
             self.assertIn("python3 tools/" + name, source)
+
+    def test_main_publication_serializes_only_eligible_uploads_and_checks_head_without_key(self):
+        source = job(workflow("ci"), "publish-main-sbom")
+        self.assertIn("needs: self-sbom", source)
+        header = source.split("steps:", 1)[0]
+        self.assertIn("if: needs.self-sbom.result == 'success' && needs.self-sbom.outputs.publish-main == 'true'", header)
+        self.assertIn("environment: rio-main", header)
+        self.assertIn("group: rio-main-sbom", header)
+        self.assertNotIn("rio-artifact-only", header)
+        self.assertNotIn("RIO_DTRACK_API_KEY", source)
+        self.assertEqual(workflow("ci").count("RIO_DTRACK_MAIN_KEY }}"), 1)
+        self.assertNotIn("RIO_DTRACK_MAIN_KEY", workflow("release"))
+        self.assertNotIn("RIO_DTRACK_MAIN_KEY", workflow("release-preflight"))
+        self.assertIn("needs.self-sbom.result == 'success'", source)
+        self.assertIn("cancel-in-progress: false", source)
+        self.assertIn("needs.self-sbom.outputs.publish-main == 'true'", source)
+        check = step(source, "Skip superseded main source revisions")
+        self.assertNotIn("secrets.", check)
+        for head, expected in (("0123456789abcdef0123456789abcdef01234567", "true"), ("b" * 40, "false")):
+            boundary = 'gh() { [[ "$1" == api && "$2" == repos/rebaze/rio/git/ref/heads/main ]] || return 1; printf "%s\\n" "$MAIN_HEAD"; }\n'
+            result, args = self.run_shell(script(check), extra_prefix=boundary, MAIN_HEAD=head)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(self.last_outputs["current"], expected)
+            self.assertEqual(args, [])
+
+    def test_main_retry_retains_accepted_upload_state_and_refuses_lost_state(self):
+        history = {2: [{"name": "publish-main-sbom", "conclusion": "failure", "steps": [
+            {"name": "Deliver main source SBOM", "conclusion": "success"}]}]}
+        artifact = {"name": "main-self-sbom-delivery-321-2", "expired": False, "workflow_run": {"id": 321}}
+        result, calls, restored, published, state = self.restore(3, history, [artifact], main=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(restored, "main-self-sbom-delivery-321-2")
+        self.assertTrue(state)
+        result, calls, restored, published, state = self.restore(3, history, [], main=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIsNone(restored)
+
+    def test_main_first_upload_ignores_prior_ineligible_and_stale_job_attempts(self):
+        history = {2: [{"name": "publish-main-sbom", "conclusion": "success", "steps": [
+            {"name": "Deliver main source SBOM", "conclusion": "skipped"}]}],
+                   1: [{"name": "publish-main-sbom", "conclusion": "success", "steps": [
+            {"name": "Explain artifact-only observation", "conclusion": "success"}]}]}
+        result, calls, restored, published, state = self.restore(3, history, main=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(restored, "rio-self-sbom-v1.2.3-321-1")
+        self.assertFalse(state)
+
+    def test_promotion_only_uses_release_environment_management_key_and_exact_delivery_artifact(self):
+        source = workflow("release")
+        promote = job(source, "promote-sbom")
+        self.assertIn("needs: [publish, deliver-sbom]", promote)
+        self.assertIn("environment: release", promote)
+        self.assertIn("if: github.event_name == 'push' && github.repository == 'rebaze/rio' && startsWith(github.ref, 'refs/tags/v')", promote)
+        self.assertRegex(promote, r"permissions:\s+contents: read\s+actions: read")
+        self.assertNotIn("contents: write", promote)
+        self.assertNotIn("id-token:", promote)
+        self.assertIn("cancel-in-progress: false", promote)
+        self.assertIn("needs.deliver-sbom.outputs.artifact-name", promote)
+        self.assertIn('gh run download "$GITHUB_RUN_ID"', promote)
+        command = step(promote, "Promote the verified latest stable release")
+        self.assertIn("GH_TOKEN: ${{ github.token }}", command)
+        result, args = self.run_shell(script(command), TAG="v1.2.3", COMMIT="a" * 40,
+                                      DTRACK_LIFECYCLE_KEY="synthetic")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(args[:2], ["tools/self-sbom-lifecycle.py", "promote"])
+        for flag, value in (("--tag", "v1.2.3"), ("--commit", "a" * 40),
+                            ("--target-config", "tools/self-sbom-targets.json"), ("--repo", "rebaze/rio")):
+            self.assertEqual(args[args.index(flag) + 1], value)
+        self.assertIn("--published-sbom", args)
+        key_line = "DTRACK_LIFECYCLE_KEY: ${{ secrets.RIO_DTRACK_LIFECYCLE_KEY }}"
+        self.assertEqual(source.count(key_line), 1)
+        self.assertIn(key_line, promote)
+        self.assertNotIn("RIO_DTRACK_LIFECYCLE_KEY", workflow("ci"))
+        self.assertNotIn("RIO_DTRACK_LIFECYCLE_KEY", workflow("release-preflight"))
+
+    def test_promotion_retry_downloads_exact_original_delivery_output(self):
+        result, calls, restored, published, state = self.restore(5, {}, promotion=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(restored, "release-self-sbom-delivery-v1.2.3-321-1")
+        self.assertEqual(published, b"immutable published source\n")
+        self.assertTrue(state)
+        self.assertFalse(any(args[0] == "api" for args in calls))
 
 
 if __name__ == "__main__":
