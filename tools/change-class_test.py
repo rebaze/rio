@@ -42,6 +42,7 @@ class ClassifyTest(unittest.TestCase):
             ".goreleaser.yaml": "pipeline_or_rules",
             "tools/release-publish.py": "pipeline_or_rules",
             "tools/security/go.sum": "pipeline_or_rules",
+            ".go-version": "pipeline_or_rules",
             "install.sh": "pipeline_or_rules",
             ".github/pull_request_template.md": "pipeline_or_rules",
         }

@@ -67,6 +67,10 @@ class ChangesTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(detect(path)["go"], "true")
 
+    def test_compiler_selector_runs_full_validation(self):
+        self.assertEqual(detect('.go-version'),
+                         dict(go='true', goreleaser='true', shell='true', python='true'))
+
     def test_enrichment_demo_changes_run_binary_checks(self):
         for path in (
             "tools/demo-enrichment/rio.yaml",

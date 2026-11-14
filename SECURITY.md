@@ -73,8 +73,24 @@ run `govulncheck` against both rio and the scanner itself, the tests, vet, and a
 pinned in `tools/security/go.mod` and `go.sum`, which Dependabot also maintains. A daily CI run and manual dispatch repeat
 the full validation suite so newly published advisories can be detected without a code change. Scheduled,
 manual, and push runs have separate concurrency groups so they cannot cancel each other. The Go scan
-uses the compiler selected by `go.mod`; it reports reachable vulnerabilities in that build,
+uses the latest patch of the Go minor line selected by `.go-version`; it reports reachable vulnerabilities in that build,
 not a guarantee about every platform or previously released binary.
+
+Both Go modules declare the minimum patched compiler in `go.mod`. Current-tree CI and release
+builds use `.go-version` with `setup-go`'s `check-latest: true`, so a new patch in that minor line is
+picked up without waiting for a module upgrade PR or a runner-image refresh. New minor Go
+versions require an explicit change to the selector and both module minimums. The diagnostic
+`Test binary` workflow retains the compiler selected by the requested source revision's `go.mod`
+so historical refs remain buildable. Dependabot does not maintain this compiler policy.
+
+New advisories can still make an unchanged tree fail; keep that security gate enabled. Enable
+[GitHub Actions failure notifications](https://docs.github.com/en/actions/monitoring-and-troubleshooting-workflows/notifications-for-workflow-runs)
+and ensure a maintainer receives scheduled-run failures (GitHub routes scheduled notifications
+to the workflow creator, the last cron editor, or the person who re-enabled it). Investigate the first failing step promptly;
+rerunning an unchanged compiler against the same advisory will not repair it. Require `CI complete`
+alongside `build`, `Analyze Go`, and `classify` on main so failed platform or receiver checks also
+block merges. A clean source build does not repair binaries already downloaded by users: a
+compiler security fix still needs a new patch release through the normal release process.
 
 Published binaries are scanned separately. Every Monday the `Scan published release` workflow
 downloads the latest release, verifies its archive checksums and build provenance, and runs the
