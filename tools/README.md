@@ -25,6 +25,9 @@ inputs and remain separate from its runtime.
 | [`demo-repair/`](#first-repair-sample) | shows optional p2 repair with an unchanged input and an audit record | when evaluating Eclipse/OSGi coordinate repair |
 | [`demo-agent-integration/`](#agent-integration-examples) | tests project onboarding configurations and a one-command CI receipt step | with Rio 0.7.0+ and Python 3.9+ |
 | [`source-sbom.sh`](#rios-source-sbom-and-candidate-checks) | makes rio's own CycloneDX SBOM, with its dependency graph and a complete inventory, and checks it against BSI TR-03183-2 with rio's strict gate | in CI and the release |
+| [`self-sbom.py`](#self-sbom-monitoring) | prepares Rio's checked source SBOM, delivers the indexed bytes with native Rio and verifies the receiver inventory | in trusted CI and after release publication |
+| [`install-self-sbom-rio.py`](#pinned-stable-rio-actor) | installs the reviewed stable Rio binary used by the SBOM pipeline | in CI and release jobs |
+| [`demo-self-sbom/`](demo-self-sbom/README.md) | demonstrates source-SBOM delivery locally or verifies vulnerable/fixed Go canaries on a real receiver | with installed Rio 0.10.x and Python 3.9+ |
 | [`rio-context.py`](#rio-contextpy) | emits one explicit build-context entry bound to original SBOM bytes | in a producing CI job |
 
 ---
@@ -1035,7 +1038,7 @@ A PR is significant when any of these applies:
 | `critical_function` | `internal/receipt/**`, `internal/gate/**` |
 | `external_interface` | `internal/delivery/**` |
 | `security_component` | `tools/rio-attest-sign.sh`, `tools/rio-attest-verify.sh` |
-| `pipeline_or_rules` | workflows, Dependabot config, PR template, `.goreleaser.yaml`, `.go-version`, release and verification tools, `tools/security/**`, `install.sh`, `SECURITY.md` |
+| `pipeline_or_rules` | workflows, Dependabot config, PR template, `.goreleaser.yaml`, `.go-version`, the stable self-SBOM Rio pin/installer, release and verification tools, `tools/security/**`, `install.sh`, `SECURITY.md` |
 | `new_or_major_dependency` | a module path added in `go.mod` or `tools/security/go.mod`, or a higher major version on the same path (v0 to v1, `+incompatible`); patch and minor bumps stay standard |
 | `cra_substantial_modification_question` | the box in the PR template is ticked |
 | `incomplete_file_list` | the API did not return every changed file or a `go.mod` patch |
@@ -1072,7 +1075,13 @@ synthetic approvals to improve Scorecard.
 
 ## rio's source SBOM and candidate checks
 
-`source-sbom.sh` makes rio's own CycloneDX SBOM. Its subject is `rio` at the given version.
+`source-sbom.sh` makes rio's own CycloneDX SBOM. A generated standard-library entry now reads:
+
+```json
+{"name":"stdlib","version":"1.27.4","purl":"pkg:golang/stdlib@1.27.4"}
+```
+
+Its subject is `rio` at the given version.
 
 - **Components:** every Go module linked into any of the six release binaries, the standard
   library included, each with a package URL and its place in the dependency graph. cyclonedx-gomod,
@@ -1088,6 +1097,13 @@ synthetic approvals to improve Scorecard.
   records it with the reason; for example `go-digest`'s detected `CC-BY-SA-4.0` is the licence of
   its documentation. A module without a row, or a detection the row does not account for, fails
   the script, so a dependency update that adds a module also adds its row.
+- **Go standard library:** the reviewed `std` table row applies before the generator identity
+  `std` / `go1.27.4` / `pkg:golang/std@go1.27.4` becomes
+  `stdlib` / `1.27.4` / `pkg:golang/stdlib@1.27.4`, the identity used by the vulnerability
+  consumer. Stable, beta and release-candidate Go versions are checked; malformed or conflicting
+  identities fail before normalization. Component `bom-ref` values and graph/composition references
+  remain unchanged, even if a reference happens to contain the old package URL. This happens before
+  attestation; previously signed release assets are never rewritten.
 - **Levels:** the subject is a `logical` component and every module an `assembled` one, in BSI
   TR-03183-2's terms ([component levels](../docs/manifest.md#component-levels)).
 
@@ -1097,8 +1113,15 @@ rio's normalized SBOM and its run receipt; a failing gate fails the script, and 
 failure is still written. CI runs it on every Go change.
 
 ```sh
-tools/source-sbom.sh 0.9.0 rio-source.cdx.json ./rio receipt.json
+tools/source-sbom.sh 0.9.0 rio-source.cdx.json /tmp/rio-stable/bin/rio receipt.json
+# Optional fifth argument retains the actual Rio run directory and index:
+tools/source-sbom.sh 0.9.0 rio-source.cdx.json /tmp/rio-stable/bin/rio receipt.json normalized
 ```
+
+Install the [pinned stable actor](#pinned-stable-rio-actor) first. The four-argument interface still
+works. The optional normalization output root keeps
+`runs/<run-id>/index.json` and its normalized member for native delivery; the receipt remains
+at the caller-supplied path.
 
 Releases up to and including v0.9.0-rc1 shipped syft's directory scan instead: the modules
 `go.mod` requires, with no dependency graph and no completeness claim. Their SBOMs are unchanged.
@@ -1116,3 +1139,114 @@ the version and commit it reports, runs the client-record demo, and on Linux and
 installer test. It runs on every push to main, so each candidate on main has a run. Signatures,
 notarization and the Homebrew cask need a published release and stay with
 [published-release verification](#published-release-verification).
+
+## Self-SBOM monitoring
+
+The deployed Dependency-Track 5.2.1 receiver produced these results on 2026-11-14 from two
+**synthetic** one-component SBOMs, normalized and strictly checked by Rio:
+
+| Go standard-library coordinate | Inventory read-back | Findings observed |
+|---|---|---|
+| `pkg:golang/stdlib@1.27.3` | verified | `CVE-2026-97054`, `GO-2026-6859` |
+| `pkg:golang/stdlib@1.27.4` | verified | none at the time of verification |
+
+Inspect the [actual live verification summary](demo-self-sbom/live-verification.json) or the
+[local synthetic receiver summary](demo-self-sbom/example/verification.json). The live result
+exercises a real receiver and its analysis feeds; the SBOMs are canaries, not Rio's dependency
+inventory. The local result proves delivery and inventory read-back only. Both canaries passed
+`bsi-tr-03183-2@2.1.0`. [Run the demo](demo-self-sbom/README.md) with installed Rio 0.10.x and
+Python 3.9+, without a Go toolchain:
+
+```sh
+python3 tools/demo-self-sbom/run.py rio
+```
+
+### What CI and releases send
+
+The code under development is the SBOM's subject. The Rio executable preparing, enriching,
+checking and delivering that SBOM is a **previously published stable release**, selected by the
+[checked-in tool pin](self-sbom-rio.json). Candidate binaries are built and exercised by product
+tests; they are never the self-SBOM pipeline's actor. This also applies to release preparation
+and post-publication delivery.
+
+[`self-sbom.py`](self-sbom.py) wraps the source generator and native Rio commands. Preparation
+uses `source-sbom.sh` and Rio's strict BSI gate, retaining a portable bundle containing
+`source.cdx.json`, `source-receipt.json`, `normalized/runs/<run-id>/index.json`, its normalized
+member, `prepared.json` and `delivery.yaml`. Delivery consumes that index with `rio deliver`;
+it verifies that the copied SBOM and indexed member still have identical bytes and digests.
+Python performs the receiver inventory read-back; native Rio owns normalization and upload.
+The prepared bundle also keeps `rio-tool.json`, the stable installer's tag, source commit and
+verified archive/binary identity, separately from the candidate's inventory.
+
+### Pinned stable Rio actor
+
+[`install-self-sbom-rio.py`](install-self-sbom-rio.py) installs exactly the stable release in
+[`self-sbom-rio.json`](self-sbom-rio.json), initially v0.10.2. The pin records its source commit
+and the checksums of all six native archives. The installer checks the release is public and
+stable, resolves the tag to the pinned commit, and verifies the selected archive's pinned SHA-256
+before extracting or executing it. It then checks the binary's version and full source commit.
+It never resolves `latest`, builds Rio from source, or falls back to a candidate or PATH binary.
+
+The installer needs Python 3.9+, `gh`, and a GitHub token supplied through `GH_TOKEN`. In CI that
+is the job's built-in token; the Dependency-Track key is provided only at delivery. For example:
+
+```sh
+python3 tools/install-self-sbom-rio.py --output /tmp/rio-stable
+/tmp/rio-stable/bin/rio version
+```
+
+The output directory must be new. Its `installation.json` records the verified tool identity.
+The six archive hashes for the initial pin come from the
+[v0.10.2 published-release verification](../docs/release-verification/v0.10.2.md).
+
+To advance the tool, first publish and verify the intended stable release, then update the single
+pin's tag, full commit and all archive checksums from that release's verification evidence.
+Run the installer and self-SBOM tests against that downloaded binary and review the pin change
+through a PR. A candidate release never promotes itself to pipeline tool automatically. The
+current source generator still reads the candidate checkout and uses its selected Go compiler;
+pinning the Rio actor does not change which candidate dependencies the SBOM describes.
+
+CI generates and retains a source SBOM for every run, including fork pull requests. Trusted
+runs upload to `https://dependencytrack.rebaze.de` under project name `rio`. Development
+project versions identify the source revision and workflow attempt, so asynchronous imports
+cannot race over one shared development version:
+
+| Run | Dependency-Track version pattern |
+|---|---|
+| Branch | `dev-main-<sha12>.<run-id>.<attempt>` (branch name replaces `main`) |
+| Pull request | `pr-<number>-<sha12>.<run-id>.<attempt>` |
+| CI validation of a tag | `ci-tag-<tag>-<sha12>.<run-id>.<attempt>` |
+| Published release | exact tag, such as `v0.10.0` |
+
+Release preparation creates the SBOM before attestation. After publication, a separate job
+restores that prepared bundle, downloads the published source SBOM and requires its digest
+to match the indexed bytes before native Rio delivers it. The release project uses the exact
+tag and `isLatest: true`. Tag-validation CI observations remain separate development projects.
+
+All projects carry `owner:team-rio`, `go`, and either `source:ci` or `source:release`. Read-back
+requires the exact component name/version/package-URL inventory, complete pagination and the
+expected tags. Go module package-URL paths are compared using the receiver's lowercase
+representation; the attested SBOM itself stays unchanged. Accepted upload, verified inventory
+and completed vulnerability analysis are distinct results. Inventory verification does not
+wait for findings or replace a vulnerability gate.
+
+### Credentials, alerts and recovery
+
+GitHub Actions and Dependabot secrets both use the name `RIO_DTRACK_API_KEY`. They are
+configured from the permission-limited `KickstartCI` key, exposed to the tool as `DTRACK_API_KEY`;
+CI does not receive an administrator or service-account credential. Fork pull requests skip
+upload and explain that skip while retaining the generated artifact. A trusted run with a
+missing key fails rather than silently skipping monitoring.
+
+The deployed owner notification rule is configured for `owner:team-rio`, and actual project
+read-back confirms that owner tag. Delivery of a notification to its destination has not been
+independently observed. Dependency-Track continues asynchronous monitoring after ingestion;
+the existing daily source `govulncheck` and weekly published-binary scans remain enabled.
+
+The bundle retains `delivery-state.json`, native delivery results, receipts, journals and
+`verification.json`. An accepted prior upload with intact evidence is retried by read-back
+only. Started, failed or ambiguous state requires inspection and explicit native Rio
+reconciliation before a retry; it never triggers a blind upload. Release job reruns restore
+the previous delivery artifact. Missing or expired prior evidence fails the rerun instead
+of falling back to a pristine bundle and resending. Preserve that evidence when recovering
+an interrupted workflow; see [native delivery recovery](../docs/recovery.md).

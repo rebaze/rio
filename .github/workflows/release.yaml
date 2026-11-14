@@ -18,6 +18,8 @@ jobs:
     uses: ./.github/workflows/ci.yaml
     with:
       full_validation: true
+    secrets:
+      RIO_DTRACK_API_KEY: ${{ secrets.RIO_DTRACK_API_KEY }}
     permissions:
       contents: read
 
@@ -44,6 +46,7 @@ jobs:
     outputs:
       inventory: ${{ steps.draft.outputs.inventory }}
       record: ${{ steps.draft.outputs.record }}
+      self-sbom-artifact: ${{ steps.self-sbom.outputs.artifact-name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -97,18 +100,35 @@ jobs:
           MACOS_NOTARY_KEY_ID: ${{ vars.MACOS_NOTARY_KEY_ID }}
           MACOS_NOTARY_ISSUER_ID: ${{ vars.MACOS_NOTARY_ISSUER_ID }}
 
-      - name: Generate source CycloneDX SBOM
+      - name: Install pinned stable Rio for self-SBOMs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/install-self-sbom-rio.py --output "$RUNNER_TEMP/rio-stable"
+
+      - name: Prepare release source SBOM
+        id: self-sbom
         shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # Made as CI makes it, named for the tag. rio checks it, run as the
-          # linux/amd64 binary just built.
-          mapfile -t rio < <(find dist -path '*linux_amd64*' -type f -name rio)
-          if [[ ${#rio[@]} -ne 1 ]]; then
-            echo "expected one linux/amd64 rio binary in dist, found ${#rio[@]}" >&2
-            exit 1
-          fi
-          tools/source-sbom.sh "${GITHUB_REF_NAME#v}" "dist/rio-${GITHUB_REF_NAME}-source.cdx.json" "${rio[0]}" "$RUNNER_TEMP/rio-source-receipt.json"
+          printf 'artifact-name=rio-self-sbom-%s-%s-%s\n' "$TAG" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          # The tagged source is the subject; the pinned published Rio release
+          # enriches and checks its inventory independently of the candidate.
+          python3 tools/self-sbom.py prepare --rio "$RUNNER_TEMP/rio-stable/bin/rio" \
+            --version "${TAG#v}" --project-version "$TAG" \
+            --output "$RUNNER_TEMP/rio-self-sbom" --release
+          cp "$RUNNER_TEMP/rio-stable/installation.json" "$RUNNER_TEMP/rio-self-sbom/rio-tool.json"
+          cp "$RUNNER_TEMP/rio-self-sbom/source.cdx.json" "dist/rio-${TAG}-source.cdx.json"
+
+      - name: Retain prepared release self-SBOM
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.self-sbom.outputs.artifact-name || format('rio-self-sbom-{0}-{1}-{2}', github.ref_name, github.run_id, github.run_attempt) }}
+          path: ${{ runner.temp }}/rio-self-sbom/
+          include-hidden-files: true
+          if-no-files-found: warn
 
       - name: Select authored notes for the exact tag
         env:
@@ -210,6 +230,111 @@ jobs:
           python3 tools/release-publish.py publish \
             --inventory "$RUNNER_TEMP/release-inventory.json" --record "$RUNNER_TEMP/release-draft.json" \
             --tag "$TAG" --repo "$GITHUB_REPOSITORY"
+
+  # Retry this job alone after delivery failures. Restore the newest actual
+  # delivery attempt's evidence so accepted submissions only repeat read-back.
+  # Missing history/evidence requires reconciliation, never a pristine resend.
+  deliver-sbom:
+    name: deliver-sbom
+    needs: [build, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install pinned stable Rio for self-SBOMs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/install-self-sbom-rio.py --output "$RUNNER_TEMP/rio-stable"
+      - name: Restore prior delivery state and download published source SBOM
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          PREPARED_ARTIFACT: ${{ needs.build.outputs.self-sbom-artifact }}
+        run: |
+          set -euo pipefail
+          PREPARED_ARTIFACT=$(python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          run_id = os.environ["GITHUB_RUN_ID"]
+          attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
+          tag = os.environ["TAG"]
+          endpoint = f"repos/{repo}/actions/runs/{run_id}"
+
+          def items(path, key):
+              page = 1
+              while True:
+                  response = subprocess.run(
+                      ["gh", "api", f"{path}?per_page=100&page={page}"],
+                      check=True, capture_output=True, text=True)
+                  entries = json.loads(response.stdout)[key]
+                  if not isinstance(entries, list):
+                      raise SystemExit("invalid delivery evidence metadata")
+                  yield from entries
+                  if len(entries) < 100:
+                      return
+                  page += 1
+
+          previous = None
+          for prior in range(attempt - 1, 0, -1):
+              jobs = items(f"{endpoint}/attempts/{prior}/jobs", "jobs")
+              if any(job["name"] == "deliver-sbom" and job.get("conclusion") != "skipped"
+                     for job in jobs):
+                  previous = prior
+                  break
+
+          if previous is None:
+              # Earlier build/publish retries do not imply delivery has run.
+              selected = os.environ["PREPARED_ARTIFACT"]
+              if not selected:
+                  raise SystemExit("original build self-SBOM artifact identity is missing")
+          else:
+              selected = f"release-self-sbom-delivery-{tag}-{run_id}-{previous}"
+              matches = [artifact for artifact in items(f"{endpoint}/artifacts", "artifacts")
+                         if artifact["name"] == selected
+                         and artifact.get("workflow_run", {}).get("id") == int(run_id)]
+              if len(matches) != 1 or matches[0].get("expired") is not False:
+                  raise SystemExit(
+                      f"delivery evidence from attempt {previous} is missing or expired; "
+                      "restore evidence or reconcile the native delivery before retrying")
+          print(selected)
+          PY
+          )
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$PREPARED_ARTIFACT" --dir "$RUNNER_TEMP/rio-self-sbom"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "rio-${TAG}-source.cdx.json" --dir "$RUNNER_TEMP/rio-published-sbom"
+      - name: Deliver the exact published source SBOM
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+          DTRACK_API_KEY: ${{ secrets.RIO_DTRACK_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$DTRACK_API_KEY" ]]; then
+            echo "RIO_DTRACK_API_KEY is required for release self-SBOM delivery" >&2
+            exit 1
+          fi
+          python3 tools/self-sbom.py deliver --rio "$RUNNER_TEMP/rio-stable/bin/rio" \
+            --prepared "$RUNNER_TEMP/rio-self-sbom" \
+            --published-sbom "$RUNNER_TEMP/rio-published-sbom/rio-${TAG}-source.cdx.json"
+      - name: Retain release self-SBOM delivery receipts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-self-sbom-delivery-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rio-self-sbom/
+          include-hidden-files: true
+          if-no-files-found: warn
 
   publish-tap:
     needs: publish

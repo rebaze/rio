@@ -1,0 +1,27 @@
+{
+  "syntheticSBOMs": true,
+  "syntheticReceiver": true,
+  "analysisChecked": false,
+  "cases": [
+    {
+      "goVersion": "1.27.3",
+      "label": "vulnerable",
+      "inventory": "verified",
+      "components": 1,
+      "project": {
+        "name": "rio-sbom-monitoring-canary",
+        "version": "synthetic-example-vulnerable"
+      }
+    },
+    {
+      "goVersion": "1.27.4",
+      "label": "fixed",
+      "inventory": "verified",
+      "components": 1,
+      "project": {
+        "name": "rio-sbom-monitoring-canary",
+        "version": "synthetic-example-fixed"
+      }
+    }
+  ]
+}

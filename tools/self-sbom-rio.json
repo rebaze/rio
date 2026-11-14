@@ -1,0 +1,30 @@
+{
+  "tag": "v0.10.2",
+  "commit": "35c8da3efe782f4cfebd64aa400e513d03bb6db1",
+  "archives": {
+    "darwin_amd64": {
+      "name": "rio_0.10.2_darwin_amd64.tar.gz",
+      "sha256": "cc9d2a9c6e762c27c70f2a3afbd29a1fc3abeb0007307e49b5923e68fef37190"
+    },
+    "darwin_arm64": {
+      "name": "rio_0.10.2_darwin_arm64.tar.gz",
+      "sha256": "bbaba0d17d55964c8521ca33de56ad942500d867fa80090ceb294fdccc2df5d6"
+    },
+    "linux_amd64": {
+      "name": "rio_0.10.2_linux_amd64.tar.gz",
+      "sha256": "a53e79a0c57f9de9bbe61c223ebaba78b86b6af34eda03421a6c575467770839"
+    },
+    "linux_arm64": {
+      "name": "rio_0.10.2_linux_arm64.tar.gz",
+      "sha256": "d2d1312155d1f2b74361b3d39aef667b3f6c4855ccf42471f771c60142eb5bfd"
+    },
+    "windows_amd64": {
+      "name": "rio_0.10.2_windows_amd64.zip",
+      "sha256": "b1ced1d5cf86c5ea3c7b45e74e4c2e9713f55b265c240b4966637d1935b3053d"
+    },
+    "windows_arm64": {
+      "name": "rio_0.10.2_windows_arm64.zip",
+      "sha256": "815502bfe138f79d9daa56cf215cb108cf13322cc4cc3433797c088d86575f37"
+    }
+  }
+}

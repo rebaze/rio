@@ -19,7 +19,7 @@ class CompleteTest(unittest.TestCase):
 
     def jobs(self):
         return {name: {'result': 'success'} for name in
-                ('build', 'delivery-platforms', 'oci-distribution', 'dependency-track')}
+                ('build', 'delivery-platforms', 'oci-distribution', 'dependency-track', 'self-sbom')}
 
     def test_all_jobs_must_succeed(self):
         self.assertEqual(self.gate(self.jobs()), 0)

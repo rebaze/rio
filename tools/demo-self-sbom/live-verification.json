@@ -1,0 +1,34 @@
+{
+  "syntheticSBOMs": true,
+  "syntheticReceiver": false,
+  "analysisChecked": true,
+  "cases": [
+    {
+      "goVersion": "1.27.3",
+      "label": "vulnerable",
+      "inventory": "verified",
+      "components": 1,
+      "project": {
+        "name": "rio-sbom-monitoring-canary",
+        "version": "check-1794689852-vulnerable"
+      },
+      "vulnerabilities": [
+        "CVE-2026-97054",
+        "GO-2026-6859"
+      ],
+      "expectedAdvisoryFound": true
+    },
+    {
+      "goVersion": "1.27.4",
+      "label": "fixed",
+      "inventory": "verified",
+      "components": 1,
+      "project": {
+        "name": "rio-sbom-monitoring-canary",
+        "version": "check-1794689852-fixed"
+      },
+      "vulnerabilities": [],
+      "expectedAdvisoryFound": false
+    }
+  ]
+}

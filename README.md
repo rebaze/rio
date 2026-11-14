@@ -136,6 +136,7 @@ decisions, then configure and validate Rio. Report anything still needed.
 | Recover from an interrupted run | [Recovery](docs/recovery.md) |
 | Repair Eclipse p2 package URLs | [p2 repair](docs/p2-repair.md) |
 | Run the demos | [Tools and examples](tools/README.md) |
+| See how Rio monitors its own dependencies | [Self-SBOM monitoring](tools/README.md#self-sbom-monitoring) |
 | Integrate with a coding agent | [Agent integration](docs/agent-integration.md) |
 
 <!-- Keep previously linked README fragments useful after the README was shortened. -->

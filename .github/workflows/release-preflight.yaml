@@ -17,6 +17,8 @@ jobs:
     uses: ./.github/workflows/ci.yaml
     with:
       full_validation: true
+    secrets:
+      RIO_DTRACK_API_KEY: ${{ secrets.RIO_DTRACK_API_KEY }}
     permissions:
       contents: read
 
