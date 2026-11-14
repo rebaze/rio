@@ -1,0 +1,39 @@
+{
+  "tag": "v0.10.2",
+  "commit": "35c8da3efe782f4cfebd64aa400e513d03bb6db1",
+  "repo": "rebaze/rio",
+  "releaseURL": "https://github.com/rebaze/rio/releases/tag/v0.10.2",
+  "assetSHA256": {
+    "checksums.txt": "ff14ab4e7a5a7e3f8fbe724c791ac5364cece80c2cb1b528198a01bad7f237ae",
+    "checksums.txt.sigstore.json": "b984e2394e007c20ea1eed17cb97dcf77912480c548a825f1e4f72bf722e238b",
+    "rio-v0.10.2-source.cdx.json": "422ba7b5774c4c70cc536f6293f085364a93bb8cf7b592d8e242586c37850cb8",
+    "rio-v0.10.2.intoto.jsonl": "6f8a38b0c4af43fcccc8ef7f47d4777a4a4d80258c5bcc9c8e95ce45516cbb5e",
+    "rio_0.10.2_darwin_amd64.tar.gz": "cc9d2a9c6e762c27c70f2a3afbd29a1fc3abeb0007307e49b5923e68fef37190",
+    "rio_0.10.2_darwin_arm64.tar.gz": "bbaba0d17d55964c8521ca33de56ad942500d867fa80090ceb294fdccc2df5d6",
+    "rio_0.10.2_linux_amd64.tar.gz": "a53e79a0c57f9de9bbe61c223ebaba78b86b6af34eda03421a6c575467770839",
+    "rio_0.10.2_linux_arm64.tar.gz": "d2d1312155d1f2b74361b3d39aef667b3f6c4855ccf42471f771c60142eb5bfd",
+    "rio_0.10.2_windows_amd64.zip": "b1ced1d5cf86c5ea3c7b45e74e4c2e9713f55b265c240b4966637d1935b3053d",
+    "rio_0.10.2_windows_arm64.zip": "815502bfe138f79d9daa56cf215cb108cf13322cc4cc3433797c088d86575f37"
+  },
+  "notesSHA256": "b5c46c65e654ac27602cf6a06322f5d03a811282d6328177a683805e54972657",
+  "notesSource": "authored",
+  "cosignVerified": true,
+  "attestedSourceCommitVerified": true,
+  "nativeExecution": {
+    "os": "darwin",
+    "arch": "arm64",
+    "binarySHA256": "553bdb9b78d261facf3ee7ae8fd0a2626ec331180a141944b8bacd358d1362f3",
+    "version": "rio 0.10.2 (commit: 35c8da3efe782f4cfebd64aa400e513d03bb6db1, built: 2026-11-14T20:10:55Z)"
+  },
+  "gatekeeper": {
+    "quarantinedExecution": true,
+    "assessment": [
+      "/Users/runner/work/_temp/rio-published/native/rio: accepted",
+      "source=Notarized Developer ID",
+      "origin=Developer ID Application: rebaze GmbH (32Z95ATB2T)"
+    ]
+  },
+  "clientDemoPassed": true,
+  "legacyVersionOnly": false,
+  "otherArchitectures": "verified archives; not executed by this host"
+}

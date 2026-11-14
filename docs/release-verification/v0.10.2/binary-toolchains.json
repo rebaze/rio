@@ -1,0 +1,26 @@
+[
+  {
+    "archive": "rio_0.10.2_darwin_amd64.tar.gz",
+    "goVersion": "go1.27.4"
+  },
+  {
+    "archive": "rio_0.10.2_darwin_arm64.tar.gz",
+    "goVersion": "go1.27.4"
+  },
+  {
+    "archive": "rio_0.10.2_linux_amd64.tar.gz",
+    "goVersion": "go1.27.4"
+  },
+  {
+    "archive": "rio_0.10.2_linux_arm64.tar.gz",
+    "goVersion": "go1.27.4"
+  },
+  {
+    "archive": "rio_0.10.2_windows_amd64.zip",
+    "goVersion": "go1.27.4"
+  },
+  {
+    "archive": "rio_0.10.2_windows_arm64.zip",
+    "goVersion": "go1.27.4"
+  }
+]
