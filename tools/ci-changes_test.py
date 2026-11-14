@@ -53,7 +53,7 @@ class ChangesTest(unittest.TestCase):
                 self.assertEqual(
                     result["python"],
                     str(
-                        path.endswith(("/ci.yaml", "/dependabot-auto-merge.yaml", "/release.yaml"))
+                        path.endswith(("/ci.yaml", "/dependabot-auto-merge.yaml", "/release.yaml", "/release-preflight.yaml"))
                     ).lower(),
                 )
 
@@ -165,6 +165,15 @@ class ChangesTest(unittest.TestCase):
         self.assertEqual(detect("tools/rio-context_test.py")["python"], "true")
         self.assertEqual(detect("tools/rio-context.py")["go"], "true")
         self.assertEqual(detect("tools/rio-context_test.py")["go"], "true")
+
+    def test_self_sbom_tools_run_binary_and_python_checks(self):
+        for path in ("tools/source-sbom.sh", "tools/source-sbom-modules.json",
+                     "tools/source-sbom_test.py", "tools/self-sbom.py",
+                     "tools/self-sbom_test.py", "tools/self-sbom-workflows_test.py"):
+            with self.subTest(path=path):
+                result = detect(path)
+                self.assertEqual(result["go"], "true")
+                self.assertEqual(result["python"], "true")
 
     def test_delivery_fixtures_run_binary_checks(self):
         for path in ("tools/demo-delivery/run.py", "tools/demo-delivery/bom.json", "tools/demo-delivery/rio.yaml", "tools/demo-delivery/README.md"):

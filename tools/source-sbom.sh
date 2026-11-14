@@ -2,7 +2,7 @@
 #
 # source-sbom.sh - the CycloneDX SBOM of rio, as a release ships it.
 #
-#   tools/source-sbom.sh VERSION OUT RIO RECEIPT
+#   tools/source-sbom.sh VERSION OUT RIO RECEIPT [NORMALIZATION_OUTPUT_ROOT]
 #
 # VERSION is the release without its v (0.9.0). The SBOM lists every Go module
 # linked into any of the six release binaries, the standard library included,
@@ -21,6 +21,8 @@
 # checks it against BSI TR-03183-2 with its strict gate. OUT is rio's output,
 # the SBOM a release attests, and RECEIPT rio's run receipt, written even when
 # the gate fails; a failing gate fails the script.
+# NORMALIZATION_OUTPUT_ROOT optionally preserves rio's run directory, index
+# and normalized SBOM for verified native delivery after this script exits.
 #
 # CI and the release both make the SBOM here, so the SBOM checked before the
 # tag is made the same way as the one that ships.
@@ -28,11 +30,11 @@
 set -eu
 
 usage() {
-	echo "usage: $0 VERSION OUT RIO RECEIPT" >&2
+	echo "usage: $0 VERSION OUT RIO RECEIPT [NORMALIZATION_OUTPUT_ROOT]" >&2
 	exit 2
 }
 
-[ $# -eq 4 ] || usage
+[ $# -eq 4 ] || [ $# -eq 5 ] || usage
 version=$1
 # grep reads lines, so a version must also be exactly one line.
 if [ "$(printf '%s\n' "$version" | wc -l)" -ne 1 ] ||
@@ -55,6 +57,7 @@ root=$(cd -- "$(dirname -- "$0")/.." && pwd)
 modules=$(absolute "${SOURCE_SBOM_MODULES:-$root/tools/source-sbom-modules.json}")
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+normalization_out=$(absolute "${5:-$work/out}")
 
 # The generator is built for this machine before any GOOS is set.
 go -C "$root/tools/security" build -o "$work/cyclonedx-gomod" github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod
@@ -78,10 +81,29 @@ set -- "$work"/linux-amd64.cdx.json "$work"/linux-arm64.cdx.json "$work"/darwin-
 # One component per bom-ref, and for each ref the union of what it depends on
 # on any target. cyclonedx-gomod makes the standard library a dependency of
 # rio only, but every linked module imports it, so it becomes one of each.
-jq -n '[inputs] as $docs | $docs[0]
+jq -n '
+	# Validate every target before deduplication can hide a conflicting identity.
+	# -short-purls emits exactly pkg:golang/std@goVERSION. A bom-ref is opaque;
+	# keep it, even when the generator happens to use the old purl as its value.
+	def standard_library:
+		[.components[] | select(.name == "std" or .name == "stdlib"
+			or (.purl // "" | strings | test("^pkg:golang/(std|stdlib)(@|$)")))]
+		| if length != 1 then error("source-sbom.sh: expected exactly one standard library per target")
+		  else .[0] end
+		| if .name != "std" or .type != "library"
+			or (.version | type) != "string" or (."bom-ref" | type) != "string"
+			or ."bom-ref" == "" then error("source-sbom.sh: malformed generator standard library identity")
+		  elif (.version | test("^go1\\.(0|[1-9][0-9]*)(\\.(0|[1-9][0-9]*)|(beta|rc)[1-9][0-9]*)$")) == false
+			then error("source-sbom.sh: unsupported standard library Go version")
+		  elif .purl != ("pkg:golang/std@" + .version)
+			then error("source-sbom.sh: conflicting standard library name, version or purl")
+		  else {name, version, purl, "bom-ref"} end;
+	[inputs] as $docs
+	| ([$docs[] | standard_library] | unique) as $stdlibs
+	| if ($stdlibs | length) != 1 then error("source-sbom.sh: conflicting standard library identities across targets") else . end
+	| $stdlibs[0]."bom-ref" as $std
+	| $docs[0]
 	| .components = ([$docs[].components[]] | group_by(."bom-ref") | map(.[0]))
-	| ([.components[] | select(.name == "std")."bom-ref"][0]
-		// error("source-sbom.sh: cyclonedx-gomod listed no standard library")) as $std
 	| .dependencies = ([$docs[].dependencies[]] | group_by(.ref)
 		| map(.[0].ref as $ref | {ref: $ref, dependsOn: ([.[].dependsOn // [] | .[]]
 			+ (if $ref == $std then [] else [$std] end) | unique)}))' "$@" >"$work/merged.cdx.json"
@@ -117,7 +139,12 @@ jq --slurpfile table "$modules" '$table[0].modules as $rows
 		| .licenses = concluded($row) | .properties = level("logical"))
 	| .metadata.component["bom-ref"] as $root
 	| .compositions = [{aggregate: "complete", assemblies: [$root],
-		dependencies: ([$root] + [.components[]."bom-ref"])}]' "$work/merged.cdx.json" >"$work/rio-source.cdx.json"
+		dependencies: ([$root] + [.components[]."bom-ref"])}]
+	# Apply the reviewed std row first, then use the consumer/OSV identity.
+	# Only identity fields change; graph and composition references stay intact.
+	| .components |= map(if .name == "std" then
+		.name = "stdlib" | .version |= ltrimstr("go") | .purl = ("pkg:golang/stdlib@" + .version)
+		else . end)' "$work/merged.cdx.json" >"$work/rio-source.cdx.json"
 
 cat >"$work/rio.yaml" <<EOF
 version: 1
@@ -141,9 +168,9 @@ gate:
   require: [name, version, purl]
 EOF
 status=0
-"$rio" normalize --manifest "$work/rio.yaml" --out "$work/out" --gate fail --receipt "$receipt" --quiet || status=$?
+"$rio" normalize --manifest "$work/rio.yaml" --out "$normalization_out" --gate fail --receipt "$receipt" --quiet || status=$?
 if [ -f "$receipt" ]; then
-	normalized="$work/out/runs/$(jq -r '.run.id' "$receipt")/$(jq -r '.artifacts[0].output.path // empty' "$receipt")"
+	normalized="$normalization_out/runs/$(jq -r '.run.id' "$receipt")/$(jq -r '.artifacts[0].output.path // empty' "$receipt")"
 	[ ! -f "$normalized" ] || cp "$normalized" "$out"
 fi
 exit "$status"

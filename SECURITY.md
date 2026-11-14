@@ -92,6 +92,13 @@ alongside `build`, `Analyze Go`, and `classify` on main so failed platform or re
 block merges. A clean source build does not repair binaries already downloaded by users: a
 compiler security fix still needs a new patch release through the normal release process.
 
+Rio also delivers its strictly checked source SBOM to Dependency-Track from trusted CI and after
+a release is public. The release upload must match the attested, published bytes. Projects carry
+`owner:team-rio` for the configured owner notification rule; inventory read-back confirms that tag.
+Dependency-Track analysis runs asynchronously and complements the daily source and weekly released
+binary `govulncheck` gates. Synthetic Go canaries verified findings on the deployed receiver; actual
+notification delivery has not been independently observed. [Workflow, evidence and demo](tools/README.md#self-sbom-monitoring).
+
 Published binaries are scanned separately. Every Monday the `Scan published release` workflow
 downloads the latest release, verifies its archive checksums and build provenance, and runs the
 same pinned `govulncheck` in binary mode on all six released binaries. A finding or a scanner error
