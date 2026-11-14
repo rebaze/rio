@@ -68,6 +68,17 @@ def script(source):
 
 
 class SelfSBOMWorkflowTest(unittest.TestCase):
+    def test_scoped_bundles_keep_interruption_checkpoints(self):
+        for file, job_name, step_name in (
+            ('ci', 'self-sbom', 'Retain self-SBOM and delivery receipts'),
+            ('release', 'build', 'Retain prepared release self-SBOM'),
+            ('release', 'deliver-sbom', 'Retain release self-SBOM delivery receipts'),
+        ):
+            with self.subTest(workflow=file, step=step_name):
+                retention = step(job(workflow(file), job_name), step_name)
+                self.assertIn('include-hidden-files: true', retention)
+                self.assertIn('path: ${{ runner.temp }}/rio-self-sbom/', retention)
+
     def restore(self, attempt, jobs, artifacts=None, extra_pages=None):
         source = script(step(job(workflow("release"), "deliver-sbom"),
                              "Restore prior delivery state and download published source SBOM"))

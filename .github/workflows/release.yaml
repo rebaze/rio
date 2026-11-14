@@ -126,6 +126,7 @@ jobs:
         with:
           name: ${{ steps.self-sbom.outputs.artifact-name || format('rio-self-sbom-{0}-{1}-{2}', github.ref_name, github.run_id, github.run_attempt) }}
           path: ${{ runner.temp }}/rio-self-sbom/
+          include-hidden-files: true
           if-no-files-found: warn
 
       - name: Select authored notes for the exact tag
@@ -335,6 +336,7 @@ jobs:
         with:
           name: release-self-sbom-delivery-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/rio-self-sbom/
+          include-hidden-files: true
           if-no-files-found: warn
 
   publish-tap:
