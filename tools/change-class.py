@@ -23,7 +23,7 @@ PATH_RULES = [
     ("external_interface", ["internal/delivery/**"]),
     ("security_component", ["tools/rio-attest-sign.sh", "tools/rio-attest-verify.sh"]),
     ("pipeline_or_rules", [".github/workflows/**", ".github/dependabot.yml", ".github/pull_request_template.md",
-                           ".goreleaser.yaml", "tools/release-*.py", "tools/verify-release.py",
+                           ".goreleaser.yaml", ".go-version", "tools/release-*.py", "tools/verify-release.py",
                            "tools/revert-cask.py", "tools/change-class.py", "tools/security/**",
                            "install.sh", "SECURITY.md"]),
 ]

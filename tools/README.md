@@ -538,6 +538,27 @@ Its version changes the same way, with
 trigger the Go checks. It also verifies the narrower triggers for the other CI checks.
 Like the merge-policy tests, it runs offline and is included in CI's Python tests.
 
+### Go compiler security patches
+
+`.go-version` selects the reviewed Go minor line (`1.27`), while both `go.mod` files declare the
+minimum patched compiler (`1.27.4`). Current-tree CI, CodeQL, installer tests, published-release
+scanning and release builds use the selector with `check-latest: true`. This checks upstream for
+the latest patch even when the runner has an older compiler cached. Setting `check-latest` on
+an exact patch from `go.mod` would still select that exact patch. Patch updates are automatic;
+minor upgrades require changing the selector and both module minimums together. For local
+verification, use the latest patch in that line and check `go version` before running the scans.
+
+`python3 tools/go-toolchain_test.py` guards the shared selector, module release-line alignment
+and every workflow's compiler setup. It preserves the historical-source compiler selection in
+`Test binary`. CI runs it on every invocation before change filtering; edits to `.go-version` force full validation.
+Go-version and module policy changes go through normal PR review.
+
+If a daily scan turns red without a source change, inspect its first failure before rerunning.
+For example, November 11–14, 2026 failed on GO-2026-6859 because CI still selected Go 1.27.3;
+Go 1.27.4 fixed the finding. Keep scans enabled, configure Actions failure notifications and
+require the aggregate `CI complete` check as described in [SECURITY.md](../SECURITY.md#dependency-updates-and-alert-closure).
+A source fix does not patch an existing release's static binaries; release a new patch version.
+
 ## Verify release assets before publication
 
 `release-publish.py` is the publication guard used by Rio's own release workflow
@@ -1014,7 +1035,7 @@ A PR is significant when any of these applies:
 | `critical_function` | `internal/receipt/**`, `internal/gate/**` |
 | `external_interface` | `internal/delivery/**` |
 | `security_component` | `tools/rio-attest-sign.sh`, `tools/rio-attest-verify.sh` |
-| `pipeline_or_rules` | workflows, Dependabot config, PR template, `.goreleaser.yaml`, release and verification tools, `tools/security/**`, `install.sh`, `SECURITY.md` |
+| `pipeline_or_rules` | workflows, Dependabot config, PR template, `.goreleaser.yaml`, `.go-version`, release and verification tools, `tools/security/**`, `install.sh`, `SECURITY.md` |
 | `new_or_major_dependency` | a module path added in `go.mod` or `tools/security/go.mod`, or a higher major version on the same path (v0 to v1, `+incompatible`); patch and minor bumps stay standard |
 | `cra_substantial_modification_question` | the box in the PR template is ticked |
 | `incomplete_file_list` | the API did not return every changed file or a `go.mod` patch |

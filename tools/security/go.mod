@@ -1,6 +1,6 @@
 module github.com/rebaze/rio/tools/security
 
-go 1.27.3
+go 1.27.4
 
 tool (
 	github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod

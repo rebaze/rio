@@ -41,6 +41,11 @@ jobs:
           license-check: false
           comment-summary-in-pr: never
 
+      # This cheap offline check also guards module-only and workflow-only PRs
+      # whose changes do not otherwise enable the Python test suite.
+      - name: Check Go compiler policy
+        run: python3 tools/go-toolchain_test.py
+
       - name: Detect changed file types
         id: changes
         shell: bash
@@ -75,7 +80,7 @@ jobs:
           if grep -E '^\.goreleaser\.yaml$' <<<"$CHANGED" >/dev/null; then goreleaser=true; fi
           if grep -E '\.sh$' <<<"$CHANGED" >/dev/null; then shell=true; fi
           if grep -E '(\.py$|^\.github/workflows/(dependabot-auto-merge|release)\.yaml$)' <<<"$CHANGED" >/dev/null; then python=true; fi
-          if grep -E '^\.github/workflows/ci\.yaml$' <<<"$CHANGED" >/dev/null; then go=true; goreleaser=true; shell=true; python=true; fi
+          if grep -E '^(\.github/workflows/ci\.yaml|\.go-version)$' <<<"$CHANGED" >/dev/null; then go=true; goreleaser=true; shell=true; python=true; fi
           echo "go=$go" >> "$GITHUB_OUTPUT"
           echo "goreleaser=$goreleaser" >> "$GITHUB_OUTPUT"
           echo "shell=$shell" >> "$GITHUB_OUTPUT"
@@ -84,7 +89,10 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: steps.changes.outputs.go == 'true' || steps.changes.outputs.goreleaser == 'true'
         with:
-          go-version-file: go.mod
+          # Track security patches within the reviewed minor line. An exact
+          # go.mod patch stays exact even with check-latest (#224).
+          go-version-file: .go-version
+          check-latest: true
           cache: true
           cache-dependency-path: |
             go.sum
@@ -265,7 +273,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: .go-version
+          check-latest: true
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.9"
@@ -296,7 +305,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: .go-version
+          check-latest: true
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.9"
@@ -357,7 +367,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: .go-version
+          check-latest: true
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.9"
