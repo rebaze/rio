@@ -25,7 +25,8 @@ inputs and remain separate from its runtime.
 | [`demo-repair/`](#first-repair-sample) | shows optional p2 repair with an unchanged input and an audit record | when evaluating Eclipse/OSGi coordinate repair |
 | [`demo-agent-integration/`](#agent-integration-examples) | tests project onboarding configurations and a one-command CI receipt step | with Rio 0.7.0+ and Python 3.9+ |
 | [`source-sbom.sh`](#rios-source-sbom-and-candidate-checks) | makes rio's own CycloneDX SBOM, with its dependency graph and a complete inventory, and checks it against BSI TR-03183-2 with rio's strict gate | in CI and the release |
-| [`self-sbom.py`](#self-sbom-monitoring) | prepares Rio's checked source SBOM, delivers the indexed bytes with native Rio and verifies the receiver inventory | in trusted CI and after release publication |
+| [`self-sbom.py`](#self-sbom-monitoring) | prepares Rio's checked source SBOM and verifies native delivery, correlated import completion and receiver inventory | for canonical main and published releases |
+| [`self-sbom-lifecycle.py`](#bounded-projects-and-publication) | coordinates the fixed main import and promotes a verified published stable release | in protected main/release jobs |
 | [`install-self-sbom-rio.py`](#pinned-stable-rio-actor) | installs the reviewed stable Rio binary used by the SBOM pipeline | in CI and release jobs |
 | [`demo-self-sbom/`](demo-self-sbom/README.md) | demonstrates source-SBOM delivery locally or verifies vulnerable/fixed Go canaries on a real receiver | with installed Rio 0.10.x and Python 3.9+ |
 | [`rio-context.py`](#rio-contextpy) | emits one explicit build-context entry bound to original SBOM bytes | in a producing CI job |
@@ -1121,7 +1122,9 @@ tools/source-sbom.sh 0.9.0 rio-source.cdx.json /tmp/rio-stable/bin/rio receipt.j
 Install the [pinned stable actor](#pinned-stable-rio-actor) first. The four-argument interface still
 works. The optional normalization output root keeps
 `runs/<run-id>/index.json` and its normalized member for native delivery; the receipt remains
-at the caller-supplied path.
+at the caller-supplied path. A sixth `CLAIMS_JSON` argument, following that output root, accepts
+the explicit `build.json` claims produced by `self-sbom.py prepare`. It adds native build context
+before normalization; omitting it preserves the original four/five-argument behavior.
 
 Releases up to and including v0.9.0-rc1 shipped syft's directory scan instead: the modules
 `go.mod` requires, with no dependency graph and no completeness claim. Their SBOMs are unchanged.
@@ -1141,6 +1144,28 @@ notarization and the Homebrew cask need a published release and stay with
 [published-release verification](#published-release-verification).
 
 ## Self-SBOM monitoring
+
+Rio monitors one rolling main inventory and retains published releases under one product
+collection. The configured hierarchy is:
+
+| Project | Parent | Latest flag |
+|---|---|---|
+| `Rio product` collection | `rebaze` | its own latest flag includes the product in the organization rollup |
+| `rio` / `main` | `Rio product` | always false; active rolling development inventory |
+| `rio` / `v0.10.2` and later releases | `Rio product` | only the verified current published stable release |
+
+The collection's name is `Rio product`, so its organization-rollup flag is separate from the
+latest `rio` release. Project UUIDs and hierarchy identities are explicit in
+[`self-sbom-targets.json`](self-sbom-targets.json). PRs and other CI contexts retain checked
+artifacts without creating monitored development projects. Nine historical CI snapshots remain
+archived inactive for their policy/audit history; the default active view shows main and retained
+releases.
+
+[Inspect the deployed lifecycle verification](demo-self-sbom/bounded-lifecycle-verification.json):
+the fixed main inventory and unchanged v0.10.2 release each contain 14 components, their
+specific imports completed, and only the shipped release is latest within `rio`.
+
+### Inspect the synthetic analysis check
 
 The deployed Dependency-Track 5.2.1 receiver produced these results on 2026-11-14 from two
 **synthetic** one-component SBOMs, normalized and strictly checked by Rio:
@@ -1176,7 +1201,13 @@ member, `prepared.json` and `delivery.yaml`. Delivery consumes that index with `
 it verifies that the copied SBOM and indexed member still have identical bytes and digests.
 Python performs the receiver inventory read-back; native Rio owns normalization and upload.
 The prepared bundle also keeps `rio-tool.json`, the stable installer's tag, source commit and
-verified archive/binary identity, separately from the candidate's inventory.
+verified archive/binary identity, separately from the candidate's inventory. Explicit
+`--source-revision`, `--build-url` and optional `--build-id` claims are retained in `build.json`.
+Revision and build URL must be supplied together. The source producer binds these claims to
+its canonical raw SBOM with `rio-context.py`; the same native normalization pass embeds the
+source revision and build reference before gating. Nothing edits the normalized or attested
+output afterward. A fixed Dependency-Track project version therefore does not erase the
+source commit or workflow identity.
 
 ### Pinned stable Rio actor
 
@@ -1206,47 +1237,110 @@ through a PR. A candidate release never promotes itself to pipeline tool automat
 current source generator still reads the candidate checkout and uses its selected Go compiler;
 pinning the Rio actor does not change which candidate dependencies the SBOM describes.
 
-CI generates and retains a source SBOM for every run, including fork pull requests. Trusted
-runs upload to `https://dependencytrack.rebaze.de` under project name `rio`. Development
-project versions identify the source revision and workflow attempt, so asynchronous imports
-cannot race over one shared development version:
+### Bounded projects and publication
 
-| Run | Dependency-Track version pattern |
-|---|---|
-| Branch | `dev-main-<sha12>.<run-id>.<attempt>` (branch name replaces `main`) |
-| Pull request | `pr-<number>-<sha12>.<run-id>.<attempt>` |
-| CI validation of a tag | `ci-tag-<tag>-<sha12>.<run-id>.<attempt>` |
-| Published release | exact tag, such as `v0.10.0` |
+CI prepares and retains a checked source SBOM for every context. Only the canonical `CI`
+workflow in `rebaze/rio`, on `refs/heads/main`, may publish the rolling `rio` / `main` inventory:
+main pushes, its schedule, and manual dispatch on main qualify. PRs (including same-repository
+and fork PRs), other branches, tags, and reusable workflow calls remain **artifact-only**.
+Their prepared bundle explicitly refuses delivery, even if a key is supplied. Run-specific
+labels remain useful artifact metadata; they no longer create Dependency-Track snapshots.
 
-Release preparation creates the SBOM before attestation. After publication, a separate job
-restores that prepared bundle, downloads the published source SBOM and requires its digest
-to match the indexed bytes before native Rio delivers it. The release project uses the exact
-tag and `isLatest: true`. Tag-validation CI observations remain separate development projects.
+The canonical main target selects the configured UUID, with `autoCreate`, parent and latest
+upload fields omitted. The UUID must already identify active `rio` / `main` under `Rio product`,
+and main must never be latest. A native offline delivery plan validates this configuration
+before any import coordination or upload. The publisher rechecks the current GitHub main
+revision and the workflow sequence, skipping stale or superseded observations.
 
-All projects carry `owner:team-rio`, `go`, and either `source:ci` or `source:release`. Read-back
-requires the exact component name/version/package-URL inventory, complete pagination and the
-expected tags. Go module package-URL paths are compared using the receiver's lowercase
-representation; the attested SBOM itself stays unchanged. Accepted upload, verified inventory
-and completed vulnerability analysis are distinct results. Inventory verification does not
-wait for findings or replace a vulnerability gate.
+Release preparation uses the exact tag as project version. After publication, the delivery
+job restores the prepared bundle, downloads the published source SBOM and requires its bytes
+to match the indexed and attested artifact. Native Rio uploads it under `Rio product`, without
+setting `isLatest`. Released versions are retained. A separate serialized
+`self-sbom-lifecycle.py promote` step verifies the public stable tag and source commit, published
+asset digest, accepted native delivery, correlated import completion and receiver inventory
+before changing latest metadata. It checks GitHub's latest stable release again immediately
+before promotion and confirms the resulting latest flag, parent and tags afterward. Prereleases
+and old release reruns cannot promote an older monitored release over a newer one.
 
-### Credentials, alerts and recovery
+Every managed delivery requires the specific event token captured in native Rio's receiver
+acknowledgment to reach `status: COMPLETED` **and** `processing: false` at the receiver's event
+endpoint. Matching an old inventory, or `processing: false` alone, is insufficient. The saved
+`delivery-state.json` binds `importCompletion` to that token; `verification.json` includes the
+proof. Only then does inventory read-back require the exact name/version/package-URL set,
+complete pagination, expected tags, active project and correct collection parent. Main also
+requires its configured UUID and `isLatest: false`. A release can already be latest during
+read-only recovery. Go module package-URL paths are compared using the receiver's lowercase
+representation while the attested bytes remain unchanged.
 
-GitHub Actions and Dependabot secrets both use the name `RIO_DTRACK_API_KEY`. They are
-configured from the permission-limited `KickstartCI` key, exposed to the tool as `DTRACK_API_KEY`;
-CI does not receive an administrator or service-account credential. Fork pull requests skip
-upload and explain that skip while retaining the generated artifact. A trusted run with a
-missing key fails rather than silently skipping monitoring.
+All managed projects carry `owner:team-rio`, `go`, and either `source:ci` or `source:release`.
+Import completion and inventory verification establish ingestion of this submission;
+vulnerability findings remain a separate analysis result. The existing daily source
+`govulncheck` and weekly published-binary scans stay enabled.
 
-The deployed owner notification rule is configured for `owner:team-rio`, and actual project
-read-back confirms that owner tag. Delivery of a notification to its destination has not been
-independently observed. Dependency-Track continues asynchronous monitoring after ingestion;
-the existing daily source `govulncheck` and weekly published-binary scans remain enabled.
+### Credentials and protected jobs
 
-The bundle retains `delivery-state.json`, native delivery results, receipts, journals and
-`verification.json`. An accepted prior upload with intact evidence is retried by read-back
-only. Started, failed or ambiguous state requires inspection and explicit native Rio
-reconciliation before a retry; it never triggers a blind upload. Release job reruns restore
-the previous delivery artifact. Missing or expired prior evidence fails the rerun instead
-of falling back to a pristine bundle and resending. Preserve that evidence when recovering
-an interrupted workflow; see [native delivery recovery](../docs/recovery.md).
+The `rio-main` environment is restricted to main. Its `RIO_DTRACK_MAIN_KEY`, exposed only to
+the canonical publisher as `DTRACK_MAIN_KEY`, has four permissions: `BOM_UPLOAD`,
+`VIEW_PORTFOLIO`, `PORTFOLIO_MANAGEMENT_READ`, and `PORTFOLIO_MANAGEMENT_UPDATE`. It can import
+into pre-existing projects and read/update coordination metadata; it cannot create or delete
+projects. Its team is mapped to both fixed main and the `Rio product` collection so parent
+verification can see the collection. Access on that collection propagates to its descendants,
+so the key's effective upload/update scope is the managed Rio subtree. The pipeline restricts
+its target to the fixed main UUID, and only main enters the protected environment. Dependency-Track
+separates project access from permissions and has no per-project permission sets; see its
+[portfolio access-control implementation](https://github.com/DependencyTrack/dependency-track/blob/main/docs/PORTFOLIO_ACCESS_CONTROL.md).
+Artifact-only jobs never enter this environment.
+
+Release upload uses the permission-limited `RIO_DTRACK_API_KEY` as `DTRACK_API_KEY`, including
+the upload permission needed to observe the event token's completed status. The separate
+`RIO_DTRACK_LIFECYCLE_KEY` in the protected `release` environment is exposed as
+`DTRACK_LIFECYCLE_KEY` and has only `VIEW_PORTFOLIO` and `PORTFOLIO_MANAGEMENT_UPDATE`.
+Promotion reuses the intact saved import-completion proof and performs read-back and latest
+metadata updates; this key cannot upload, create or delete projects. No administrator or
+1Password service-account credential is passed to these jobs. Missing publication credentials
+fail the protected job rather than silently skipping monitoring.
+
+The deployed notification rule is configured for `owner:team-rio`, and actual project read-back
+confirmed that owner tag. Notification delivery to its destination has not been independently
+observed.
+
+### Persistent import coordination and recovery
+
+The fixed main project stores the `rio-monitoring` / `main-import` property independently of
+any one workflow artifact. The serialized main publisher writes and reads back `dispatching`
+**before** native Rio can send a BOM. After acceptance it records the native event token. A
+later run must wait for that accepted import to complete before sending another BOM, including
+when an earlier job timed out while Dependency-Track kept working. The source revision,
+workflow run/attempt sequence, SBOM digest and build identity prevent stale runs from replacing
+newer observations.
+
+An ambiguous POST leaves `dispatching` or `unconfirmed` coordination state and quarantines
+further uploads. Recovery requires explicit inspection and reconciliation of receiver state
+and retained native evidence. Do not blindly reset the property to `idle`, delete its marker,
+or resend a BOM to make a blocked job green. Missing or ambiguous coordination state also
+refuses publication.
+
+The bundle retains native results, receipts and journals, `delivery-state.json`,
+`verification.json`, and lifecycle results (`main-publication.json` or `promotion.json`).
+Accepted retries with intact token-bound completion proof repeat inventory read-back without
+uploading or querying the upload-only event endpoint. If completion is not yet proved, the
+upload-capable job must confirm and persist it first. Release and main job reruns restore
+prior delivery evidence; missing or expired prior evidence fails instead of falling back to a
+pristine bundle. See [native delivery recovery](../docs/recovery.md).
+
+### One-time migration
+
+[Issue #232](https://github.com/rebaze/rio/issues/232) replaces the previous unbounded CI
+snapshot scheme. The migration established `Rio product` under `rebaze`, the fixed active main
+project, and the retained latest stable release. The existing published v0.10.2 source SBOM
+was imported **unchanged**, with its original asset identity and verified receiver inventory.
+That historical bootstrap was an explicit one-time migration: it did not fabricate a native
+Rio delivery receipt or normalization index for an asset published before this lifecycle.
+Previously signed release assets remain untouched. This migration is not a missing-bundle
+fallback for future releases.
+
+The nine legacy CI snapshot projects were backed up and archived inactive under `Rio product`.
+At migration each had two policy violations and zero vulnerability findings, so archiving
+preserves policy and audit history. No release history, main project or collection is removed. This
+reviewed one-time archival is separate from routine publication; future CI runs create no new
+snapshot projects.

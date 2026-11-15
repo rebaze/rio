@@ -171,7 +171,8 @@ class ChangesTest(unittest.TestCase):
                      "tools/source-sbom_test.py", "tools/self-sbom.py",
                      "tools/self-sbom_test.py", "tools/self-sbom-workflows_test.py",
                      "tools/install-self-sbom-rio.py", "tools/install-self-sbom-rio_test.py",
-                     "tools/self-sbom-rio.json"):
+                     "tools/self-sbom-rio.json", "tools/self-sbom-targets.json",
+                     "tools/self-sbom-lifecycle.py", "tools/self-sbom-lifecycle_test.py"):
             with self.subTest(path=path):
                 result = detect(path)
                 self.assertEqual(result["go"], "true")

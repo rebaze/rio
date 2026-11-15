@@ -28,6 +28,7 @@ from pathlib import Path
 args = sys.argv[1:]
 if len(args) != 6 or args[0] != "-C" or args[2:4] != ["build", "-o"]:
     sys.exit("unexpected go call: " + repr(args))
+Path(os.environ["FIXTURE_BUILD_MARKER"]).write_text("built")
 shutil.copy(os.environ["FIXTURE_GENERATOR"], args[4])
 Path(args[4]).chmod(0o755)
 '''
@@ -80,27 +81,67 @@ class SourceSBOMTest(unittest.TestCase):
         self.fixtures = self.root / "fixtures"
         self.fixtures.mkdir()
         self.env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ["PATH"],
-                        FIXTURE_GENERATOR=str(bin_dir / "generator"), FIXTURE_DIR=str(self.fixtures))
+                        FIXTURE_GENERATOR=str(bin_dir / "generator"), FIXTURE_DIR=str(self.fixtures),
+                        FIXTURE_BUILD_MARKER=str(self.root / "generator-built"))
         self.env.pop("SOURCE_SBOM_MODULES", None)
         self.out = self.root / "source.cdx.json"
         self.receipt = self.root / "source-receipt.json"
         self.normalized = self.root / "retained normalized"
 
-    def generate(self, doc=None, retained=False, override=None):
+    def generate(self, doc=None, retained=False, override=None, claims=None):
         doc = fixture() if doc is None else doc
         for target in ("linux-amd64", "linux-arm64", "darwin-amd64", "darwin-arm64",
                        "windows-amd64", "windows-arm64"):
             value = override if target == "windows-arm64" and override is not None else doc
             (self.fixtures / (target + ".json")).write_text(json.dumps(value))
         args = [str(SCRIPT), "1.2.3", str(self.out), str(RIO), str(self.receipt)]
-        if retained:
+        if retained or claims is not None:
             # Relative paths containing spaces must remain valid in the manifest.
             args.append(self.normalized.name)
+        if claims is not None:
+            path = self.root / "build claims.json"
+            path.write_text(json.dumps(claims))
+            args.append(str(path))
         return subprocess.run(args, cwd=self.root, env=self.env, capture_output=True, text=True)
 
     def successful(self, result):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return json.loads(self.out.read_text())
+
+    def test_explicit_claims_embed_source_revision_and_build_reference_before_gate(self):
+        claims = {"schemaVersion": 1, "sourceRevision": "a" * 40,
+                  "buildURL": "https://github.com/rebaze/rio/actions/runs/123", "buildID": "123.2"}
+        original = fixture()
+        doc = self.successful(self.generate(original, claims=claims))
+        properties = doc["metadata"]["properties"]
+        records = [json.loads(p["value"]) for p in properties if p["name"] == "rebaze:normalize:context"]
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["effective"]["source"]["revision"], "a" * 40)
+        self.assertEqual(records[0]["effective"]["source"]["repository"], "https://github.com/rebaze/rio")
+        self.assertEqual(records[0]["effective"]["build"], {"url": claims["buildURL"], "id": "123.2"})
+        refs = doc["metadata"]["component"]["externalReferences"]
+        self.assertIn({"type": "build-system", "url": claims["buildURL"]}, refs)
+        self.assertEqual(json.loads((self.fixtures / "linux-amd64.json").read_text()), original)
+        receipt = json.loads(self.receipt.read_text())
+        member = self.normalized / "runs" / receipt["run"]["id"] / receipt["artifacts"][0]["output"]["path"]
+        self.assertEqual(member.read_bytes(), self.out.read_bytes())
+        index = json.loads((member.parent / "index.json").read_text())
+        self.assertEqual(index["artifacts"][0]["context"]["effective"]["source"]["revision"], "a" * 40)
+
+    def test_invalid_claims_fail_before_generator_runs(self):
+        valid = {"schemaVersion": 1, "sourceRevision": "a" * 40,
+                 "buildURL": "https://github.com/rebaze/rio/actions/runs/123"}
+        cases = [dict(valid, sourceRevision="abc"), dict(valid, buildURL="http://example.invalid/run"),
+                 dict(valid, buildURL="https://user:secret@example.invalid/run"),
+                 dict(valid, buildURL="https://example.invalid/run?token=secret"),
+                 {"schemaVersion": 1, "sourceRevision": "a" * 40}, dict(valid, buildID="bad\nid")]
+        for claims in cases:
+            with self.subTest(claims=claims):
+                result = self.generate(claims=claims)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("claims", result.stderr)
+                self.assertFalse((self.root / "generator-built").exists())
+                self.assertFalse(self.out.exists())
 
     def test_legacy_interface_emits_consumer_stdlib_identity_and_preserves_references(self):
         doc = self.successful(self.generate())

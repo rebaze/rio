@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "kind": "rio-bounded-sbom-live-verification",
+  "checkedAt": "2026-11-14T23:48:11Z",
+  "receiverVersion": "5.2.1",
+  "tool": {
+    "tag": "v0.10.2",
+    "commit": "35c8da3efe782f4cfebd64aa400e513d03bb6db1"
+  },
+  "targets": {
+    "schemaVersion": 1,
+    "url": "https://dependencytrack.rebaze.de",
+    "projectName": "rio",
+    "collection": {
+      "name": "Rio product",
+      "uuid": "cbfbb6ad-4424-4580-b9c4-b44ca851dcce"
+    },
+    "main": {
+      "version": "main",
+      "uuid": "47333a30-052b-4d7b-aca5-ce9be07a0f8c"
+    },
+    "organization": {
+      "name": "rebaze",
+      "uuid": "f3550ffe-cb15-4afd-849d-994d50d4c885"
+    }
+  },
+  "main": {
+    "mainPublication": "verified",
+    "checkedAt": "2026-11-14T23:48:11Z",
+    "sourceRevision": "1b5f6047fd3c1d070347e88d949b18efa1e55065",
+    "sequence": [
+      418,
+      1
+    ],
+    "inventory": "verified",
+    "project": {
+      "name": "rio",
+      "version": "main"
+    },
+    "projectUUID": "47333a30-052b-4d7b-aca5-ce9be07a0f8c",
+    "components": 14,
+    "sbomSHA256": "fe253bc5f45c0e2fe3568f842ef4791ac1c9bdf362d39bffcf96df125733a64f",
+    "ownerTag": "observed",
+    "vulnerabilityAnalysis": "asynchronous; inventory verification is not a vulnerability gate",
+    "parent": "observed",
+    "isLatest": false,
+    "importCompletion": {
+      "eventToken": "01a1dc76-0f31-797f-840c-0306359ad146",
+      "status": "COMPLETED",
+      "processing": false
+    },
+    "acceptedRecovery": {
+      "outcome": "verified-read-back-only",
+      "lastBomImport": "unchanged",
+      "persistentCoordinationState": "completed"
+    }
+  },
+  "legacyReleaseMigration": {
+    "kind": "rio-legacy-sbom-migration",
+    "tag": "v0.10.2",
+    "commit": "35c8da3efe782f4cfebd64aa400e513d03bb6db1",
+    "publishedAssetSHA256": "422ba7b5774c4c70cc536f6293f085364a93bb8cf7b592d8e242586c37850cb8",
+    "projectUUID": "edfd1f36-11a7-4dda-9037-b8bffb71d248",
+    "acknowledgment": "accepted",
+    "eventToken": "01a1dc5e-fbcb-739d-855a-d4ce8f477f3f",
+    "deliveredBytes": "original published asset, unchanged",
+    "legacyReason": "Original release has no retained index; stable validation adds provenance so that output was not delivered.",
+    "importCompletion": {
+      "eventToken": "01a1dc5e-fbcb-739d-855a-d4ce8f477f3f",
+      "status": "COMPLETED",
+      "processing": false
+    },
+    "verification": {
+      "inventory": "verified",
+      "project": {
+        "name": "rio",
+        "version": "v0.10.2"
+      },
+      "projectUUID": "edfd1f36-11a7-4dda-9037-b8bffb71d248",
+      "components": 14,
+      "sbomSHA256": "422ba7b5774c4c70cc536f6293f085364a93bb8cf7b592d8e242586c37850cb8",
+      "ownerTag": "observed",
+      "vulnerabilityAnalysis": "asynchronous; inventory verification is not a vulnerability gate",
+      "parent": "observed",
+      "isLatest": false
+    },
+    "latestPromotion": {
+      "outcome": "verified-latest",
+      "previousLatestTag": "v0.9.0",
+      "parent": "preserved",
+      "tags": "preserved",
+      "githubLatest": "v0.10.2"
+    }
+  },
+  "legacyCISnapshots": {
+    "backedUp": 9,
+    "archivedInactive": 9,
+    "deleted": 0,
+    "reason": "All nine snapshots have policy-violation history; inventories and history retained inactive under Rio product."
+  },
+  "limitations": [
+    "Ingestion verification is not a vulnerability-analysis gate.",
+    "The historical release bootstrap used the original published asset with an explicit migration API call, not a fabricated native Rio receipt.",
+    "The new protected main Actions job will run after merge; PR validation must remain artifact-only."
+  ]
+}
