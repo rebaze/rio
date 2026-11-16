@@ -275,5 +275,13 @@
       "reason": "PR221 already migrated the triggers; live auto-merge validation requires a real Dependabot security PR. None is open."
     }
   ],
-  "releaseDecision": "No new binary release: current source and all six v0.10.2 binaries scan clean. Users of older releases must upgrade."
+  "releaseDecision": "No new binary release: current source and all six v0.10.2 binaries scan clean. Users of older releases must upgrade.",
+  "scorecardWorkflowValidation": {
+    "supportedRef": "refs/heads/main",
+    "unsupportedBranchDispatch": "upstream rejected; explicit guard now skips non-main analysis",
+    "policyTests": 14,
+    "realDefaultBranchProducerPairWith18Findings": "gate rejected as expected",
+    "cleanCandidateArchiveVulnerabilityScan": "zero findings, score10",
+    "fullUpdatedDefaultBranchWorkflow": "pending merge; a skipped branch analysis is not a clean scan"
+  }
 }

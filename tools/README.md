@@ -1083,6 +1083,11 @@ coverage. Governance findings remain independently
 tracked. `python3 tools/scorecard-policy_test.py` exercises the real gate offline, including
 clean, vulnerable and unusable reports. Fixture-only exceptions use exact advisory IDs in the
 affected demo directories; they do not exempt real dependency manifests elsewhere.
+The pinned Scorecard action supports dispatch only on the default branch. This repository's
+analysis job explicitly requires `refs/heads/main`; a manual dispatch on another branch skips
+analysis rather than entering an unsupported upstream context. Candidate CI still runs the
+offline policy tests. End-to-end validation of a changed Scorecard workflow occurs on main
+after merge; a skipped branch analysis is not a clean scan.
 
 ## rio's source SBOM and candidate checks
 

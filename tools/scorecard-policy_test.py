@@ -42,6 +42,17 @@ def step(name):
 
 
 class ScorecardPolicyTest(unittest.TestCase):
+    def test_pinned_producer_runs_only_on_supported_default_branch_and_emits_both_reports(self):
+        header = WORKFLOW.split("  analysis:\n", 1)[1].split("    steps:\n", 1)[0]
+        self.assertRegex(header, r"(?m)^    if: github.ref == 'refs/heads/main'$")
+        analysis = step("Run analysis")
+        self.assertRegex(analysis, r"uses: ossf/scorecard-action@[0-9a-f]{40} # v2\.5\.0")
+        self.assertRegex(analysis, r"(?m)^          results_file: results\.sarif$")
+        self.assertRegex(analysis, r"(?m)^          results_format: sarif$")
+        # The pinned producer emits results.json from the same analysis only
+        # when publishing, which the fail-closed gate requires alongside SARIF.
+        self.assertRegex(analysis, r"(?m)^          publish_results: true$")
+
     def gate(self, value=None, raw=None, missing=False, raw_json=None, missing_json=False):
         body = step("Enforce vulnerability policy")
         self.assertIn("        run: |\n", body)
