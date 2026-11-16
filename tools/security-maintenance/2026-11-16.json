@@ -1,0 +1,287 @@
+{
+  "schemaVersion": 1,
+  "kind": "rio-security-maintenance-verification",
+  "checkedAt": "2026-11-16T20:17:29.153397+00:00",
+  "issue": "https://github.com/rebaze/rio/issues/234",
+  "mainProtection": {
+    "requiredChecks": [
+      {
+        "context": "build",
+        "app_id": 15368
+      },
+      {
+        "context": "Analyze Go",
+        "app_id": 15368
+      },
+      {
+        "context": "classify",
+        "app_id": 15368
+      },
+      {
+        "context": "CI complete",
+        "app_id": 15368
+      }
+    ],
+    "enforceAdmins": true,
+    "otherSettings": "preserved",
+    "independentReview": "deferred: only one eligible human maintainer, issue164"
+  },
+  "fixtureAssessment": {
+    "scorecardVersion": "v5.6.0",
+    "beforeAdvisories": 18,
+    "afterAdvisories": 0,
+    "advisoryPackages": {
+      "jackson-databind": 13,
+      "postgresql-jdbc": 3,
+      "spring-web": 2
+    },
+    "outsideFixtureManifestControl": "vulnerable Maven dependency remains reported",
+    "scopedConfigs": [
+      "tools/demo-handoff-checks/fixtures/osv-scanner.toml",
+      "tools/demo-use-case/inputs/osv-scanner.toml",
+      "tools/demo-use-case/example/osv-scanner.toml"
+    ],
+    "fixturesPreserved": [
+      {
+        "path": "tools/demo-handoff-checks/fixtures/cart-api.cdx.json",
+        "sha256": "cdf59ae5fa9cef729f8bc58dace8b2fe668647b8b4d5989555d2ec43b2ee7573"
+      },
+      {
+        "path": "tools/demo-handoff-checks/fixtures/cart-api-tr.cdx.json",
+        "sha256": "99c0d6f4622975d4ffa6b901226d7c86fa0766304ee23c4cdc93a96bdf5980cf"
+      },
+      {
+        "path": "tools/demo-use-case/inputs/bom.json",
+        "sha256": "6bc292a298614b7b6ee82c99fb71883bbc6288d3090654472b5e0e9af331e92e"
+      },
+      {
+        "path": "tools/demo-use-case/example/payments-api.cdx.json",
+        "sha256": "69a555590de5ad6fc528d898604e3e012097a9a1e37ea55ec9cd1936750ba2cf"
+      }
+    ]
+  },
+  "historicalTriage": {
+    "capturedAt": "2026-11-16T20:13:46.478825+00:00",
+    "readOnly": true,
+    "scope": "Published source assets and one checksums-verified Linux/amd64 release binary per tag. Binaries inspected/scanned, never executed. Binary symbol findings do not establish exploitability.",
+    "projects": [
+      {
+        "tag": "v0.8.0",
+        "projectUUID": "929c9293-3ba4-4c40-99c9-8cfc548a1b05",
+        "snapshotComponents": 764,
+        "snapshotFindingRows": 77,
+        "publishedSourceRows": 1011,
+        "publishedSourceUniqueIdentities": 764,
+        "sourceInventoryMatchesDT": true,
+        "publishedSourceSHA256": "4339907fbb826c1c3352530115b4192de8f63c9824d80886691917e4f5f15a08",
+        "publishedSourceAssetDigest": "sha256:4339907fbb826c1c3352530115b4192de8f63c9824d80886691917e4f5f15a08",
+        "publishedSourceDigestMatches": true,
+        "binaryPlatform": "linux/amd64",
+        "binaryGoVersion": "go1.27.2",
+        "binaryArchiveSHA256": "dfacf091cc891011b7f29cbd1e53167381afef15e903460a470130becc74b715",
+        "archiveMatchesPublishedChecksums": true,
+        "binaryModuleCount": 12,
+        "findingRowsOnModulesAbsentFromInspectedBinary": 74,
+        "findingModuleCountAbsentFromInspectedBinary": 23,
+        "findingsOnPresentModules": [
+          "gopkg.in/yaml.v3"
+        ],
+        "binaryAdvisories": [
+          {
+            "id": "GO-2026-6809",
+            "aliases": [
+              "CVE-2026-111943"
+            ],
+            "summary": "Distrust compromised intermediate certificates in crypto/x509",
+            "assessment": "Affected stdlib version and binary symbol match; operational exploitability not established."
+          },
+          {
+            "id": "GO-2026-6859",
+            "aliases": [
+              "CVE-2026-97054"
+            ],
+            "summary": "HTTP/1 server crash due to MaxBytesReader header race in net/http",
+            "assessment": "Affected stdlib version and binary symbol match; operational exploitability not established."
+          }
+        ]
+      },
+      {
+        "tag": "v0.8.2",
+        "projectUUID": "96868b1f-b76c-4bd2-9fec-991072b5aee9",
+        "snapshotComponents": 26,
+        "snapshotFindingRows": 4,
+        "publishedSourceRows": 26,
+        "publishedSourceUniqueIdentities": 26,
+        "sourceInventoryMatchesDT": true,
+        "publishedSourceSHA256": "c36268ab793ab77cbb40cf801d03b7655d8a64bf6e9916033fdd0446a453c4d7",
+        "publishedSourceAssetDigest": "sha256:c36268ab793ab77cbb40cf801d03b7655d8a64bf6e9916033fdd0446a453c4d7",
+        "publishedSourceDigestMatches": true,
+        "binaryPlatform": "linux/amd64",
+        "binaryGoVersion": "go1.27.3",
+        "binaryArchiveSHA256": "f1474e3faba0f9d4d5a35e3af3e42f6254d4a1e8d458387a0b482c3388d0e1b7",
+        "archiveMatchesPublishedChecksums": true,
+        "binaryModuleCount": 12,
+        "findingRowsOnModulesAbsentFromInspectedBinary": 1,
+        "findingModuleCountAbsentFromInspectedBinary": 1,
+        "findingsOnPresentModules": [
+          "gopkg.in/yaml.v3"
+        ],
+        "binaryAdvisories": [
+          {
+            "id": "GO-2026-6859",
+            "aliases": [
+              "CVE-2026-97054"
+            ],
+            "summary": "HTTP/1 server crash due to MaxBytesReader header race in net/http",
+            "assessment": "Affected stdlib version and binary symbol match; operational exploitability not established."
+          }
+        ]
+      },
+      {
+        "tag": "v0.9.0-rc1",
+        "projectUUID": "67446480-10bf-45a8-b009-6b2a3ee908d1",
+        "snapshotComponents": 26,
+        "snapshotFindingRows": 4,
+        "publishedSourceRows": 26,
+        "publishedSourceUniqueIdentities": 26,
+        "sourceInventoryMatchesDT": true,
+        "publishedSourceSHA256": "ddd556bd3bbbc6c06a1b01f4bfc9ae75acacbedb649a6cdc236cc02280dd4e27",
+        "publishedSourceAssetDigest": "sha256:ddd556bd3bbbc6c06a1b01f4bfc9ae75acacbedb649a6cdc236cc02280dd4e27",
+        "publishedSourceDigestMatches": true,
+        "binaryPlatform": "linux/amd64",
+        "binaryGoVersion": "go1.27.3",
+        "binaryArchiveSHA256": "70e56b4de07e8eebf55cfe27dd567fd00bdc0456de0592bb0caf35705ecabe74",
+        "archiveMatchesPublishedChecksums": true,
+        "binaryModuleCount": 12,
+        "findingRowsOnModulesAbsentFromInspectedBinary": 1,
+        "findingModuleCountAbsentFromInspectedBinary": 1,
+        "findingsOnPresentModules": [
+          "gopkg.in/yaml.v3"
+        ],
+        "binaryAdvisories": [
+          {
+            "id": "GO-2026-6859",
+            "aliases": [
+              "CVE-2026-97054"
+            ],
+            "summary": "HTTP/1 server crash due to MaxBytesReader header race in net/http",
+            "assessment": "Affected stdlib version and binary symbol match; operational exploitability not established."
+          }
+        ]
+      },
+      {
+        "tag": "v0.9.0",
+        "projectUUID": "c75be341-4839-4a38-a3a6-521be7e218fc",
+        "snapshotComponents": 14,
+        "snapshotFindingRows": 0,
+        "publishedSourceRows": 14,
+        "publishedSourceUniqueIdentities": 14,
+        "sourceInventoryMatchesDT": true,
+        "publishedSourceSHA256": "892d4b68c4ad3ad03936b8997f0b0ce86ae3387ff95ec360f915457a265f5bc0",
+        "publishedSourceAssetDigest": "sha256:892d4b68c4ad3ad03936b8997f0b0ce86ae3387ff95ec360f915457a265f5bc0",
+        "publishedSourceDigestMatches": true,
+        "binaryPlatform": "linux/amd64",
+        "binaryGoVersion": "go1.27.3",
+        "binaryArchiveSHA256": "c33413b9f6f2224e9f0df354bebb82834b6296b2507e5bc0e1833e8b91bba09a",
+        "archiveMatchesPublishedChecksums": true,
+        "binaryModuleCount": 12,
+        "findingRowsOnModulesAbsentFromInspectedBinary": 0,
+        "findingModuleCountAbsentFromInspectedBinary": 0,
+        "findingsOnPresentModules": [],
+        "binaryAdvisories": [
+          {
+            "id": "GO-2026-6859",
+            "aliases": [
+              "CVE-2026-97054"
+            ],
+            "summary": "HTTP/1 server crash due to MaxBytesReader header race in net/http",
+            "assessment": "Affected stdlib version and binary symbol match; operational exploitability not established."
+          }
+        ]
+      }
+    ],
+    "yamlFindingAssessment": [
+      {
+        "finding": "JVNDB-2021-017991",
+        "alias": "CVE-2021-4235",
+        "assessment": "Wrong module/major version for gopkg.in/yaml.v3 v3.0.1: Go advisory affects yaml.v2 before2.2.3 and github.com/go-yaml/yaml, not yaml.v3.",
+        "source": "https://pkg.go.dev/vuln/GO-2021-0061"
+      },
+      {
+        "finding": "JVNDB-2022-004296",
+        "alias": "CVE-2022-3064",
+        "assessment": "Wrong module/major version for gopkg.in/yaml.v3 v3.0.1: Go advisory affects yaml.v2 before2.2.4.",
+        "source": "https://pkg.go.dev/vuln/GO-2022-0956"
+      },
+      {
+        "finding": "JVNDB-2022-010171",
+        "alias": "CVE-2022-28948",
+        "assessment": "Patched version: Go advisory fixes yaml.v3 at3.0.0-20220521103104-8f96da9f5d5e, and GitHub reviewed advisory identifies3.0.1 as patched; inspected binaries contain3.0.1.",
+        "source": "https://pkg.go.dev/vuln/GO-2022-0603",
+        "reviewedAdvisory": "https://github.com/advisories/GHSA-hp87-p4gw-j4gq"
+      }
+    ],
+    "recommendation": "Back up and mark all four unsupported historical projects inactive, retaining original BOMs/findings/audit history. Annotate support ended and upgrade to latest stable v0.10.2. Keep main/latest active. No blanket finding dismissal and no signed-asset rewrite.",
+    "verificationLimit": "Historical attestations were not freshly reverified in this bounded triage. Source bytes match GitHub release asset digest metadata; archives match published checksums.txt. Only Linux/amd64 binaries were inspected."
+  },
+  "historicalDisposition": {
+    "checkedAt": "2026-11-16T20:16:55.179263+00:00",
+    "projects": [
+      {
+        "tag": "v0.8.0",
+        "projectUUID": "929c9293-3ba4-4c40-99c9-8cfc548a1b05",
+        "disposition": "archived-inactive-unsupported",
+        "findingsPreserved": 77,
+        "lastBomImport": "unchanged",
+        "tagsAndParent": "preserved"
+      },
+      {
+        "tag": "v0.8.2",
+        "projectUUID": "96868b1f-b76c-4bd2-9fec-991072b5aee9",
+        "disposition": "archived-inactive-unsupported",
+        "findingsPreserved": 4,
+        "lastBomImport": "unchanged",
+        "tagsAndParent": "preserved"
+      },
+      {
+        "tag": "v0.9.0-rc1",
+        "projectUUID": "67446480-10bf-45a8-b009-6b2a3ee908d1",
+        "disposition": "archived-inactive-unsupported",
+        "findingsPreserved": 4,
+        "lastBomImport": "unchanged",
+        "tagsAndParent": "preserved"
+      },
+      {
+        "tag": "v0.9.0",
+        "projectUUID": "c75be341-4839-4a38-a3a6-521be7e218fc",
+        "disposition": "archived-inactive-unsupported",
+        "findingsPreserved": 0,
+        "lastBomImport": "unchanged",
+        "tagsAndParent": "preserved"
+      }
+    ],
+    "currentMain": "active, not latest",
+    "latestRelease": "v0.10.2, active and latest",
+    "individualSuppressions": 0,
+    "publishedAssetsRewritten": false
+  },
+  "deferred": [
+    {
+      "issue": 164,
+      "reason": "A second eligible human maintainer is required before mandatory independent approval can be enabled."
+    },
+    {
+      "issue": 208,
+      "reason": "PR221 already migrated the triggers; live auto-merge validation requires a real Dependabot security PR. None is open."
+    }
+  ],
+  "releaseDecision": "No new binary release: current source and all six v0.10.2 binaries scan clean. Users of older releases must upgrade.",
+  "scorecardWorkflowValidation": {
+    "supportedRef": "refs/heads/main",
+    "unsupportedBranchDispatch": "upstream rejected; explicit guard now skips non-main analysis",
+    "policyTests": 14,
+    "realDefaultBranchProducerPairWith18Findings": "gate rejected as expected",
+    "cleanCandidateArchiveVulnerabilityScan": "zero findings, score10",
+    "fullUpdatedDefaultBranchWorkflow": "pending merge; a skipped branch analysis is not a clean scan"
+  }
+}

@@ -11,6 +11,7 @@ permissions: read-all
 
 jobs:
   analysis:
+    if: github.ref == 'refs/heads/main'
     name: Scorecard analysis
     runs-on: ubuntu-latest
     permissions:
@@ -40,13 +41,118 @@ jobs:
           publish_results: true
 
       - name: Upload artifact
+        if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: SARIF file
-          path: results.sarif
+          path: |
+            results.sarif
+            results.json
           retention-days: 5
+          if-no-files-found: error
 
       - name: Upload to code-scanning
+        if: always()
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: results.sarif
+
+      # Publish the full report before enforcing this focused policy. Other
+      # Scorecard findings remain available for their separate remediation.
+      - name: Enforce vulnerability policy
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          def require(condition, message):
+              if not condition:
+                  raise SystemExit("Scorecard vulnerability policy: " + message)
+
+          def unique_object(pairs):
+              result = {}
+              for key, value in pairs:
+                  require(key not in result, "duplicate JSON field: " + key)
+                  result[key] = value
+              return result
+
+          def invalid_constant(value):
+              raise ValueError("invalid JSON constant: " + value)
+
+          try:
+              report = json.loads(Path("results.sarif").read_text(),
+                                  object_pairs_hook=unique_object, parse_constant=invalid_constant)
+          except (OSError, ValueError) as error:
+              raise SystemExit("Scorecard vulnerability policy: report unavailable or malformed: " + str(error))
+          # Pinned scorecard-action writes results.json from the same analysis
+          # when publishing. SARIF omits score -1 runtime/inconclusive results.
+          try:
+              scan = json.loads(Path("results.json").read_text(),
+                                object_pairs_hook=unique_object, parse_constant=invalid_constant)
+          except (OSError, ValueError) as error:
+              raise SystemExit("Scorecard vulnerability policy: raw analysis unavailable or malformed: " + str(error))
+          require(isinstance(scan, dict) and isinstance(scan.get("checks"), list), "missing raw analysis checks")
+          checks = scan["checks"]
+          require(all(isinstance(check, dict) and isinstance(check.get("name"), str) for check in checks),
+                  "malformed raw analysis check")
+          vulnerability_checks = [check for check in checks if check["name"] == "Vulnerabilities"]
+          require(len(vulnerability_checks) == 1, "raw Vulnerabilities check coverage is missing or ambiguous")
+          score = vulnerability_checks[0].get("score")
+          require(type(score) is int and score == 10, "Vulnerabilities analysis did not complete cleanly; inspect retained JSON")
+          require(isinstance(report, dict) and report.get("version") == "2.1.0", "expected SARIF 2.1.0")
+          runs = report.get("runs")
+          require(isinstance(runs, list) and bool(runs), "report has no analysis runs")
+          coverage = 0
+          findings = 0
+          for run in runs:
+              require(isinstance(run, dict), "malformed analysis run")
+              tool = run.get("tool")
+              require(isinstance(tool, dict) and isinstance(tool.get("driver"), dict), "missing analysis driver")
+              driver = tool["driver"]
+              require(driver.get("name") == "Scorecard", "expected a Scorecard analysis run")
+              rules = driver.get("rules")
+              require(isinstance(rules, list) and bool(rules), "missing check definitions")
+              identifiers = []
+              for rule in rules:
+                  require(isinstance(rule, dict) and isinstance(rule.get("id"), str)
+                          and bool(rule["id"].strip()), "malformed check definition")
+                  identifiers.append(rule["id"])
+              require(len(set(identifiers)) == len(identifiers), "duplicate check definitions")
+              coverage += identifiers.count("VulnerabilitiesID")
+              results = run.get("results")
+              require(isinstance(results, list), "missing or malformed check results")
+              for result in results:
+                  require(isinstance(result, dict), "malformed check result")
+                  identifier = result.get("ruleId")
+                  if "ruleIndex" in result:
+                      index = result["ruleIndex"]
+                      require(type(index) is int and 0 <= index < len(identifiers), "invalid result check index")
+                      require(identifier is None or identifier == identifiers[index], "inconsistent result check identity")
+                      identifier = identifiers[index]
+                  require(isinstance(identifier, str) and identifier in identifiers, "unknown result check identity")
+                  message = result.get("message")
+                  require(isinstance(message, dict) and any(
+                      isinstance(message.get(key), str) and bool(message[key].strip())
+                      for key in ("text", "markdown", "id")), "missing result message")
+                  # Scorecard omits level on findings; default rule severity,
+                  # suppressions and finding text cannot establish a clean scan.
+                  findings += identifier == "VulnerabilitiesID"
+              invocations = run.get("invocations", [])
+              require(isinstance(invocations, list), "malformed execution metadata")
+              for invocation in invocations:
+                  require(isinstance(invocation, dict), "malformed execution metadata")
+                  if "executionSuccessful" in invocation:
+                      require(invocation["executionSuccessful"] is True, "analysis execution failed")
+                  for key in ("toolExecutionNotifications", "toolConfigurationNotifications"):
+                      notifications = invocation.get(key, [])
+                      require(isinstance(notifications, list), "malformed execution notifications")
+                      for notification in notifications:
+                          require(isinstance(notification, dict), "malformed execution notification")
+                          require(notification.get("level") != "error" and "exception" not in notification,
+                                  "analysis reported an execution error")
+          require(coverage == 1, "Vulnerabilities check coverage is missing or ambiguous")
+          require(findings == 0, "Vulnerabilities check reported a finding or could not complete; inspect retained SARIF")
+          print("Scorecard vulnerability policy passed: check covered, no vulnerability findings")
+          PY
