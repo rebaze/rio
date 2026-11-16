@@ -10,6 +10,10 @@
 Only the most recent release of rio receives security updates. rio ships as a single static binary,
 so upgrading is a matter of replacing it — see the install instructions in the README.
 
+Historical Dependency-Track projects for unsupported releases are retained inactive, with their
+original SBOMs and findings preserved. This is a support-lifecycle disposition, not a vulnerability
+fix. Users of older binaries must upgrade; see the [historical triage evidence](tools/README.md#historical-security-triage).
+
 ## Reporting a Vulnerability
 
 If you discover a security vulnerability in rio, please report it responsibly:
@@ -87,9 +91,11 @@ New advisories can still make an unchanged tree fail; keep that security gate en
 [GitHub Actions failure notifications](https://docs.github.com/en/actions/monitoring-and-troubleshooting-workflows/notifications-for-workflow-runs)
 and ensure a maintainer receives scheduled-run failures (GitHub routes scheduled notifications
 to the workflow creator, the last cron editor, or the person who re-enabled it). Investigate the first failing step promptly;
-rerunning an unchanged compiler against the same advisory will not repair it. Require `CI complete`
-alongside `build`, `Analyze Go`, and `classify` on main so failed platform or receiver checks also
-block merges. A clean source build does not repair binaries already downloaded by users: a
+rerunning an unchanged compiler against the same advisory will not repair it. Main requires
+`CI complete` alongside `build`, `Analyze Go`, and `classify`, with enforcement applying to
+administrators too, so failed platform or receiver checks also block merges. An independent
+human-review requirement remains deferred until a second eligible maintainer exists (#164).
+A clean source build does not repair binaries already downloaded by users: a
 compiler security fix still needs a new patch release through the normal release process.
 
 Rio monitors one fixed active `rio` / `main` project and retained published releases under
@@ -165,6 +171,22 @@ reported this one Commons Lang advisory; adding the two example-local dispositio
 zero findings. The original `testdata/` exception alone was insufficient. This does not
 suppress the advisory in other directories, other advisories, or actual module dependencies.
 Re-run Scorecard after merging; local results do not close the hosted alert.
+
+Verified on 2026-11-16 with Scorecard v5.6.0: eighteen advisories came entirely from four
+synthetic demo SBOMs, not Rio's Go dependencies. The Cart API fixture now also records
+`GHSA-mhm7-754m-9p8w`. The README use-case input and captured output each have their own
+`osv-scanner.toml`, covering thirteen Jackson, three PostgreSQL JDBC and two Spring advisories
+by exact ID. A clean source archive scans with zero findings; a real Maven manifest outside
+those directories still reports its vulnerable dependencies. Fixture, SBOM and receipt bytes
+remain unchanged. New advisory IDs still require review.
+
+The Scorecard workflow retains its SARIF and same-run JSON analysis, and uploads code-scanning
+evidence before enforcing its vulnerability result. JSON must show a completed, clean
+Vulnerabilities check: SARIF omits Scorecard's inconclusive/runtime-error score of -1. A
+vulnerability finding, execution error, malformed report or missing vulnerability-check
+coverage fails the job. Separate governance findings, such as human-review
+coverage and the Best Practices badge, keep their own tracked status; successful evidence
+upload alone is not a clean vulnerability scan.
 
 Release tools (cosign and GoReleaser) are the official upstream releases, installed by
 their official GitHub Actions pinned to commit SHAs and with explicit tool versions. They run

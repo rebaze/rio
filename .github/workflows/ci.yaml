@@ -47,6 +47,9 @@ jobs:
       - name: Check Go compiler policy
         run: python3 tools/go-toolchain_test.py
 
+      - name: Check Scorecard vulnerability policy
+        run: python3 tools/scorecard-policy_test.py
+
       - name: Detect changed file types
         id: changes
         shell: bash

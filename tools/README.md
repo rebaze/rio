@@ -1066,13 +1066,23 @@ therefore validates the tagged source anew instead of accepting a passing check 
 branch, an old commit or a partial run. Existing staged-asset verification remains mandatory.
 A failure means no publication; fix the cause before choosing a new immutable release tag.
 
-Recommended main protection: require `build`, `Analyze Go` and `CI complete`. Adding the
-aggregate protects platform/receiver jobs for human merges as well. The security-update bot
+Main protection requires `build`, `Analyze Go`, `classify` and `CI complete`, pinned to the
+GitHub Actions app, and enforces these requirements for administrators too. The aggregate
+protects platform/receiver jobs for human merges as well. The security-update bot
 checks `CI complete` independently of the configured required-check list, then revalidates
 PR state and merges the exact head. No repository protection settings are changed by these
 workflow files. An independent human approval rule is a maintainer decision: enabling one
 without a second eligible reviewer would block a sole-maintainer project. Do not create
 synthetic approvals to improve Scorecard.
+
+Scorecard retains its SARIF and same-run JSON analysis, and publishes code-scanning results
+before enforcing the vulnerability result. The JSON Vulnerabilities score must be 10;
+inconclusive/runtime-error checks have score -1 and are omitted from SARIF. The policy rejects
+vulnerability findings, execution errors, malformed reports and missing vulnerability-check
+coverage. Governance findings remain independently
+tracked. `python3 tools/scorecard-policy_test.py` exercises the real gate offline, including
+clean, vulnerable and unusable reports. Fixture-only exceptions use exact advisory IDs in the
+affected demo directories; they do not exempt real dependency manifests elsewhere.
 
 ## rio's source SBOM and candidate checks
 
@@ -1344,3 +1354,30 @@ At migration each had two policy violations and zero vulnerability findings, so 
 preserves policy and audit history. No release history, main project or collection is removed. This
 reviewed one-time archival is separate from routine publication; future CI runs create no new
 snapshot projects.
+
+### Historical security triage
+
+[Security-maintenance verification, 2026-11-16](security-maintenance/2026-11-16.json) records
+the source-asset digests, inspected binary versions and receiver dispositions:
+
+| Unsupported release | Published source identities | Inspected Linux/amd64 compiler | Binary advisory matches |
+|---|---:|---|---|
+| v0.8.0 | 764 | Go 1.27.2 | GO-2026-6809, GO-2026-6859 |
+| v0.8.2 | 26 | Go 1.27.3 | GO-2026-6859 |
+| v0.9.0-rc1 | 26 | Go 1.27.3 | GO-2026-6859 |
+| v0.9.0 | 14 | Go 1.27.3 | GO-2026-6859 |
+
+Each receiver inventory matches its original published source SBOM. The broad v0.8.0 source
+inventory contains repository/build/tool dependencies that are absent from its binary; it is
+not a binary inventory. Package-major/version mismatches explain the three historical YAML
+findings. The binary scans independently identify older vulnerable standard-library versions;
+symbol matches do not establish exploitability in Rio. Historical attestations were not
+freshly reverified in this bounded triage, and only Linux/amd64 historical binaries were
+inspected. The latest release has its separate six-platform scan.
+
+Following the latest-only support policy, these four older projects were backed up and marked
+inactive with an upgrade-to-v0.10.2 note. Their SBOMs, findings and policy/audit history remain
+available. Archival does not resolve vulnerabilities or repair downloaded binaries: users of
+those releases must upgrade. No finding was blanket-suppressed or published asset rewritten.
+Main and the latest stable release remain active; the two current dependency-age notices are
+informational, with no corresponding known vulnerability finding.
