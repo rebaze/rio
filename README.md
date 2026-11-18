@@ -75,6 +75,19 @@ Or `curl -sSL https://raw.githubusercontent.com/rebaze/rio/main/install.sh | sh`
 a single binary with no runtime dependencies. Releases are signed, and the macOS binaries are
 notarized. [More install options](docs/cli.md#install).
 
+## Get your first local receipt
+
+With an existing `target/bom.json` and a binary that includes `rio init`, run:
+
+```sh
+rio init              # review the proposed rio.yaml
+rio init --write      # create it
+rio plan
+rio --skip-delivery   # prints the receipt path
+```
+
+[Quick start with your own SBOM](docs/quick-start.md) · [Runnable synthetic example](tools/README.md#first-local-receipt)
+
 ## Usage
 
 | Command | What it does |

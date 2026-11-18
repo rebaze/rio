@@ -1,4 +1,24 @@
-# One-command quick start
+# Get your first local receipt
+
+From a project where your build already writes a CycloneDX JSON SBOM to
+`target/bom.json`, run these commands one at a time with a Rio binary that includes
+`rio init`:
+
+```sh
+rio init              # preview the proposed rio.yaml
+rio init --write      # save it after review
+rio plan              # inspect the selected input, output and checks
+rio --skip-delivery   # run locally and print the receipt path
+```
+
+For another input, pass `--sbom path/to/file.cdx.json` to both init commands.
+If you already have a manifest, start at `rio plan`. Inspect the result with
+`rio record inspect --file PATH`, using the receipt path printed by the run.
+A failed quality check also produces a receipt explaining what to fix.
+
+[Generated starter manifest](../tools/demo-first-run/rio.yaml) · [Synthetic input](../tools/demo-use-case/inputs/bom.json) · [Run the demo](../tools/README.md#first-local-receipt)
+
+## Add build context and deliver to Dependency-Track
 
 [See the generated receipt first](../tools/demo-client-record/example/record.json) · [Offline HTML](../tools/demo-client-record/example/report.html) · [Complete runnable ZIP](../tools/demo-client-record/example/example.zip)
 

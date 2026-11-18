@@ -33,6 +33,17 @@ inputs and remain separate from its runtime.
 
 ---
 
+## First local receipt
+
+Run `sh tools/demo-first-run/run.sh` with an installed Rio containing `rio init`.
+Set `RIO_BIN` to select a particular executable. The script copies the
+[synthetic payments SBOM](demo-use-case/inputs/bom.json) to a fresh temporary
+project, previews and saves its manifest, shows the plan and prints the local
+receipt path. The project is retained for inspection. With an earlier Rio
+release supporting the root pipeline, you can save the [generated
+rio.yaml](demo-first-run/rio.yaml) beside the `target/` directory yourself and
+run the last two commands from the [quick start](../docs/quick-start.md).
+
 ## Temporary Linux test binaries
 
 Use [Actions → Test binary](https://github.com/rebaze/rio/actions/workflows/test-binary.yaml)

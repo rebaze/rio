@@ -29,6 +29,19 @@ spctl -a -vv -t install "$(command -v rio)"
 
 The installer variables belong on `sh`, after the pipe. Without them it uses the latest release and chooses a writable installation directory. Add the selected directory to `PATH`. [Platform downloads](https://github.com/rebaze/rio/releases/latest) also include Windows archives. Rio itself has no external runtime dependencies; supporting demos use Python 3.9+ where documented.
 
+## Preview a starter manifest
+
+`rio init` reads the existing CycloneDX JSON at `target/bom.json` and prints a
+minimal YAML manifest to stdout. It names the output artifact `app`; edit that ID
+in the manifest to choose another output filename. The SBOM keeps its own subject
+identity. Schema and quality checks run during execution.
+
+`--sbom PATH` accepts the same single-match glob as a manifest artifact, relative
+to the directory containing `--manifest` (default `rio.yaml`). Quote shell globs.
+`--write` saves the proposal to that path, refusing existing files. Preview and
+save are offline. Follow with `rio plan` and `rio --skip-delivery` using the same
+manifest. [First local receipt](quick-start.md)
+
 ## Root execution
 
 ```text
