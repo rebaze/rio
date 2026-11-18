@@ -35,6 +35,11 @@ A Maven reactor, package name or existing SBOM list can help explain a project, 
 establishes which deliverables the user wants in this run. Do not infer release membership by
 finding only `**/bom.json`: that hides modules whose producer failed to write an SBOM.
 
+For a new manifest covering one known input, preview `rio init --sbom PATH` when
+the installed binary supports it. Review its artifact ID and selected path before
+saving with `--write`. Run `rio plan` and `rio --skip-delivery` with the real build
+output. For multiple deliverables, establish membership as described below.
+
 ## 2. Resolve only the remaining decisions
 
 When the repository already establishes the answer, use it and briefly state the evidence.

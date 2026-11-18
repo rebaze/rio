@@ -90,6 +90,7 @@ func newRootCommand(opts *globalOptions, stdout, stderr io.Writer) *cobra.Comman
 
 	configurePipeline(root, opts, stdout, stderr)
 	root.AddCommand(newNormalizeCommand(opts, stdout, stderr))
+	root.AddCommand(newInitCommand(opts, stdout, stderr))
 	root.AddCommand(newPlanCommand(opts, stdout))
 	root.AddCommand(newVersionCommand(stdout))
 	root.AddCommand(newDeliverCommand(opts, stdout, stderr))
