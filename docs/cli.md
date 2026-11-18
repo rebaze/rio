@@ -40,7 +40,20 @@ identity. Schema and quality checks run during execution.
 to the directory containing `--manifest` (default `rio.yaml`). Quote shell globs.
 `--write` saves the proposal to that path, refusing existing files. Preview and
 save are offline. Follow with `rio plan` and `rio --skip-delivery` using the same
-manifest. [First local receipt](quick-start.md)
+manifest.
+
+For example, suppose the SBOM is `dist/app.cdx.json` and you want the manifest in an
+existing `config/` directory. From the project root:
+
+```sh
+rio init --manifest config/rio.yaml --sbom ../dist/app.cdx.json
+rio init --manifest config/rio.yaml --sbom ../dist/app.cdx.json --write
+rio plan --manifest config/rio.yaml
+rio --manifest config/rio.yaml --skip-delivery
+```
+
+Edit the saved YAML to change the artifact ID, add supplier information, change checks
+or configure delivery targets. `rio plan` previews those settings. [Manifest fields](manifest.md) · [First local receipt](quick-start.md)
 
 ## Root execution
 

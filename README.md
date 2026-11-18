@@ -12,7 +12,41 @@ Dependency-Track or an OCI registry, and keeps a receipt of what happened.**
 
 ## Example
 
-Your build writes `target/bom.json`. Add a `rio.yaml` to the project root:
+In this synthetic payments build, Rio raised the SBOM to CycloneDX 1.6, added the supplier
+and security contact, checked the components, and sent it to Dependency-Track. These lines
+from the Rio v0.10.0 receipt show that the synthetic receiver accepted the upload and Rio read back
+the requested project tag:
+
+```text
+  spec 1.4 → 1.6
+  gate=pass mode=fail schema=pass findings=0
+
+payments-api → security (http://127.0.0.1:49853): accepted
+    tags requested=["owner:payments"] state=observed
+```
+
+[Inspect the receipt](tools/demo-use-case/example/record.json) · [Delivered SBOM](tools/demo-use-case/example/payments-api.cdx.json) · [Download the HTML report](https://raw.githubusercontent.com/rebaze/rio/main/tools/demo-use-case/example/report.html) · [Full console output](tools/demo-use-case/example/output.txt)
+
+## Get your first local receipt
+
+With Rio installed and your build’s CycloneDX JSON at `target/bom.json`, run from the project root:
+
+```sh
+rio init --write       # create a starter rio.yaml
+rio --skip-delivery    # check the SBOM locally and print the receipt path
+```
+
+Run `rio init` alone to preview the YAML. If your build writes the SBOM elsewhere, use
+`rio init --sbom dist/app.cdx.json --write`. Already have a manifest? Start with `rio plan`
+to review its inputs and checks. Open the printed `record.json` to see your result.
+
+Using Rio v0.10.2? Save the [starter rio.yaml](tools/demo-first-run/rio.yaml) in your
+project root and run the second command. [Install Rio](#install) · [Configure init](docs/cli.md#preview-a-starter-manifest) · [Try the synthetic example](tools/README.md#first-local-receipt)
+
+## Add enrichment and delivery
+
+To get the delivery receipt shown above, extend your starter manifest with the metadata
+and receiver details for your project. Here is the payments example:
 
 ```yaml
 version: 1
@@ -38,31 +72,8 @@ delivery:
       tags: [owner:payments]       # route findings to the owning team
 ```
 
-Run Rio from the project root, in CI or on your machine:
-
-```console
-$ export DTRACK_API_KEY=...        # from your secret store
-$ rio
-run run-27130d3b98f3aca30c764753c3cb7207: success
-receipt: /src/payments-api/target/rio/runs/run-27130d3b98f3aca30c764753c3cb7207/record.json
-```
-
-Rio raised the SBOM from CycloneDX 1.4 to 1.6, added the supplier, security contact and fact-sheet
-link, checked that every component has a name, version and package URL, uploaded it, and read the
-project back to confirm the tag. The run directory holds the result:
-
-```text
-target/rio/runs/run-27130d3b98f3aca30c764753c3cb7207/
-├── payments-api.cdx.json   the SBOM, exactly as delivered
-└── record.json             what changed, what was checked, what Dependency-Track confirmed
-```
-
-See the whole run: [record.json](tools/demo-use-case/example/record.json) ·
-[the delivered SBOM](tools/demo-use-case/example/payments-api.cdx.json) ·
-[HTML report](https://raw.githubusercontent.com/rebaze/rio/main/tools/demo-use-case/example/report.html) ·
-[console output](tools/demo-use-case/example/output.txt). It is Rio v0.10.0 on synthetic data,
-delivering to a synthetic Dependency-Track receiver; [run it yourself](tools/demo-use-case/README.md),
-no server needed.
+Set `DTRACK_API_KEY` via your secret manager, then run `rio` to deliver the checked SBOM.
+To reproduce the example with a synthetic receiver on your machine, [run the delivery demo](tools/demo-use-case/README.md).
 
 ## Install
 
@@ -75,23 +86,11 @@ Or `curl -sSL https://raw.githubusercontent.com/rebaze/rio/main/install.sh | sh`
 a single binary with no runtime dependencies. Releases are signed, and the macOS binaries are
 notarized. [More install options](docs/cli.md#install).
 
-## Get your first local receipt
-
-With an existing `target/bom.json` and a binary that includes `rio init`, run:
-
-```sh
-rio init              # review the proposed rio.yaml
-rio init --write      # create it
-rio plan
-rio --skip-delivery   # prints the receipt path
-```
-
-[Quick start with your own SBOM](docs/quick-start.md) · [Runnable synthetic example](tools/README.md#first-local-receipt)
-
 ## Usage
 
 | Command | What it does |
 |---|---|
+| `rio init` | Previews a starter manifest for an existing SBOM; `--write` saves it |
 | `rio` | Runs `rio.yaml`: normalize, enrich, check, deliver, write the receipt |
 | `rio plan` | Shows what `rio` would do, without doing it; `--json` for scripts and agents |
 | `rio --skip-delivery` | Everything except the upload |
